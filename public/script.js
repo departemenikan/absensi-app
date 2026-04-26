@@ -1,161 +1,126 @@
 // ==========================================
-// 1. KONFIGURASI & BAHASA
+// KONFIGURASI
 // ==========================================
-const LANG = {
-  id: {
-    title: "Absensi Smart", masuk: "Clock In", pulang: "Clock Out",
-    istirahat: "Istirahat", selesaiIstirahat: "Selesai Istirahat",
-    belum: "Belum Absen", kerja: "Sedang Bekerja",
-    break: "Sedang Istirahat", selesai: "Sudah Pulang",
-  }
-};
-let currentLang = "id";
 let isLoginMode = true;
 let faceModelsLoaded = false;
-const t = (key) => LANG[currentLang][key] || key;
+let verifyResolve = null;
+let modalStream = null;
 
 // ==========================================
-// 2. LOAD MODEL FACE-API
+// TOAST NOTIFIKASI
+// ==========================================
+function showToast(msg, type = "success", duration = 3000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = type;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), duration);
+}
+
+// ==========================================
+// LOAD MODEL FACE-API
 // ==========================================
 async function loadFaceModels() {
-  const statusEl = document.getElementById("faceStatus");
-  if (statusEl) statusEl.innerText = "⏳ Memuat model wajah...";
+  const el = document.getElementById("faceStatus");
+  if (el) el.innerText = "⏳ Memuat model wajah...";
   try {
-    const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    const URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
     faceModelsLoaded = true;
-    if (statusEl) statusEl.innerText = "✅ Model wajah siap";
-    console.log("Face models loaded OK");
+    if (el) el.innerText = "✅ Model wajah siap";
   } catch (e) {
-    console.error("Gagal load model wajah:", e);
-    if (statusEl) statusEl.innerText = "⚠️ Model wajah gagal (butuh internet)";
+    if (el) el.innerText = "⚠️ Gagal load model (butuh internet)";
+    console.error(e);
   }
 }
 
 async function getFaceDescriptor(videoEl) {
   if (!videoEl) return null;
-  const detection = await faceapi
+  const det = await faceapi
     .detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-  return detection ? detection.descriptor : null;
+    .withFaceLandmarks().withFaceDescriptor();
+  return det ? det.descriptor : null;
 }
 
 // ==========================================
-// 3. AUTH — LOGIN, SIGNUP, LOGOUT
+// AUTH
 // ==========================================
 function toggleAuthMode() {
   isLoginMode = !isLoginMode;
-  document.getElementById("auth-title").innerText = isLoginMode ? "Login" : "Sign Up";
-  document.getElementById("btn-auth-main").innerText = isLoginMode ? "Login" : "Sign Up";
+  document.getElementById("auth-title").innerText       = isLoginMode ? "Login" : "Sign Up";
+  document.getElementById("btn-auth-main").innerText    = isLoginMode ? "Login" : "Sign Up";
   document.getElementById("auth-toggle-text").innerHTML = isLoginMode
-    ? 'Belum punya akun? <a href="#" onclick="toggleAuthMode()">Sign Up</a>'
-    : 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()">Login</a>';
+    ? 'Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>'
+    : 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
 
-  // Tampilkan/sembunyikan kamera signup
-  const faceSection = document.getElementById("face-signup-section");
-  if (faceSection) faceSection.classList.toggle("hidden", isLoginMode);
-
-  if (!isLoginMode) {
-    startCameraEl("video-signup");
-  } else {
-    stopCameraEl("video-signup");
-  }
+  const fs = document.getElementById("face-signup-section");
+  fs.classList.toggle("hidden", isLoginMode);
+  if (!isLoginMode) startCameraEl("video-signup");
+  else stopCameraEl("video-signup");
 }
 
 async function handleAuth() {
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value;
-  if (!username || !password) return alert("Isi username dan password!");
-
-  if (!isLoginMode) {
-    await doSignUp(username, password);
-  } else {
-    await doLogin(username, password);
-  }
+  if (!username || !password) return showToast("⚠️ Isi username dan password!", "warning");
+  isLoginMode ? await doLogin(username, password) : await doSignUp(username, password);
 }
 
 async function doLogin(username, password) {
   try {
-    const res  = await fetch("/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
+    const res  = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username, password}) });
     const data = await res.json();
     if (data.status === "OK") {
       localStorage.setItem("user", username);
+      localStorage.setItem("isAdmin", data.isAdmin ? "1" : "0");
       checkLoginStatus();
     } else {
-      alert("Login gagal! Username atau password salah.");
+      showToast("❌ Username atau password salah!", "error");
     }
-  } catch (err) {
-    alert("Gagal terhubung ke server.");
-    console.error(err);
-  }
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
 }
 
 async function doSignUp(username, password) {
-  if (!faceModelsLoaded) {
-    return alert("Model wajah belum siap. Tunggu sebentar lalu coba lagi.\nPastikan ada koneksi internet.");
-  }
-
+  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap, tunggu sebentar", "warning");
   const btn = document.getElementById("btn-auth-main");
-  btn.innerText = "⏳ Scanning wajah...";
-  btn.disabled = true;
-
+  btn.innerText = "⏳ Scanning..."; btn.disabled = true;
   try {
-    const videoEl = document.getElementById("video-signup");
+    const videoEl    = document.getElementById("video-signup");
     const descriptor = await getFaceDescriptor(videoEl);
-
     if (!descriptor) {
-      alert("❌ Wajah tidak terdeteksi!\nPastikan:\n- Wajah terlihat jelas di kamera\n- Pencahayaan cukup\n- Tidak pakai masker");
-      btn.innerText = "Sign Up"; btn.disabled = false;
-      return;
+      showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup", "error");
+      btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
-
-    const res = await fetch("/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, faceDescriptor: Array.from(descriptor) })
-    });
+    const res  = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username, password, faceDescriptor: Array.from(descriptor)}) });
     const data = await res.json();
-
     if (data.status === "OK") {
-      alert("✅ Akun berhasil dibuat!\nSilakan login.");
-      toggleAuthMode();
+      stopCameraEl("video-signup");
+      showToast("✅ Akun berhasil dibuat! Silakan login");
+      setTimeout(() => toggleAuthMode(), 1500);
     } else if (data.status === "EXIST") {
-      alert("Username sudah terdaftar!");
+      showToast("⚠️ Username sudah terdaftar!", "warning");
     } else {
-      alert("Gagal membuat akun.");
+      showToast("❌ Gagal membuat akun", "error");
     }
-  } catch (err) {
-    alert("Terjadi kesalahan: " + err.message);
-    console.error(err);
-  }
-
+  } catch (e) { showToast("❌ Error: " + e.message, "error"); }
   btn.innerText = "Sign Up"; btn.disabled = false;
 }
 
 async function checkLoginStatus() {
   const user = localStorage.getItem("user");
   if (!user) { showAuthPage(); return; }
-
   try {
     const res  = await fetch("/check-user/" + user);
     const data = await res.json();
     if (data.valid) {
+      localStorage.setItem("isAdmin", data.isAdmin ? "1" : "0");
       showAppPage();
     } else {
-      localStorage.removeItem("user");
-      showAuthPage();
+      localStorage.clear(); showAuthPage();
     }
-  } catch (e) {
-    localStorage.removeItem("user");
-    showAuthPage();
-  }
+  } catch { localStorage.clear(); showAuthPage(); }
 }
 
 function showAuthPage() {
@@ -167,20 +132,22 @@ function showAppPage() {
   document.getElementById("auth-page").classList.add("hidden");
   document.getElementById("main-nav").classList.remove("hidden");
   stopCameraEl("video-signup");
+
+  // Tampilkan/sembunyikan tab admin
+  const isAdmin = localStorage.getItem("isAdmin") === "1";
+  document.getElementById("tab-admin").classList.toggle("hidden", !isAdmin);
+
   showPage("home");
-  startCameraEl("video");
   loadStatus();
+  loadTodayDetail();
 }
 
 function logout() {
-  if (confirm("Yakin ingin keluar?")) {
-    localStorage.removeItem("user");
-    location.reload();
-  }
+  if (confirm("Yakin ingin keluar?")) { localStorage.clear(); location.reload(); }
 }
 
 // ==========================================
-// 4. NAVIGASI
+// NAVIGASI
 // ==========================================
 function showPage(page) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -188,18 +155,23 @@ function showPage(page) {
   document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active-tab"));
   const tab = document.getElementById("tab-" + page);
   if (tab) tab.classList.add("active-tab");
+
   if (page === "setting") loadSetting();
+  if (page === "rekap")   loadRekap();
+  if (page === "admin")   loadAdmin();
 }
 
 // ==========================================
-// 5. KAMERA & GPS
+// KAMERA
 // ==========================================
 function startCameraEl(videoId) {
   const video = document.getElementById(videoId);
-  if (!video) return;
-  if (video.srcObject) return; // sudah jalan
+  if (!video || video.srcObject) return;
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
-    .then(stream => { video.srcObject = stream; })
+    .then(stream => {
+      video.srcObject = stream;
+      if (videoId === "video-modal") modalStream = stream;
+    })
     .catch(err => console.warn("Kamera tidak tersedia:", err));
 }
 
@@ -209,20 +181,179 @@ function stopCameraEl(videoId) {
     video.srcObject.getTracks().forEach(t => t.stop());
     video.srcObject = null;
   }
+  if (videoId === "video-modal") modalStream = null;
 }
-
-function startCamera() { startCameraEl("video"); }
 
 function takePhoto() {
   const canvas = document.getElementById("canvas");
-  const video  = document.getElementById("video");
-  const ctx    = canvas.getContext("2d");
-  const w = video.videoWidth || 0;
-  const h = video.videoHeight || 0;
-  if (w === 0 || h === 0) return "";
-  canvas.width = w; canvas.height = h;
-  ctx.drawImage(video, 0, 0);
+  const video  = document.getElementById("video-modal");
+  if (!video || !video.videoWidth) return "";
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
   return canvas.toDataURL("image/jpeg", 0.7);
+}
+
+// ==========================================
+// MODAL KAMERA + FACE VERIFY
+// ==========================================
+function showCameraModal(title) {
+  document.getElementById("camera-modal-title").innerText = title;
+  document.getElementById("camera-modal").classList.remove("hidden");
+  document.getElementById("camera-status").innerText = "Mendeteksi wajah...";
+  document.getElementById("camera-status").classList.add("scanning");
+  startCameraEl("video-modal");
+}
+
+function hideCameraModal() {
+  document.getElementById("camera-modal").classList.add("hidden");
+  stopCameraEl("video-modal");
+  document.getElementById("camera-status").classList.remove("scanning");
+}
+
+function cancelVerify() {
+  hideCameraModal();
+  if (verifyResolve) { verifyResolve(false); verifyResolve = null; }
+}
+
+async function verifyFace(actionLabel) {
+  return new Promise(async (resolve) => {
+    verifyResolve = resolve;
+    showCameraModal("🔍 Verifikasi Wajah — " + actionLabel);
+
+    // Tunggu kamera siap
+    await new Promise(r => setTimeout(r, 1500));
+
+    if (!faceModelsLoaded) { hideCameraModal(); resolve(true); return; }
+
+    const user = localStorage.getItem("user");
+    let savedDescriptor;
+    try {
+      const res  = await fetch("/face-descriptor/" + user);
+      const data = await res.json();
+      if (!data.descriptor || data.descriptor.length === 0) { hideCameraModal(); resolve(true); return; }
+      savedDescriptor = new Float32Array(data.descriptor);
+    } catch { hideCameraModal(); resolve(true); return; }
+
+    // Coba deteksi wajah maksimal 10x
+    let attempts = 0;
+    const tryDetect = async () => {
+      if (!document.getElementById("video-modal").srcObject) { resolve(false); return; }
+      attempts++;
+      document.getElementById("camera-status").innerText = `Mendeteksi... (${attempts}/10)`;
+
+      const videoEl = document.getElementById("video-modal");
+      const current = await getFaceDescriptor(videoEl);
+
+      if (current) {
+        const dist = faceapi.euclideanDistance(savedDescriptor, current);
+        console.log("Face distance:", dist.toFixed(3));
+        hideCameraModal();
+        if (dist <= 0.55) {
+          resolve(true);
+        } else {
+          showToast("❌ Wajah tidak dikenali! Coba lagi.", "error");
+          resolve(false);
+        }
+        verifyResolve = null;
+      } else if (attempts < 10) {
+        setTimeout(tryDetect, 800);
+      } else {
+        hideCameraModal();
+        showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup.", "error");
+        resolve(false);
+        verifyResolve = null;
+      }
+    };
+    setTimeout(tryDetect, 800);
+  });
+}
+
+// ==========================================
+// ABSENSI
+// ==========================================
+async function sendAbsen(type, label) {
+  const user = localStorage.getItem("user");
+  if (!user) return checkLoginStatus();
+
+  const faceOK = await verifyFace(label);
+  if (!faceOK) return;
+
+  const photo = takePhoto();
+  const loc   = await getLocation();
+
+  try {
+    const res    = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ user, type, time: new Date().toISOString(), lat: loc.lat, lng: loc.lng, photo }) });
+    const result = await res.json();
+
+    if (result.status === "OK") {
+      const msgs = { IN:"✅ Clock In berhasil!", OUT:"👋 Clock Out berhasil! Sampai jumpa.", BREAK_START:"☕ Selamat istirahat!", BREAK_END:"💪 Lanjut kerja!" };
+      showToast(msgs[type] || "✅ Berhasil!");
+      loadStatus();
+      loadTodayDetail();
+    } else if (result.status === "OUT_OF_AREA") {
+      showToast(`❌ Di luar area kantor (${result.distance}m)`, "error");
+    } else if (result.status === "ALREADY_IN") {
+      showToast("⚠️ Anda sudah Clock In hari ini", "warning");
+      loadStatus();
+    }
+  } catch { showToast("❌ Terjadi kesalahan teknis", "error"); }
+}
+
+function clockIn()    { sendAbsen("IN",          "Clock In"); }
+function clockOut()   { sendAbsen("OUT",         "Clock Out"); }
+function breakStart() { sendAbsen("BREAK_START", "Istirahat"); }
+function breakEnd()   { sendAbsen("BREAK_END",   "Lanjut Kerja"); }
+
+async function loadStatus() {
+  const user = localStorage.getItem("user");
+  if (!user) return;
+  try {
+    const res  = await fetch("/status/" + user);
+    const data = await res.json();
+    updateButtons(data.status);
+  } catch { updateButtons("OUT"); }
+}
+
+function updateButtons(status) {
+  const el  = document.getElementById("statusText");
+  const bIn = document.getElementById("btn-in");
+  const bOut= document.getElementById("btn-out");
+  const bBS = document.getElementById("btn-break-start");
+  const bBE = document.getElementById("btn-break-end");
+  [bIn, bOut, bBS, bBE].forEach(b => b.classList.add("hidden"));
+
+  if (status === "IN") {
+    el.innerHTML = '<span class="status-dot" style="background:#27ae60"></span> Sedang Bekerja';
+    el.style.background = "#e8f5e9"; el.style.color = "#27ae60";
+    bBS.classList.remove("hidden"); bOut.classList.remove("hidden");
+  } else if (status === "BREAK") {
+    el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Sedang Istirahat';
+    el.style.background = "#fff3e0"; el.style.color = "#f39c12";
+    bBE.classList.remove("hidden");
+  } else {
+    el.innerHTML = '<span class="status-dot" style="background:#95a5a6"></span> Belum Absen';
+    el.style.background = "#f0f2f5"; el.style.color = "#95a5a6";
+    bIn.classList.remove("hidden");
+  }
+}
+
+async function loadTodayDetail() {
+  const user  = localStorage.getItem("user");
+  const today = new Date().toISOString().split("T")[0];
+  try {
+    const res  = await fetch("/history/" + user);
+    const data = await res.json();
+    const rec  = data.find(d => d.date === today);
+    if (rec) {
+      document.getElementById("today-in").innerText  = rec.jamMasuk ? new Date(rec.jamMasuk).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+      document.getElementById("today-out").innerText = rec.jamKeluar ? new Date(rec.jamKeluar).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+      if (rec.jamMasuk && rec.jamKeluar) {
+        const dur = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+        document.getElementById("today-dur").innerText = dur.toFixed(1) + "j";
+      }
+    }
+  } catch {}
 }
 
 async function getLocation() {
@@ -237,133 +368,79 @@ async function getLocation() {
 }
 
 // ==========================================
-// 6. FACE RECOGNITION SAAT ABSEN
+// REKAP
 // ==========================================
-async function verifyFace() {
-  if (!faceModelsLoaded) return true; // skip jika model belum load
-
-  const user    = localStorage.getItem("user");
-  const videoEl = document.getElementById("video");
-
-  // Ambil data wajah terdaftar dari server
-  let savedDescriptor;
-  try {
-    const res  = await fetch("/face-descriptor/" + user);
-    const data = await res.json();
-    if (!data.descriptor || data.descriptor.length === 0) return true; // tidak ada data wajah, skip
-    savedDescriptor = new Float32Array(data.descriptor);
-  } catch (e) {
-    return true; // jika gagal fetch, izinkan absen
-  }
-
-  // Scan wajah sekarang
-  const currentDescriptor = await getFaceDescriptor(videoEl);
-  if (!currentDescriptor) {
-    alert("❌ Wajah tidak terdeteksi!\nPastikan wajah terlihat jelas di kamera.");
-    return false;
-  }
-
-  // Bandingkan jarak wajah (threshold 0.55 = cukup ketat)
-  const distance = faceapi.euclideanDistance(savedDescriptor, currentDescriptor);
-  console.log("Face distance:", distance.toFixed(3));
-
-  if (distance > 0.55) {
-    alert(`❌ Wajah tidak dikenali! (skor: ${distance.toFixed(2)})\nPastikan pencahayaan cukup dan hadap kamera dengan jelas.`);
-    return false;
-  }
-
-  return true;
-}
-
-// ==========================================
-// 7. LOGIKA ABSENSI
-// ==========================================
-async function sendAbsen(type) {
+async function loadRekap() {
   const user = localStorage.getItem("user");
-  if (!user) return checkLoginStatus();
-
-  const statusEl = document.getElementById("statusText");
-  const originalText = statusEl.innerText;
-  statusEl.innerText = "🔍 Verifikasi wajah...";
-
-  const faceOK = await verifyFace();
-  if (!faceOK) { statusEl.innerText = originalText; return; }
-
-  statusEl.innerText = "📤 Mengirim...";
-
+  document.getElementById("rekap-username-label").innerText = user;
   try {
-    const photo = takePhoto();
-    const loc   = await getLocation();
+    const [repRes, hisRes] = await Promise.all([fetch("/report/" + user), fetch("/history/" + user)]);
+    const rep = await repRes.json();
+    const his = await hisRes.json();
 
-    const res = await fetch("/absen", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user, type,
-        time: new Date().toISOString(),
-        lat: loc.lat, lng: loc.lng, photo
-      })
-    });
+    document.getElementById("r-kerja").innerText = rep.totalKerja || "0h";
+    document.getElementById("r-break").innerText = rep.totalBreak || "0h";
+    document.getElementById("r-over").innerText  = rep.overtime   || "0h";
 
-    const result = await res.json();
-    if (result.status === "OK") {
-      loadStatus();
-    } else if (result.status === "OUT_OF_AREA") {
-      alert(`❌ Gagal! Anda di luar area (${result.distance}m dari kantor).`);
-      statusEl.innerText = originalText;
-    } else if (result.status === "ALREADY_IN") {
-      alert("Anda sudah Clock In hari ini.");
-      loadStatus();
-    }
-  } catch (error) {
-    alert("Terjadi kesalahan teknis.");
-    statusEl.innerText = originalText;
-    console.error(error);
-  }
-}
+    const list = document.getElementById("history-list");
+    if (!his.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
 
-function clockIn()    { sendAbsen("IN"); }
-function clockOut()   { sendAbsen("OUT"); }
-function breakStart() { sendAbsen("BREAK_START"); }
-function breakEnd()   { sendAbsen("BREAK_END"); }
-
-async function loadStatus() {
-  const user = localStorage.getItem("user");
-  if (!user) return;
-  try {
-    const res  = await fetch("/status/" + user);
-    const data = await res.json();
-    updateButtons(data.status);
-  } catch (e) { updateButtons("OUT"); }
-}
-
-function updateButtons(status) {
-  const el  = document.getElementById("statusText");
-  const bIn = document.getElementById("btn-in");
-  const bOut= document.getElementById("btn-out");
-  const bBS = document.getElementById("btn-break-start");
-  const bBE = document.getElementById("btn-break-end");
-
-  [bIn, bOut, bBS, bBE].forEach(b => b.classList.add("hidden"));
-
-  if (status === "IN") {
-    el.innerText = t("kerja");
-    el.style.background = "#d5f5e3"; el.style.color = "#1e8449";
-    bBS.classList.remove("hidden");
-    bOut.classList.remove("hidden");
-  } else if (status === "BREAK") {
-    el.innerText = t("break");
-    el.style.background = "#fef9e7"; el.style.color = "#9a7d0a";
-    bBE.classList.remove("hidden");
-  } else {
-    el.innerText = t("belum");
-    el.style.background = "#eee"; el.style.color = "#555";
-    bIn.classList.remove("hidden");
-  }
+    list.innerHTML = his.map(d => {
+      const masuk  = d.jamMasuk  ? new Date(d.jamMasuk).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"})  : "--:--";
+      const keluar = d.jamKeluar ? new Date(d.jamKeluar).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+      const dur    = d.jamMasuk && d.jamKeluar ? ((new Date(d.jamKeluar) - new Date(d.jamMasuk))/3600000).toFixed(1)+"j" : "-";
+      const late   = d.jamMasuk && new Date(d.jamMasuk).getHours() >= 9;
+      return `
+        <div class="history-item">
+          <div>
+            <div class="history-date">${d.date}</div>
+            <div class="history-time">Masuk: ${masuk} · Keluar: ${keluar} · ${dur}</div>
+          </div>
+          <span class="history-badge ${late ? 'late' : ''}">${late ? '⚠️ Terlambat' : '✅ Tepat'}</span>
+        </div>`;
+    }).join("");
+  } catch { document.getElementById("history-list").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat data</p>'; }
 }
 
 // ==========================================
-// 8. SETTING
+// ADMIN PANEL
+// ==========================================
+async function loadAdmin() {
+  const dateEl   = document.getElementById("adm-date");
+  const searchEl = document.getElementById("adm-search");
+  const date     = dateEl.value || new Date().toISOString().split("T")[0];
+  const search   = (searchEl.value || "").toLowerCase();
+
+  try {
+    const res  = await fetch("/admin/today?date=" + date);
+    const data = await res.json();
+
+    const filtered = data.records.filter(r => r.user.toLowerCase().includes(search));
+    document.getElementById("adm-total").innerText  = data.totalUsers;
+    document.getElementById("adm-hadir").innerText  = data.records.filter(r => r.status !== "OUT").length;
+
+    const list = document.getElementById("admin-list");
+    if (!filtered.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
+
+    list.innerHTML = filtered.map(r => {
+      const masuk  = r.jamMasuk  ? new Date(r.jamMasuk).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"})  : "--:--";
+      const keluar = r.jamKeluar ? new Date(r.jamKeluar).toLocaleTimeString("id",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+      const statusClass = r.status === "IN" ? "in" : r.status === "BREAK" ? "break" : "out";
+      const statusLabel = r.status === "IN" ? "Bekerja" : r.status === "BREAK" ? "Istirahat" : "Belum/Selesai";
+      return `
+        <div class="employee-item">
+          <div>
+            <div class="emp-name">👤 ${r.user}</div>
+            <div class="emp-time">Masuk: ${masuk} · Keluar: ${keluar}</div>
+          </div>
+          <span class="emp-status ${statusClass}">${statusLabel}</span>
+        </div>`;
+    }).join("");
+  } catch { document.getElementById("admin-list").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat data</p>'; }
+}
+
+// ==========================================
+// SETTING
 // ==========================================
 async function loadSetting() {
   try {
@@ -374,34 +451,51 @@ async function loadSetting() {
       document.getElementById("setLng").value    = data.office.lng    || "";
       document.getElementById("setRadius").value = data.office.radius || 100;
     }
-  } catch(e) { console.warn("Gagal load config:", e); }
+  } catch {}
 }
 
 async function saveSetting() {
-  const lat    = document.getElementById("setLat").value;
-  const lng    = document.getElementById("setLng").value;
+  const lat = document.getElementById("setLat").value;
+  const lng = document.getElementById("setLng").value;
   const radius = document.getElementById("setRadius").value;
-  if (!lat || !lng) return alert("Isi koordinat terlebih dahulu!");
-  const res = await fetch("/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lat, lng, radius })
-  });
-  if ((await res.json()).status === "OK") alert("✅ Area berhasil disimpan!");
+  if (!lat || !lng) return showToast("⚠️ Isi koordinat dulu!", "warning");
+  try {
+    const res = await fetch("/config", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({lat, lng, radius}) });
+    if ((await res.json()).status === "OK") showToast("✅ Area berhasil disimpan!");
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
 
 function getMyLocation() {
   navigator.geolocation.getCurrentPosition((pos) => {
     document.getElementById("setLat").value = pos.coords.latitude.toFixed(7);
     document.getElementById("setLng").value = pos.coords.longitude.toFixed(7);
-    alert("📍 Lokasi berhasil diambil! Jangan lupa klik Simpan.");
+    showToast("📍 Lokasi berhasil diambil!");
   }, null, { enableHighAccuracy: true });
 }
 
 // ==========================================
-// 9. INISIALISASI
+// HEADER INFO
+// ==========================================
+function updateHeader() {
+  const user = localStorage.getItem("user");
+  const el   = document.getElementById("header-username");
+  const elD  = document.getElementById("header-date");
+  if (el) el.innerText = user || "";
+  if (elD) {
+    const now = new Date();
+    elD.innerText = now.toLocaleDateString("id-ID", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
+  }
+}
+
+// ==========================================
+// INIT
 // ==========================================
 window.onload = async function () {
+  updateHeader();
+  // Set default tanggal admin ke hari ini
+  const admDate = document.getElementById("adm-date");
+  if (admDate) admDate.value = new Date().toISOString().split("T")[0];
+
   await loadFaceModels();
   checkLoginStatus();
 };

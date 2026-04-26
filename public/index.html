@@ -4,177 +4,373 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Absensi Smart</title>
-  <!-- Face API -->
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
   <style>
     :root {
-      --primary: #3498db;
+      --primary: #4f8ef7;
       --success: #27ae60;
       --danger:  #e74c3c;
-      --warning: #f1c40f;
-      --bg:      #f5f6fa;
+      --warning: #f39c12;
+      --bg:      #f0f2f5;
+      --card:    #ffffff;
+      --text:    #2c3e50;
+      --muted:   #95a5a6;
     }
-    * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); padding-bottom: 80px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding-bottom: 80px; }
 
-    /* ===== LOGIN ===== */
+    /* ===== AUTH ===== */
     #auth-page {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: var(--bg); z-index: 1000;
-      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1a237e 0%, #4f8ef7 100%);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
       overflow-y: auto;
     }
     .auth-card {
-      background: white; padding: 28px; border-radius: 15px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 320px; text-align: center;
-      margin: 20px auto;
+      background: white; padding: 32px 28px; border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 320px;
+      text-align: center; margin: 20px auto;
     }
-    input {
-      width: 100%; padding: 11px 12px; margin: 6px 0;
-      border: 1px solid #ddd; border-radius: 8px; font-size: 14px;
+    .auth-logo { font-size: 36px; margin-bottom: 4px; }
+    .auth-card h2 { font-size: 20px; color: var(--text); margin-bottom: 20px; }
+    .auth-card input {
+      width: 100%; padding: 12px 14px; margin: 6px 0;
+      border: 2px solid #e8ecf0; border-radius: 10px;
+      font-size: 14px; transition: 0.2s; outline: none;
     }
+    .auth-card input:focus { border-color: var(--primary); }
 
-    /* Kamera signup */
+    .signup-camera-wrap { margin: 12px 0 6px; }
+    .signup-camera-wrap p { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
     .signup-camera {
-      width: 150px; height: 150px; margin: 12px auto;
-      border-radius: 50%; overflow: hidden; background: #222;
-      border: 3px solid var(--primary);
+      width: 140px; height: 140px; margin: 0 auto;
+      border-radius: 50%; overflow: hidden; background: #1a1a2e;
+      border: 3px solid var(--primary); position: relative;
     }
     .signup-camera video { width: 100%; height: 100%; object-fit: cover; }
+    #faceStatus { font-size: 12px; margin: 8px 0 4px; color: var(--muted); }
 
-    #faceStatus {
-      font-size: 12px; color: #888; margin: 6px 0 4px;
+    /* ===== TOAST NOTIFIKASI ===== */
+    #toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-80px);
+      background: #2ecc71; color: white; padding: 12px 24px;
+      border-radius: 50px; font-weight: 600; font-size: 14px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.2); z-index: 9999;
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.error { background: var(--danger); }
+    #toast.warning { background: var(--warning); }
+
+    /* ===== MODAL KAMERA ===== */
+    #camera-modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); z-index: 500;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .camera-modal-inner { text-align: center; }
+    .camera-modal-inner p { color: white; margin-bottom: 16px; font-size: 15px; }
+    .camera-ring {
+      width: 220px; height: 220px; border-radius: 50%; overflow: hidden;
+      border: 4px solid var(--primary); margin: 0 auto 20px;
+      box-shadow: 0 0 0 8px rgba(79,142,247,0.2);
+    }
+    .camera-ring video { width: 100%; height: 100%; object-fit: cover; }
+    #camera-status { color: #a0cfff; font-size: 13px; margin-bottom: 16px; min-height: 20px; }
+    .camera-modal-btn {
+      padding: 12px 30px; border: none; border-radius: 50px;
+      font-weight: 700; font-size: 15px; cursor: pointer;
+      background: var(--primary); color: white;
+      box-shadow: 0 4px 15px rgba(79,142,247,0.4);
     }
 
     /* ===== PAGES ===== */
-    .page { display: none; padding: 20px; animation: fadeIn 0.3s ease; }
+    .page { display: none; padding: 16px; animation: fadeIn 0.3s ease; }
     .active { display: block; }
-    .card {
-      background: white; padding: 20px; border-radius: 15px;
-      max-width: 350px; margin: 20px auto;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center;
-    }
 
-    /* ===== KAMERA HOME ===== */
-    .camera-section {
-      width: 180px; height: 180px; margin: 15px auto;
-      border-radius: 50%; overflow: hidden; background: #000;
-      border: 4px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    /* ===== HEADER ===== */
+    .top-header {
+      background: linear-gradient(135deg, #1a237e 0%, #4f8ef7 100%);
+      color: white; padding: 20px 16px 50px; margin: -16px -16px 0;
     }
-    video { width: 100%; height: 100%; object-fit: cover; }
+    .top-header h3 { font-size: 18px; }
+    .top-header p { font-size: 13px; opacity: 0.8; margin-top: 2px; }
+    .header-user { font-size: 13px; opacity: 0.9; margin-top: 4px; font-weight: 600; }
+
+    /* ===== CARD ===== */
+    .card {
+      background: var(--card); border-radius: 16px;
+      padding: 20px; margin-top: -30px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .card + .card { margin-top: 16px; }
+    .card h4 { font-size: 15px; color: var(--text); margin-bottom: 14px; font-weight: 700; }
 
     /* ===== STATUS ===== */
     .status-badge {
-      display: inline-block; padding: 6px 18px;
-      border-radius: 20px; font-weight: 600; font-size: 14px;
-      background: #eee; color: #555; margin-bottom: 8px;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 20px; border-radius: 50px;
+      font-weight: 700; font-size: 14px;
+      background: #f0f2f5; color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+    /* ===== TOMBOL ABSEN ===== */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-absen {
+      padding: 14px 10px; border: none; border-radius: 12px;
+      font-weight: 700; font-size: 14px; cursor: pointer;
+      transition: all 0.2s; display: flex; flex-direction: column;
+      align-items: center; gap: 4px;
+    }
+    .btn-absen span { font-size: 22px; }
+    .btn-absen:active { transform: scale(0.96); }
+    .btn-full { grid-column: span 2; }
+    .btn-in      { background: linear-gradient(135deg, #27ae60, #2ecc71); color: white; box-shadow: 0 4px 15px rgba(46,204,113,0.35); }
+    .btn-out     { background: linear-gradient(135deg, #c0392b, #e74c3c); color: white; box-shadow: 0 4px 15px rgba(231,76,60,0.35); }
+    .btn-break   { background: linear-gradient(135deg, #e67e22, #f39c12); color: white; box-shadow: 0 4px 15px rgba(243,156,18,0.35); }
+    .btn-primary { background: linear-gradient(135deg, #2980b9, #4f8ef7); color: white; box-shadow: 0 4px 15px rgba(79,142,247,0.35); }
+    .btn-danger  { background: linear-gradient(135deg, #c0392b, #e74c3c); color: white; }
+    .hidden { display: none !important; }
+
+    /* ===== REKAP ===== */
+    .stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .stat-box {
+      background: #f8f9ff; border-radius: 12px; padding: 12px 8px;
+      text-align: center;
+    }
+    .stat-box .val { font-size: 20px; font-weight: 800; color: var(--primary); }
+    .stat-box .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .history-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 0; border-bottom: 1px solid #f0f2f5;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-date { font-size: 13px; font-weight: 700; }
+    .history-time { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .history-badge {
+      font-size: 11px; font-weight: 700; padding: 4px 10px;
+      border-radius: 50px; background: #e8f5e9; color: var(--success);
+    }
+    .history-badge.late { background: #fff3e0; color: var(--warning); }
+
+    /* ===== ADMIN ===== */
+    .admin-stat { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .admin-stat-box {
+      background: linear-gradient(135deg, #4f8ef7, #1a237e);
+      color: white; border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .admin-stat-box .val { font-size: 28px; font-weight: 800; }
+    .admin-stat-box .lbl { font-size: 12px; opacity: 0.8; }
+
+    .employee-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 0; border-bottom: 1px solid #f0f2f5;
+    }
+    .employee-item:last-child { border-bottom: none; }
+    .emp-name { font-size: 14px; font-weight: 700; }
+    .emp-time { font-size: 12px; color: var(--muted); }
+    .emp-status {
+      font-size: 11px; font-weight: 700; padding: 4px 10px;
+      border-radius: 50px;
+    }
+    .emp-status.in     { background: #e8f5e9; color: var(--success); }
+    .emp-status.out    { background: #fce4ec; color: var(--danger); }
+    .emp-status.break  { background: #fff3e0; color: var(--warning); }
+
+    .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .filter-row input, .filter-row select {
+      flex: 1; padding: 8px 12px; border: 2px solid #e8ecf0;
+      border-radius: 8px; font-size: 13px; outline: none;
     }
 
-    /* ===== TOMBOL ===== */
-    .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-    button { padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; transition: 0.2s; font-size: 14px; }
-    button:active { transform: scale(0.97); }
-    .btn-full { grid-column: span 2; width: 100%; }
-    .in      { background: var(--success); color: white; }
-    .out     { background: var(--danger);  color: white; }
-    .primary { background: var(--primary); color: white; }
-    .hidden  { display: none !important; }
-
     /* ===== SETTING ===== */
-    .setting-item { text-align: left; margin: 10px 0; }
-    .setting-item label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
-    .setting-item input { margin: 0; }
+    .setting-group { margin-bottom: 16px; }
+    .setting-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+    .setting-group input {
+      width: 100%; padding: 11px 12px;
+      border: 2px solid #e8ecf0; border-radius: 10px;
+      font-size: 14px; outline: none;
+    }
+    .setting-group input:focus { border-color: var(--primary); }
 
     /* ===== NAV ===== */
     .bottom-nav {
       position: fixed; bottom: 0; width: 100%; background: white;
-      display: flex; border-top: 1px solid #eee; padding: 10px 0;
+      display: flex; border-top: 1px solid #e8ecf0;
+      padding: 8px 0; box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
     }
     .nav-item {
-      flex: 1; background: none; color: #999; font-size: 11px;
-      display: flex; flex-direction: column; align-items: center; gap: 2px;
-      border: none; cursor: pointer; padding: 4px;
+      flex: 1; background: none; color: var(--muted); font-size: 10px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      border: none; cursor: pointer; padding: 4px; transition: 0.2s;
     }
+    .nav-item .nav-icon { font-size: 20px; }
     .nav-item.active-tab { color: var(--primary); }
 
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    /* ===== GENERAL ===== */
+    button { cursor: pointer; }
+    .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+    .btn-row button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-weight: 700; font-size: 13px; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .scanning { animation: pulse 1s infinite; }
   </style>
 </head>
 <body>
 
-  <!-- ===== HALAMAN LOGIN / SIGN UP ===== -->
-  <div id="auth-page">
-    <div class="auth-card">
-      <h2 id="auth-title">Login</h2>
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
 
-      <!-- Kamera untuk Sign Up (scan wajah) -->
-      <div id="face-signup-section" class="hidden">
-        <p style="font-size:13px; color:#555; margin:0 0 6px;">Hadapkan wajah ke kamera</p>
+<!-- ===== MODAL KAMERA ABSEN ===== -->
+<div id="camera-modal" class="hidden">
+  <div class="camera-modal-inner">
+    <p id="camera-modal-title">Verifikasi Wajah</p>
+    <div class="camera-ring">
+      <video id="video-modal" autoplay playsinline muted></video>
+    </div>
+    <div id="camera-status">Mendeteksi wajah...</div>
+    <button class="camera-modal-btn" onclick="cancelVerify()">Batal</button>
+  </div>
+</div>
+
+<!-- ===== AUTH PAGE ===== -->
+<div id="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">🏢</div>
+    <h2 id="auth-title">Login</h2>
+
+    <div id="face-signup-section" class="hidden">
+      <div class="signup-camera-wrap">
+        <p>Hadapkan wajah ke kamera</p>
         <div class="signup-camera">
           <video id="video-signup" autoplay playsinline muted></video>
         </div>
-        <div id="faceStatus">⏳ Memuat model wajah...</div>
       </div>
+      <div id="faceStatus">⏳ Memuat model wajah...</div>
+    </div>
 
-      <input type="text"     id="username" placeholder="Username">
-      <input type="password" id="password" placeholder="Password">
+    <input type="text"     id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="handleAuth()" id="btn-auth-main"
+      style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;">
+      Login
+    </button>
+    <p style="font-size:12px;color:#95a5a6;margin-top:14px;" id="auth-toggle-text">
+      Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>
+    </p>
+  </div>
+</div>
 
-      <button class="btn-full primary" onclick="handleAuth()" id="btn-auth-main"
-        style="margin-top:10px;">Login</button>
-
-      <p style="font-size:12px; color:#666; margin-top:12px;" id="auth-toggle-text">
-        Belum punya akun? <a href="#" onclick="toggleAuthMode()">Sign Up</a>
-      </p>
+<!-- ===== HOME ===== -->
+<div id="home" class="page">
+  <div class="top-header">
+    <h3>👋 Selamat Datang</h3>
+    <div class="header-user" id="header-username"></div>
+    <p id="header-date"></p>
+  </div>
+  <div class="card">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div id="statusText" class="status-badge">
+        <span class="status-dot"></span> Memuat...
+      </div>
+    </div>
+    <div class="btn-grid" id="btn-container">
+      <button id="btn-in"          class="btn-absen btn-in   btn-full" onclick="clockIn()"><span>🟢</span>Clock In</button>
+      <button id="btn-break-start" class="btn-absen btn-break hidden"  onclick="breakStart()"><span>☕</span>Istirahat</button>
+      <button id="btn-break-end"   class="btn-absen btn-in   hidden"   onclick="breakEnd()"><span>💪</span>Lanjut Kerja</button>
+      <button id="btn-out"         class="btn-absen btn-out  hidden"   onclick="clockOut()"><span>🔴</span>Clock Out</button>
     </div>
   </div>
 
-  <!-- ===== HALAMAN HOME ===== -->
-  <div id="home" class="page">
-    <div class="card">
-      <div id="statusText" class="status-badge">Memuat...</div>
-      <div class="camera-section">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-      </div>
-      <div class="btn-group">
-        <button id="btn-in"          class="in  btn-full" onclick="clockIn()">Clock In</button>
-        <button id="btn-break-start" class="primary hidden" onclick="breakStart()">Istirahat</button>
-        <button id="btn-break-end"   class="in  hidden" onclick="breakEnd()">Selesai Istirahat</button>
-        <button id="btn-out"         class="out hidden" onclick="clockOut()">Clock Out</button>
-      </div>
+  <div class="card" style="margin-top:16px;">
+    <h4>📊 Hari Ini</h4>
+    <div class="stat-row">
+      <div class="stat-box"><div class="val" id="today-in">--:--</div><div class="lbl">Masuk</div></div>
+      <div class="stat-box"><div class="val" id="today-out">--:--</div><div class="lbl">Keluar</div></div>
+      <div class="stat-box"><div class="val" id="today-dur">0j</div><div class="lbl">Durasi</div></div>
     </div>
   </div>
+</div>
 
-  <!-- ===== HALAMAN SETTING ===== -->
-  <div id="setting" class="page">
-    <div class="card">
-      <h3>Pengaturan Area Kantor</h3>
-      <div class="setting-item">
-        <label>Latitude</label>
-        <input type="number" id="setLat" placeholder="-6.2000000" step="0.0000001">
-      </div>
-      <div class="setting-item">
-        <label>Longitude</label>
-        <input type="number" id="setLng" placeholder="106.8000000" step="0.0000001">
-      </div>
-      <div class="setting-item">
-        <label>Radius (meter)</label>
-        <input type="number" id="setRadius" placeholder="100">
-      </div>
-      <div class="btn-group" style="margin-top:12px;">
-        <button class="primary" onclick="getMyLocation()">📍 Lokasi Saya</button>
-        <button class="in"      onclick="saveSetting()">💾 Simpan</button>
-      </div>
-      <button class="btn-full out" style="margin-top:20px;" onclick="logout()">🚪 Logout</button>
+<!-- ===== REKAP ===== -->
+<div id="rekap" class="page">
+  <div class="top-header">
+    <h3>📋 Rekap Absensi</h3>
+    <p id="rekap-username-label"></p>
+  </div>
+  <div class="card">
+    <div class="stat-row">
+      <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
+      <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
+      <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
     </div>
   </div>
+  <div class="card" style="margin-top:16px;">
+    <h4>📅 Riwayat</h4>
+    <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+  </div>
+</div>
 
-  <!-- ===== BOTTOM NAV ===== -->
-  <nav id="main-nav" class="bottom-nav hidden">
-    <button onclick="showPage('home')"    class="nav-item active-tab" id="tab-home">🏠<span>Beranda</span></button>
-    <button onclick="showPage('setting')" class="nav-item"            id="tab-setting">⚙️<span>Seting</span></button>
-  </nav>
+<!-- ===== ADMIN ===== -->
+<div id="admin" class="page hidden-page">
+  <div class="top-header">
+    <h3>👑 Admin Panel</h3>
+    <p>Monitor semua karyawan</p>
+  </div>
+  <div class="card">
+    <div class="admin-stat">
+      <div class="admin-stat-box"><div class="val" id="adm-total">0</div><div class="lbl">Total Karyawan</div></div>
+      <div class="admin-stat-box" style="background:linear-gradient(135deg,#27ae60,#2ecc71);">
+        <div class="val" id="adm-hadir">0</div><div class="lbl">Hadir Hari Ini</div>
+      </div>
+    </div>
+    <div class="filter-row">
+      <input type="date" id="adm-date" onchange="loadAdmin()">
+      <input type="text" id="adm-search" placeholder="Cari nama..." oninput="loadAdmin()">
+    </div>
+    <div id="admin-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+  </div>
+</div>
 
-  <script src="script.js"></script>
+<!-- ===== SETTING ===== -->
+<div id="setting" class="page">
+  <div class="top-header">
+    <h3>⚙️ Pengaturan</h3>
+    <p>Konfigurasi area kantor</p>
+  </div>
+  <div class="card">
+    <h4>📍 Area Kantor</h4>
+    <div class="setting-group"><label>Latitude</label><input type="number" id="setLat" placeholder="-8.6500000" step="0.0000001"></div>
+    <div class="setting-group"><label>Longitude</label><input type="number" id="setLng" placeholder="115.2200000" step="0.0000001"></div>
+    <div class="setting-group"><label>Radius (meter)</label><input type="number" id="setRadius" placeholder="100"></div>
+    <div class="btn-row">
+      <button onclick="getMyLocation()" style="background:#f0f2f5;color:var(--text);">📍 Lokasi Saya</button>
+      <button onclick="saveSetting()"   style="background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;">💾 Simpan</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <h4>👤 Akun</h4>
+    <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;">
+      🚪 Logout
+    </button>
+  </div>
+</div>
+
+<!-- ===== BOTTOM NAV ===== -->
+<nav id="main-nav" class="bottom-nav hidden">
+  <button onclick="showPage('home')"    class="nav-item active-tab" id="tab-home">    <span class="nav-icon">🏠</span>Beranda</button>
+  <button onclick="showPage('rekap')"   class="nav-item"            id="tab-rekap">   <span class="nav-icon">📋</span>Rekap</button>
+  <button onclick="showPage('admin')"   class="nav-item"            id="tab-admin">   <span class="nav-icon">👑</span>Admin</button>
+  <button onclick="showPage('setting')" class="nav-item"            id="tab-setting"> <span class="nav-icon">⚙️</span>Seting</button>
+</nav>
+
+<canvas id="canvas" style="display:none;"></canvas>
+<script src="script.js"></script>
 </body>
 </html>
