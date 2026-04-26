@@ -1,0 +1,15 @@
+{
+  "name": "absensi-smart",
+  "version": "1.0.0",
+  "description": "Aplikasi absensi dengan face recognition dan geofencing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
