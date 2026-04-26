@@ -97,6 +97,14 @@ app.post("/absen", (req, res) => {
   }
 
   saveJSON(DATA_FILE, data);
+
+  // Simpan log aktivitas
+  const AKTIVITAS_FILE2 = path.join(DATA_DIR, "aktivitas.json");
+  const log = loadJSON(AKTIVITAS_FILE2, []);
+  log.push({ user, type, time });
+  if (log.length > 200) log.splice(0, log.length - 200);
+  saveJSON(AKTIVITAS_FILE2, log);
+
   res.send({ status: "OK" });
 });
 
@@ -171,3 +179,93 @@ app.post("/config", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
+// =======================
+// 👥 ANGGOTA
+// =======================
+app.get("/admin/members", (req, res) => {
+  const users = loadJSON(USERS_FILE, {});
+  const list  = Object.keys(users).map(u => ({ username: u, isAdmin: users[u].isAdmin || false }));
+  res.send(list);
+});
+
+// =======================
+// 📅 HARI LIBUR & CUTI
+// =======================
+const LIBUR_FILE = path.join(DATA_DIR, "libur.json");
+
+app.get("/libur", (req, res) => res.send(loadJSON(LIBUR_FILE, [])));
+
+app.post("/libur", (req, res) => {
+  const { date, name, type } = req.body;
+  if (!date || !name) return res.send({ status: "ERROR" });
+  const data = loadJSON(LIBUR_FILE, []);
+  data.push({ date, name, type: type || "nasional" });
+  saveJSON(LIBUR_FILE, data);
+  res.send({ status: "OK" });
+});
+
+app.delete("/libur/:index", (req, res) => {
+  const data = loadJSON(LIBUR_FILE, []);
+  const idx  = parseInt(req.params.index);
+  if (idx < 0 || idx >= data.length) return res.send({ status: "ERROR" });
+  data.splice(idx, 1);
+  saveJSON(LIBUR_FILE, data);
+  res.send({ status: "OK" });
+});
+
+// =======================
+// 📌 AKTIVITAS
+// =======================
+const AKTIVITAS_FILE = path.join(DATA_DIR, "aktivitas.json");
+
+app.get("/aktivitas", (req, res) => {
+  const data = loadJSON(AKTIVITAS_FILE, []);
+  res.send(data.slice(-50).reverse()); // 50 aktivitas terbaru
+});
+
+// Patch endpoint /absen agar menyimpan log aktivitas
+const origAbsen = app._router.stack.find(r => r.route && r.route.path === "/absen");
+// Simpan aktivitas saat absen — ditangani via middleware
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/absen-log") {
+    const { user, type, time } = req.body;
+    const log = loadJSON(AKTIVITAS_FILE, []);
+    log.push({ user, type, time });
+    if (log.length > 200) log.splice(0, log.length - 200); // max 200
+    saveJSON(AKTIVITAS_FILE, log);
+  }
+  next();
+});
+
+// =======================
+// 🕐 TIMESHEET
+// =======================
+app.get("/timesheet", (req, res) => {
+  const month = req.query.month; // format: "2026-04"
+  if (!month) return res.send([]);
+
+  const data  = loadJSON(DATA_FILE, []);
+  const users = loadJSON(USERS_FILE, {});
+
+  const result = Object.keys(users).map(username => {
+    const records = data.filter(d => d.user === username && d.date.startsWith(month) && d.jamKeluar);
+    let totalJam  = 0, overtime = 0;
+    records.forEach(d => {
+      const work  = (new Date(d.jamKeluar) - new Date(d.jamMasuk)) / 3600000;
+      let bTime   = 0;
+      d.breaks.forEach(b => { if (b.end) bTime += (new Date(b.end)-new Date(b.start))/3600000; });
+      const net   = work - bTime;
+      totalJam   += net;
+      overtime   += Math.max(0, net - 8);
+    });
+    return {
+      user:      username,
+      totalDays: records.length,
+      totalJam:  totalJam.toFixed(1),
+      overtime:  overtime.toFixed(1)
+    };
+  });
+
+  res.send(result);
+});

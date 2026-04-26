@@ -499,3 +499,136 @@ window.onload = async function () {
   await loadFaceModels();
   checkLoginStatus();
 };
+
+// ==========================================
+// SUB PAGES (Anggota, Libur, Aktivitas, Timesheet)
+// ==========================================
+function showSubPage(id) {
+  document.querySelectorAll(".sub-page").forEach(p => p.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  document.getElementById("setting").style.display = "none";
+
+  if (id === "sub-anggota")   loadAnggota();
+  if (id === "sub-libur")     loadLibur();
+  if (id === "sub-aktivitas") loadAktivitas();
+  if (id === "sub-timesheet") {
+    const m = document.getElementById("ts-month");
+    if (!m.value) m.value = new Date().toISOString().slice(0,7);
+    loadTimesheet();
+  }
+}
+
+function hideSubPage() {
+  document.querySelectorAll(".sub-page").forEach(p => p.classList.remove("active"));
+  document.getElementById("setting").style.display = "block";
+}
+
+// --- ANGGOTA ---
+async function loadAnggota() {
+  try {
+    const res  = await fetch("/admin/members");
+    const data = await res.json();
+    const list = document.getElementById("member-list");
+    if (!data.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
+    list.innerHTML = data.map(m => `
+      <div class="member-item">
+        <div style="display:flex;align-items:center;">
+          <div class="member-avatar">${m.username[0].toUpperCase()}</div>
+          <div>
+            <div class="member-name">${m.username}</div>
+            <div class="member-role">${m.isAdmin ? "Administrator" : "Karyawan"}</div>
+          </div>
+        </div>
+        <span class="${m.isAdmin ? 'badge-admin' : 'badge-user'}">${m.isAdmin ? 'Admin' : 'User'}</span>
+      </div>`).join("");
+  } catch { document.getElementById("member-list").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+}
+
+// --- HARI LIBUR & CUTI ---
+async function loadLibur() {
+  try {
+    const res  = await fetch("/libur");
+    const data = await res.json();
+    const list = document.getElementById("libur-list");
+    if (!data.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
+    list.innerHTML = data.sort((a,b)=>a.date.localeCompare(b.date)).map((d,i) => `
+      <div class="holiday-item">
+        <div>
+          <div class="holiday-date">${d.date}</div>
+          <div class="holiday-name">${d.name}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="holiday-type ${d.type}">${d.type === 'nasional' ? '🔴 Nasional' : '🟢 Cuti'}</span>
+          <button onclick="deleteLibur(${i})" style="background:none;border:none;color:#e74c3c;font-size:16px;cursor:pointer;">🗑</button>
+        </div>
+      </div>`).join("");
+  } catch {}
+}
+
+async function saveLibur() {
+  const date = document.getElementById("libur-date").value;
+  const name = document.getElementById("libur-name").value.trim();
+  const type = document.getElementById("libur-type").value;
+  if (!date || !name) return showToast("⚠️ Isi tanggal dan nama!", "warning");
+  try {
+    const res = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({date, name, type}) });
+    if ((await res.json()).status === "OK") {
+      showToast("✅ Berhasil ditambahkan!");
+      document.getElementById("libur-date").value = "";
+      document.getElementById("libur-name").value = "";
+      loadLibur();
+    }
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
+}
+
+async function deleteLibur(index) {
+  if (!confirm("Hapus data ini?")) return;
+  try {
+    const res = await fetch("/libur/" + index, { method:"DELETE" });
+    if ((await res.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
+  } catch { showToast("❌ Gagal menghapus", "error"); }
+}
+
+// --- AKTIVITAS ---
+async function loadAktivitas() {
+  try {
+    const res  = await fetch("/aktivitas");
+    const data = await res.json();
+    const list = document.getElementById("aktivitas-list");
+    if (!data.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada aktivitas</p>'; return; }
+    const icons = { IN:"🟢", OUT:"🔴", BREAK_START:"☕", BREAK_END:"💪" };
+    const labels = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" };
+    list.innerHTML = data.map(a => `
+      <div class="activity-item">
+        <div class="activity-user">${icons[a.type]||"📌"} ${a.user}</div>
+        <div class="activity-desc">${labels[a.type]||a.type}</div>
+        <div class="activity-time">${new Date(a.time).toLocaleString("id-ID")}</div>
+      </div>`).join("");
+  } catch { document.getElementById("aktivitas-list").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+}
+
+// --- TIMESHEET ---
+async function loadTimesheet() {
+  const month  = document.getElementById("ts-month").value;
+  const search = (document.getElementById("ts-search").value || "").toLowerCase();
+  if (!month) return;
+  try {
+    const res  = await fetch("/timesheet?month=" + month);
+    const data = await res.json();
+    const filtered = data.filter(r => r.user.toLowerCase().includes(search));
+    const el = document.getElementById("timesheet-content");
+    if (!filtered.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
+    el.innerHTML = `
+      <table class="timesheet-table">
+        <thead><tr><th>Nama</th><th>Hari</th><th>Jam Kerja</th><th>Lembur</th></tr></thead>
+        <tbody>${filtered.map(r => `
+          <tr>
+            <td><b>${r.user}</b></td>
+            <td>${r.totalDays}h</td>
+            <td>${r.totalJam}j</td>
+            <td style="color:${parseFloat(r.overtime)>0?'var(--warning)':'var(--muted)'};">${r.overtime}j</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`;
+  } catch { document.getElementById("timesheet-content").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+}
