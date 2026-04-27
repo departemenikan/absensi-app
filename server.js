@@ -17,7 +17,6 @@ const F = {
   libur:     path.join(DATA_DIR, "libur.json"),
   aktivitas: path.join(DATA_DIR, "aktivitas.json"),
   groups:    path.join(DATA_DIR, "groups.json"),
-  cuti:      path.join(DATA_DIR, "cuti.json"),
 };
 
 function load(file, def) {
@@ -40,20 +39,30 @@ function logAktivitas(user, type, time) {
   save(F.aktivitas, log);
 }
 
-// Inisialisasi groups default dengan menu yang sesuai
+// Inisialisasi default groups jika belum ada
 function initGroups() {
   if (!fs.existsSync(F.groups)) {
     const defaults = [
-      { id: "owner", name: "Owner", level: 1, color: "#8e44ad",
-        menus: ["home","rekap","admin","setting","anggota","group","area","libur","aktivitas","timesheet","cuti","profil"] },
-      { id: "admin", name: "Admin", level: 2, color: "#2980b9",
-        menus: ["home","rekap","admin","setting","anggota","area","libur","aktivitas","timesheet","cuti","profil"] },
-      { id: "manager", name: "Manager", level: 3, color: "#27ae60",
-        menus: ["home","rekap","admin","aktivitas","timesheet","cuti","profil"] },
-      { id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
-        menus: ["home","rekap","aktivitas","cuti","profil"] },
-      { id: "anggota", name: "Anggota", level: 5, color: "#7f8c8d",
-        menus: ["home","rekap","cuti","profil"] }
+      {
+        id: "owner", name: "Owner", level: 1, color: "#8e44ad",
+        menus: ["home","rekap","admin","setting","anggota","group","area","libur","aktivitas","timesheet"]
+      },
+      {
+        id: "admin", name: "Admin", level: 2, color: "#2980b9",
+        menus: ["home","rekap","admin","setting","anggota","area","libur","aktivitas","timesheet"]
+      },
+      {
+        id: "manager", name: "Manager", level: 3, color: "#27ae60",
+        menus: ["home","rekap","admin","aktivitas","timesheet"]
+      },
+      {
+        id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
+        menus: ["home","rekap","aktivitas"]
+      },
+      {
+        id: "anggota", name: "Anggota", level: 5, color: "#7f8c8d",
+        menus: ["home","rekap"]
+      }
     ];
     save(F.groups, defaults);
   }
@@ -61,10 +70,10 @@ function initGroups() {
 initGroups();
 
 // ========================
-// AUTH & PROFIL (LENGKAP)
+// AUTH
 // ========================
 app.post("/signup", (req, res) => {
-  const { username, password, faceDescriptor, fullName, agama, facePhoto } = req.body;
+  const { username, password, faceDescriptor } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
@@ -72,14 +81,8 @@ app.post("/signup", (req, res) => {
   users[username] = {
     password,
     faceDescriptor: faceDescriptor || [],
-    facePhoto: facePhoto || "",
     group: isFirst ? "owner" : "anggota",
-    createdAt: new Date().toISOString(),
-    fullName: fullName || username,
-    agama: agama || "",
-    lingkupKerja: "",
-    nominalGaji: 0,
-    photoProfil: ""
+    createdAt: new Date().toISOString()
   };
   save(F.users, users);
   res.send({ status: "OK" });
@@ -110,90 +113,6 @@ app.get("/face-descriptor/:username", (req, res) => {
   res.send({ descriptor: user ? (user.faceDescriptor || []) : [] });
 });
 
-// GET profil lengkap (termasuk jabatan, peran, group name dari groups)
-app.get("/profil/:username", (req, res) => {
-  const users = load(F.users, {});
-  const user = users[req.params.username];
-  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
-  const groups = load(F.groups, []);
-  const group = groups.find(g => g.id === user.group) || groups[groups.length-1];
-  res.send({
-    username: req.params.username,
-    fullName: user.fullName || req.params.username,
-    agama: user.agama || "",
-    jabatan: group.name,
-    peran: group.level,
-    groupName: group.name,
-    lingkupKerja: user.lingkupKerja || "",
-    nominalGaji: user.nominalGaji || 0,
-    photoProfil: user.photoProfil || "",
-    groupId: group.id
-  });
-});
-
-// PUT update profil (fullName, agama, lingkupKerja, nominalGaji (hanya jika owner), photoProfil)
-app.put("/profil/:username", (req, res) => {
-  const users = load(F.users, {});
-  const user = users[req.params.username];
-  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
-  const { fullName, agama, lingkupKerja, nominalGaji, photoProfil } = req.body;
-  if (fullName !== undefined) user.fullName = fullName;
-  if (agama !== undefined) user.agama = agama;
-  if (lingkupKerja !== undefined) user.lingkupKerja = lingkupKerja;
-  // Nominal gaji hanya bisa diubah oleh owner (dari frontend kita kirim role, disini kita bisa cek dari group)
-  // Untuk sederhana, kita tetap izinkan update, tapi frontend akan menyembunyikan field jika bukan owner.
-  if (nominalGaji !== undefined) user.nominalGaji = nominalGaji;
-  if (photoProfil !== undefined) user.photoProfil = photoProfil;
-  save(F.users, users);
-  res.send({ status: "OK" });
-});
-
-app.post("/update-wajah", (req, res) => {
-  const { username, faceDescriptor, facePhoto } = req.body;
-  if (!username || !faceDescriptor) return res.send({ status: "ERROR" });
-  const users = load(F.users, {});
-  if (!users[username]) return res.send({ status: "NOT_FOUND" });
-  users[username].faceDescriptor = faceDescriptor;
-  if (facePhoto) users[username].facePhoto = facePhoto;
-  save(F.users, users);
-  res.send({ status: "OK" });
-});
-
-// GET password untuk admin/owner (lihat password)
-app.get("/get-password/:username", (req, res) => {
-  const users = load(F.users, {});
-  const user = users[req.params.username];
-  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
-  // Hanya owner/admin yang boleh melihat password orang lain, tapi untuk keperluan profil sendiri, kita boleh lihat sendiri
-  // Untuk sederhana, kita kirimkan password-nya (hanya untuk user yang login).
-  res.send({ password: user.password });
-});
-// GET foto wajah (face descriptor) untuk ditampilkan sebagai gambar? 
-// Face descriptor adalah array angka, tidak bisa ditampilkan sebagai gambar.
-// Tapi kita bisa menyimpan screenshot wajah saat sign up.
-// Modifikasi: saat sign up, simpan juga foto wajah (screenshot) sebagai string base64.
-
-// Tambahkan field facePhoto saat sign up (di users.json)
-// Dan endpoint untuk mengambil facePhoto
-app.get("/face-photo/:username", (req, res) => {
-  const users = load(F.users, {});
-  const user = users[req.params.username];
-  res.send({ facePhoto: user?.facePhoto || null });
-});
-// Hapus akun (hanya untuk role owner/admin)
-app.delete("/delete-akun/:username", (req, res) => {
-  const { username } = req.params;
-  const { role } = req.query; // role dikirim dari frontend
-  if (role !== "owner" && role !== "admin") {
-    return res.status(403).send({ status: "FORBIDDEN" });
-  }
-  const users = load(F.users, {});
-  if (!users[username]) return res.send({ status: "NOT_FOUND" });
-  delete users[username];
-  save(F.users, users);
-  res.send({ status: "OK" });
-});
-
 // ========================
 // ABSENSI
 // ========================
@@ -203,6 +122,7 @@ app.post("/absen", (req, res) => {
   const { user, type, time, lat, lng, photo, areaId } = req.body;
   const today = new Date().toISOString().split("T")[0];
 
+  // Validasi area — cek semua area aktif jika ada koordinat
   if (lat !== 0 && lng !== 0 && areas.length > 0) {
     const targetArea = areaId ? areas.find(a => a.id === areaId) : null;
     const checkAreas = targetArea ? [targetArea] : areas.filter(a => a.active);
@@ -270,7 +190,7 @@ app.get("/history/:user", (req, res) => {
 });
 
 // ========================
-// ADMIN (untuk monitoring hari ini)
+// ADMIN
 // ========================
 app.get("/admin/today", (req, res) => {
   const data  = load(F.data, []);
@@ -324,14 +244,14 @@ app.put("/groups/:id/menus", (req, res) => {
   const groups = load(F.groups, []);
   const group  = groups.find(g => g.id === req.params.id);
   if (!group) return res.send({ status: "NOT_FOUND" });
-  if (group.id === "owner") return res.send({ status: "PROTECTED" });
+  if (group.id === "owner") return res.send({ status: "PROTECTED" }); // owner tidak bisa diubah
   group.menus = req.body.menus;
   save(F.groups, groups);
   res.send({ status: "OK" });
 });
 
 // ========================
-// AREA
+// AREA (multi-area)
 // ========================
 app.get("/areas", (req, res) => res.send(load(F.areas, [])));
 
@@ -409,62 +329,4 @@ app.get("/timesheet", (req, res) => {
   res.send(result);
 });
 
-// ========================
-// CUTI KARYAWAN
-// ========================
-function loadCuti() {
-  if (!fs.existsSync(F.cuti)) return [];
-  try { return JSON.parse(fs.readFileSync(F.cuti)); } catch { return []; }
-}
-function saveCuti(data) { fs.writeFileSync(F.cuti, JSON.stringify(data, null, 2)); }
-
-app.get("/cuti", (req, res) => {
-  const { user } = req.query;
-  let cuti = loadCuti();
-  if (user) cuti = cuti.filter(c => c.username === user);
-  res.send(cuti);
-});
-
-app.post("/cuti", (req, res) => {
-  const { username, startDate, endDate, reason } = req.body;
-  if (!username || !startDate || !reason) return res.send({ status: "ERROR" });
-  const cuti = loadCuti();
-  const newCuti = {
-    id: Date.now().toString(),
-    username,
-    startDate,
-    endDate: endDate || startDate,
-    reason,
-    status: "pending",
-    createdAt: new Date().toISOString()
-  };
-  cuti.push(newCuti);
-  saveCuti(cuti);
-  res.send({ status: "OK", data: newCuti });
-});
-
-app.delete("/cuti/:id", (req, res) => {
-  const { id } = req.params;
-  let cuti = loadCuti();
-  const idx = cuti.findIndex(c => c.id === id);
-  if (idx === -1) return res.send({ status: "NOT_FOUND" });
-  cuti.splice(idx, 1);
-  saveCuti(cuti);
-  res.send({ status: "OK" });
-});
-
-app.put("/cuti/:id/status", (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  let cuti = loadCuti();
-  const item = cuti.find(c => c.id === id);
-  if (!item) return res.send({ status: "NOT_FOUND" });
-  item.status = status;
-  saveCuti(cuti);
-  res.send({ status: "OK" });
-});
-
-// ========================
-// START SERVER
-// ========================
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
