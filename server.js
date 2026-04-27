@@ -7,7 +7,7 @@ const PORT     = process.env.PORT || 3000;
 const IS_CLOUD = process.env.RAILWAY_ENVIRONMENT !== undefined;
 const DATA_DIR = IS_CLOUD ? "/tmp" : ".";
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "15mb" }));
 app.use(express.static("public"));
 
 const F = {
@@ -39,50 +39,78 @@ function logAktivitas(user, type, time) {
   save(F.aktivitas, log);
 }
 
-// Inisialisasi default groups jika belum ada
-function initGroups() {
-  if (!fs.existsSync(F.groups)) {
-    const defaults = [
-      {
-        id: "owner", name: "Owner", level: 1, color: "#8e44ad",
-        menus: ["home","rekap","admin","setting","anggota","group","area","libur","aktivitas","timesheet"]
-      },
-      {
-        id: "admin", name: "Admin", level: 2, color: "#2980b9",
-        menus: ["home","rekap","admin","setting","anggota","area","libur","aktivitas","timesheet"]
-      },
-      {
-        id: "manager", name: "Manager", level: 3, color: "#27ae60",
-        menus: ["home","rekap","admin","aktivitas","timesheet"]
-      },
-      {
-        id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
-        menus: ["home","rekap","aktivitas"]
-      },
-      {
-        id: "anggota", name: "Anggota", level: 5, color: "#7f8c8d",
-        menus: ["home","rekap"]
-      }
-    ];
-    save(F.groups, defaults);
+// ========================
+// ROLE (3 level app-management: owner / admin / anggota)
+// ========================
+const ROLES = {
+  owner:   { name: "Owner",   level: 1, color: "#8e44ad",
+    menus: ["home","rekap","admin","setting","profil","anggota","group","area","libur","aktivitas","timesheet"] },
+  admin:   { name: "Admin",   level: 2, color: "#2980b9",
+    menus: ["home","rekap","admin","setting","profil","anggota","group","area","libur","aktivitas","timesheet"] },
+  anggota: { name: "Anggota", level: 3, color: "#7f8c8d",
+    menus: ["home","rekap","setting","profil"] },
+};
+function getRoleInfo(r) { return ROLES[r] || ROLES.anggota; }
+
+// Migrasi field lama "group" (manager/koordinator/dll) -> "role" (owner/admin/anggota)
+function migrateUser(u) {
+  let changed = false;
+  if (!u.role) {
+    const old = u.group || "anggota";
+    if      (old === "owner") u.role = "owner";
+    else if (old === "admin") u.role = "admin";
+    else                      u.role = "anggota";
+    changed = true;
   }
+  if (u.fullName     === undefined) { u.fullName = u.fullName || ""; changed = true; }
+  if (u.religion     === undefined) { u.religion = ""; changed = true; }
+  if (u.facePhoto    === undefined) { u.facePhoto = ""; changed = true; }
+  if (u.profilePhoto === undefined) { u.profilePhoto = ""; changed = true; }
+  if (u.jabatan      === undefined) { u.jabatan = ""; changed = true; }
+  if (u.lingkupKerja === undefined) { u.lingkupKerja = ""; changed = true; }
+  if (u.tugasLuar    === undefined) { u.tugasLuar = false; changed = true; }
+  if (u.groupId      === undefined) { u.groupId = null; changed = true; }
+  if (u.nominalGaji  === undefined) { u.nominalGaji = 0; changed = true; }
+  return changed;
 }
-initGroups();
+function migrateAllUsers() {
+  const users = load(F.users, {});
+  let anyChange = false;
+  Object.keys(users).forEach(k => { if (migrateUser(users[k])) anyChange = true; });
+  if (anyChange) save(F.users, users);
+}
+migrateAllUsers();
+
+// Init file groups (untuk divisi — dipakai di Batch 2)
+if (!fs.existsSync(F.groups)) save(F.groups, []);
 
 // ========================
 // AUTH
 // ========================
 app.post("/signup", (req, res) => {
-  const { username, password, faceDescriptor } = req.body;
-  if (!username || !password) return res.send({ status: "ERROR" });
+  const { username, password, fullName, religion, faceDescriptor, facePhoto } = req.body;
+  if (!username || !password) return res.send({ status: "ERROR", msg: "Username & password wajib" });
+  if (!fullName)             return res.send({ status: "ERROR", msg: "Nama Lengkap wajib diisi" });
+  if (!religion)             return res.send({ status: "ERROR", msg: "Agama wajib dipilih" });
+
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
+
   const isFirst = Object.keys(users).length === 0;
   users[username] = {
     password,
+    fullName,
+    religion,
     faceDescriptor: faceDescriptor || [],
-    group: isFirst ? "owner" : "anggota",
-    createdAt: new Date().toISOString()
+    facePhoto:      facePhoto      || "",
+    profilePhoto:   "",
+    role:           isFirst ? "owner" : "anggota",
+    groupId:        null,
+    jabatan:        "",
+    lingkupKerja:   "",
+    tugasLuar:      false,
+    nominalGaji:    0,
+    createdAt:      new Date().toISOString()
   };
   save(F.users, users);
   res.send({ status: "OK" });
@@ -90,21 +118,21 @@ app.post("/signup", (req, res) => {
 
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
-  const users  = load(F.users, {});
-  const user   = users[username];
+  const users = load(F.users, {});
+  const user  = users[username];
   if (!user || user.password !== password) return res.send({ status: "FAIL" });
-  const groups = load(F.groups, []);
-  const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
-  res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level });
+  if (migrateUser(user)) save(F.users, users);
+  const r = getRoleInfo(user.role);
+  res.send({ status: "OK", role: user.role, menus: r.menus, level: r.level });
 });
 
 app.get("/check-user/:username", (req, res) => {
-  const users  = load(F.users, {});
-  const user   = users[req.params.username];
+  const users = load(F.users, {});
+  const user  = users[req.params.username];
   if (!user) return res.send({ valid: false });
-  const groups = load(F.groups, []);
-  const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
-  res.send({ valid: true, group: group.id, menus: group.menus, level: group.level });
+  if (migrateUser(user)) save(F.users, users);
+  const r = getRoleInfo(user.role);
+  res.send({ valid: true, role: user.role, menus: r.menus, level: r.level });
 });
 
 app.get("/face-descriptor/:username", (req, res) => {
@@ -114,15 +142,84 @@ app.get("/face-descriptor/:username", (req, res) => {
 });
 
 // ========================
+// PROFIL
+// ========================
+app.get("/profil/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user  = users[req.params.username];
+  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
+
+  const requester = req.query.by || "";
+  const reqUser   = users[requester];
+  const isSelf    = requester === req.params.username;
+  const isOwner   = reqUser && reqUser.role === "owner";
+  const isAdmin   = reqUser && reqUser.role === "admin";
+  const canLogin  = isSelf || isOwner || isAdmin;
+
+  res.send({
+    username:     req.params.username,
+    fullName:     user.fullName     || "",
+    religion:     user.religion     || "",
+    role:         user.role         || "anggota",
+    roleName:     getRoleInfo(user.role).name,
+    groupId:      user.groupId      || null,
+    jabatan:      user.jabatan      || "",
+    lingkupKerja: user.lingkupKerja || "",
+    tugasLuar:    user.tugasLuar    || false,
+    profilePhoto: user.profilePhoto || "",
+    facePhoto:    user.facePhoto    || "",
+    createdAt:    user.createdAt    || "",
+    canSeeLogin:  canLogin,
+    password:     canLogin ? user.password : "",
+    nominalGaji:  isOwner  ? (user.nominalGaji || 0) : null,
+    canSeeGaji:   !!isOwner,
+  });
+});
+
+app.put("/profil/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user  = users[req.params.username];
+  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
+
+  const requester = req.body.by || "";
+  const reqUser   = users[requester];
+  if (!reqUser) return res.status(403).send({ status: "FORBIDDEN" });
+
+  const isSelf  = requester === req.params.username;
+  const isOwner = reqUser.role === "owner";
+  const isAdmin = reqUser.role === "admin";
+  const b = req.body;
+
+  if (isSelf) {
+    if (b.fullName       !== undefined) user.fullName     = b.fullName;
+    if (b.profilePhoto   !== undefined) user.profilePhoto = b.profilePhoto;
+    if (b.password       !== undefined && b.password) user.password = b.password;
+    if (b.facePhoto      !== undefined) user.facePhoto      = b.facePhoto;
+    if (b.faceDescriptor !== undefined) user.faceDescriptor = b.faceDescriptor;
+  }
+  if (isOwner || isAdmin) {
+    if (b.jabatan      !== undefined) user.jabatan      = b.jabatan;
+    if (b.lingkupKerja !== undefined) user.lingkupKerja = b.lingkupKerja;
+    if (b.tugasLuar    !== undefined) user.tugasLuar    = !!b.tugasLuar;
+    if (b.groupId      !== undefined) user.groupId      = b.groupId;
+  }
+  if (isOwner) {
+    if (b.role         !== undefined && ROLES[b.role]) user.role = b.role;
+    if (b.nominalGaji  !== undefined) user.nominalGaji = parseInt(b.nominalGaji) || 0;
+  }
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// ========================
 // ABSENSI
 // ========================
 app.post("/absen", (req, res) => {
-  const data = load(F.data, []);
+  const data  = load(F.data, []);
   const areas = load(F.areas, []);
   const { user, type, time, lat, lng, photo, areaId } = req.body;
   const today = new Date().toISOString().split("T")[0];
 
-  // Validasi area — cek semua area aktif jika ada koordinat
   if (lat !== 0 && lng !== 0 && areas.length > 0) {
     const targetArea = areaId ? areas.find(a => a.id === areaId) : null;
     const checkAreas = targetArea ? [targetArea] : areas.filter(a => a.active);
@@ -139,7 +236,6 @@ app.post("/absen", (req, res) => {
   }
 
   let record = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
-
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
     data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng }, foto: photo, breaks: [] });
@@ -210,48 +306,72 @@ app.get("/admin/today", (req, res) => {
 // ANGGOTA
 // ========================
 app.get("/anggota", (req, res) => {
-  const users  = load(F.users, {});
-  const groups = load(F.groups, []);
-  const list   = Object.keys(users).map(u => {
-    const g = groups.find(g => g.id === (users[u].group || "anggota"));
-    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", createdAt: users[u].createdAt || "" };
+  const users = load(F.users, {});
+  const list  = Object.keys(users).map(u => {
+    const usr = users[u];
+    const r = getRoleInfo(usr.role || "anggota");
+    return {
+      username:     u,
+      fullName:     usr.fullName || u,
+      role:         usr.role     || "anggota",
+      roleName:     r.name,
+      roleColor:    r.color,
+      religion:     usr.religion || "",
+      profilePhoto: usr.profilePhoto || "",
+      jabatan:      usr.jabatan  || "",
+      groupId:      usr.groupId  || null,
+      createdAt:    usr.createdAt|| ""
+    };
   });
   res.send(list);
 });
 
-app.put("/anggota/:username/group", (req, res) => {
-  const users = load(F.users, {});
-  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  users[req.params.username].group = req.body.group;
-  save(F.users, users);
-  res.send({ status: "OK" });
-});
-
 app.delete("/anggota/:username", (req, res) => {
-  const users = load(F.users, {});
-  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  const users     = load(F.users, {});
+  const requester = req.query.by || "";
+  const reqUser   = users[requester];
+  if (!reqUser || (reqUser.role !== "owner" && reqUser.role !== "admin"))
+    return res.status(403).send({ status: "FORBIDDEN" });
+  if (requester === req.params.username)
+    return res.send({ status: "SELF_NOT_ALLOWED" });
+  const target = users[req.params.username];
+  if (!target) return res.send({ status: "NOT_FOUND" });
+  if (target.role === "owner" && reqUser.role !== "owner")
+    return res.status(403).send({ status: "FORBIDDEN" });
+
   delete users[req.params.username];
   save(F.users, users);
   res.send({ status: "OK" });
 });
 
 // ========================
-// GROUP / ROLE
+// ROLES (dropdown pilihan role)
+// ========================
+app.get("/roles", (req, res) => {
+  res.send(Object.entries(ROLES).map(([id, r]) => ({
+    id, name: r.name, level: r.level, color: r.color
+  })));
+});
+
+// ========================
+// GROUP (divisi — detail di Batch 2)
+// Kompatibilitas lama: endpoint ubah role via /anggota/:username/group
 // ========================
 app.get("/groups", (req, res) => res.send(load(F.groups, [])));
 
-app.put("/groups/:id/menus", (req, res) => {
-  const groups = load(F.groups, []);
-  const group  = groups.find(g => g.id === req.params.id);
-  if (!group) return res.send({ status: "NOT_FOUND" });
-  if (group.id === "owner") return res.send({ status: "PROTECTED" }); // owner tidak bisa diubah
-  group.menus = req.body.menus;
-  save(F.groups, groups);
+// Kompat: ubah role user (dipakai tab "Group" lama -> kita jadikan ubah ROLE)
+app.put("/anggota/:username/role", (req, res) => {
+  const users = load(F.users, {});
+  const u = users[req.params.username];
+  if (!u) return res.send({ status: "NOT_FOUND" });
+  if (!ROLES[req.body.role]) return res.send({ status: "INVALID_ROLE" });
+  u.role = req.body.role;
+  save(F.users, users);
   res.send({ status: "OK" });
 });
 
 // ========================
-// AREA (multi-area)
+// AREA
 // ========================
 app.get("/areas", (req, res) => res.send(load(F.areas, [])));
 
@@ -268,7 +388,13 @@ app.put("/areas/:id", (req, res) => {
   const areas = load(F.areas, []);
   const area  = areas.find(a => a.id === req.params.id);
   if (!area) return res.send({ status: "NOT_FOUND" });
-  Object.assign(area, { name: req.body.name||area.name, lat: parseFloat(req.body.lat)||area.lat, lng: parseFloat(req.body.lng)||area.lng, radius: parseInt(req.body.radius)||area.radius, active: req.body.active !== undefined ? req.body.active : area.active });
+  Object.assign(area, {
+    name: req.body.name||area.name,
+    lat: parseFloat(req.body.lat)||area.lat,
+    lng: parseFloat(req.body.lng)||area.lng,
+    radius: parseInt(req.body.radius)||area.radius,
+    active: req.body.active !== undefined ? req.body.active : area.active
+  });
   save(F.areas, areas);
   res.send({ status: "OK" });
 });
@@ -283,7 +409,7 @@ app.delete("/areas/:id", (req, res) => {
 });
 
 // ========================
-// HARI LIBUR & CUTI
+// HARI LIBUR
 // ========================
 app.get("/libur", (req, res) => res.send(load(F.libur, [])));
 app.post("/libur", (req, res) => {

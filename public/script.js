@@ -1,134 +1,153 @@
 // ============================================================
-// STATE
+// GLOBAL STATE
 // ============================================================
+let pendingAction    = null;
+let verifyStream     = null;
+let verifyInterval   = null;
 let faceModelsLoaded = false;
-let isLoginMode      = true;
-let verifyResolve    = null;
-let userMenus        = [];   // menu yang boleh diakses user ini
-let userGroup        = "";
+let storedDescriptor = null;
+let userMenus        = [];
+let userRole         = "";
 let userLevel        = 99;
 
 // ============================================================
 // TOAST
 // ============================================================
-function showToast(msg, type = "success", ms = 3000) {
+function showToast(msg, type = "success") {
   const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.className   = type;
+  t.innerText = msg;
+  t.className = "";
+  if (type === "error")   t.classList.add("error");
+  if (type === "warning") t.classList.add("warning");
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), ms);
+  setTimeout(() => t.classList.remove("show"), 2500);
 }
 
 // ============================================================
-// NAVIGASI — satu sistem terpusat, tidak ada konflik
-// ============================================================
-function openView(viewId) {
-  // Sembunyikan semua view
-  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  // Tampilkan view yang diminta
-  const el = document.getElementById(viewId);
-  if (el) el.classList.add("active");
-  // Scroll ke atas
-  window.scrollTo(0, 0);
-  // Load data jika perlu
-  if (viewId === "view-rekap")      loadRekap();
-  if (viewId === "view-admin")      loadAdmin();
-  if (viewId === "view-aktivitas")  loadAktivitas();
-  if (viewId === "view-area")       loadAreas();
-  if (viewId === "view-libur")      loadLibur();
-  if (viewId === "view-anggota")    { loadAnggota(); loadGroups(); }
-  if (viewId === "view-timesheet")  {
-    const m = document.getElementById("ts-month");
-    if (!m.value) m.value = new Date().toISOString().slice(0, 7);
-    loadTimesheet();
-  }
-}
-
-function navTo(page) {
-  // Update nav aktif
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  const navBtn = document.getElementById("nav-" + page);
-  if (navBtn) navBtn.classList.add("active");
-  openView("view-" + page);
-}
-
-// ============================================================
-// FACE API
+// FACE-API MODELS
 // ============================================================
 async function loadFaceModels() {
-  const el = document.getElementById("faceStatus");
-  if (el) el.innerText = "⏳ Memuat model wajah...";
   try {
-    const URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
+    const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
     faceModelsLoaded = true;
-    if (el) el.innerText = "✅ Model wajah siap";
+    const el = document.getElementById("faceStatus");
+    if (el) el.innerText = "✅ Model siap";
   } catch (e) {
-    if (el) el.innerText = "⚠️ Gagal load model (butuh internet)";
+    const el = document.getElementById("faceStatus");
+    if (el) el.innerText = "❌ Gagal memuat model: " + e.message;
   }
 }
 
 async function getFaceDescriptor(videoEl) {
-  if (!videoEl) return null;
   const det = await faceapi
-    .detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-    .withFaceLandmarks().withFaceDescriptor();
+    .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+    .withFaceDescriptor();
   return det ? det.descriptor : null;
+}
+
+function euclideanDist(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) ** 2;
+  return Math.sqrt(s);
+}
+
+// ============================================================
+// CAMERA HELPERS
+// ============================================================
+async function startCam(videoId) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 320 } });
+    document.getElementById(videoId).srcObject = stream;
+    return stream;
+  } catch (e) {
+    showToast("❌ Kamera gagal diakses: " + e.message, "error");
+    return null;
+  }
+}
+
+function stopCam(videoId) {
+  const v = document.getElementById(videoId);
+  if (v && v.srcObject) {
+    v.srcObject.getTracks().forEach(t => t.stop());
+    v.srcObject = null;
+  }
 }
 
 // ============================================================
 // AUTH
 // ============================================================
+function showAuthPage() {
+  document.getElementById("auth-page").classList.remove("hidden");
+  document.getElementById("main-nav").classList.add("hidden");
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+}
+
 function toggleAuthMode() {
-  isLoginMode = !isLoginMode;
-  document.getElementById("auth-title").innerText    = isLoginMode ? "Login" : "Sign Up";
-  document.getElementById("btn-auth-main").innerText = isLoginMode ? "Login" : "Sign Up";
-  document.getElementById("auth-toggle-text").innerHTML = isLoginMode
-    ? 'Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>'
-    : 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
-  const fs = document.getElementById("face-signup-section");
-  fs.classList.toggle("hidden", isLoginMode);
-  if (!isLoginMode) startCam("video-signup");
-  else stopCam("video-signup");
+  const title    = document.getElementById("auth-title");
+  const toggle   = document.getElementById("auth-toggle-text");
+  const mainBtn  = document.getElementById("btn-auth-main");
+  const faceSect = document.getElementById("face-signup-section");
+  const isLogin  = title.innerText === "Login";
+
+  if (isLogin) {
+    title.innerText    = "Sign Up";
+    mainBtn.innerText  = "Sign Up";
+    toggle.innerHTML   = 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
+    faceSect.classList.remove("hidden");
+    startCam("video-signup");
+  } else {
+    title.innerText    = "Login";
+    mainBtn.innerText  = "Login";
+    toggle.innerHTML   = 'Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>';
+    faceSect.classList.add("hidden");
+    stopCam("video-signup");
+  }
 }
 
-async function handleAuth() {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value;
-  if (!username || !password) return showToast("⚠️ Isi username dan password!", "warning");
-  isLoginMode ? await doLogin(username, password) : await doSignUp(username, password);
-}
-
-async function doLogin(u, p) {
-  try {
-    const r = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p}) });
-    const d = await r.json();
-    if (d.status === "OK") {
-      localStorage.setItem("user", u);
-      localStorage.setItem("menus", JSON.stringify(d.menus || []));
-      localStorage.setItem("group", d.group || "anggota");
-      localStorage.setItem("level", d.level || 99);
-      enterApp(d.menus || [], d.group, d.level);
-    } else {
-      showToast("❌ Username atau password salah!", "error");
-    }
-  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+function handleAuth() {
+  const u = document.getElementById("username").value.trim();
+  const p = document.getElementById("password").value.trim();
+  if (!u || !p) return showToast("⚠️ Isi username & password", "warning");
+  const isSignup = document.getElementById("auth-title").innerText === "Sign Up";
+  if (isSignup) doSignUp(u, p); else doLogin(u, p);
 }
 
 async function doSignUp(u, p) {
   if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
+  const fullName = document.getElementById("fullName").value.trim();
+  const religion = document.getElementById("religion").value;
+  if (!fullName) return showToast("⚠️ Isi Nama Lengkap", "warning");
+  if (!religion) return showToast("⚠️ Pilih Agama", "warning");
+
   const btn = document.getElementById("btn-auth-main");
   btn.innerText = "⏳ Scanning..."; btn.disabled = true;
   try {
     const videoEl    = document.getElementById("video-signup");
     const descriptor = await getFaceDescriptor(videoEl);
     if (!descriptor) {
-      showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup", "error");
+      showToast("❌ Wajah tidak terdeteksi! Pencahayaan kurang?", "error");
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
-    const r = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, faceDescriptor:Array.from(descriptor)}) });
+    // Snapshot foto wajah
+    const c = document.getElementById("canvas");
+    c.width = videoEl.videoWidth; c.height = videoEl.videoHeight;
+    c.getContext("2d").drawImage(videoEl, 0, 0);
+    const facePhoto = c.toDataURL("image/jpeg", 0.6);
+
+    const r = await fetch("/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: u, password: p,
+        fullName, religion,
+        faceDescriptor: Array.from(descriptor),
+        facePhoto
+      })
+    });
     const d = await r.json();
     if (d.status === "OK") {
       stopCam("video-signup");
@@ -137,10 +156,34 @@ async function doSignUp(u, p) {
     } else if (d.status === "EXIST") {
       showToast("⚠️ Username sudah terdaftar!", "warning");
     } else {
-      showToast("❌ Gagal membuat akun", "error");
+      showToast("❌ " + (d.msg || "Gagal membuat akun"), "error");
     }
-  } catch (e) { showToast("❌ Error: " + e.message, "error"); }
+  } catch (e) {
+    showToast("❌ Error: " + e.message, "error");
+  }
   btn.innerText = "Sign Up"; btn.disabled = false;
+}
+
+async function doLogin(u, p) {
+  try {
+    const r = await fetch("/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: u, password: p })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      localStorage.setItem("user", u);
+      localStorage.setItem("menus", JSON.stringify(d.menus || []));
+      localStorage.setItem("role", d.role || "anggota");
+      localStorage.setItem("level", d.level || 99);
+      enterApp(d.menus || [], d.role, d.level);
+    } else {
+      showToast("❌ Username atau password salah!", "error");
+    }
+  } catch {
+    showToast("❌ Gagal terhubung ke server", "error");
+  }
 }
 
 async function checkLoginStatus() {
@@ -151,500 +194,787 @@ async function checkLoginStatus() {
     const d = await r.json();
     if (d.valid) {
       localStorage.setItem("menus", JSON.stringify(d.menus || []));
-      localStorage.setItem("group", d.group || "anggota");
+      localStorage.setItem("role", d.role || "anggota");
       localStorage.setItem("level", d.level || 99);
-      enterApp(d.menus || [], d.group, d.level);
+      enterApp(d.menus || [], d.role, d.level);
     } else {
-      localStorage.clear(); showAuthPage();
+      localStorage.clear();
+      showAuthPage();
     }
-  } catch { localStorage.clear(); showAuthPage(); }
+  } catch {
+    localStorage.clear();
+    showAuthPage();
+  }
 }
 
-function showAuthPage() {
-  document.getElementById("auth-page").classList.remove("hidden");
-  document.getElementById("main-nav").classList.add("hidden");
-  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-}
-
-function enterApp(menus, group, level) {
+function enterApp(menus, role, level) {
   userMenus = menus || [];
-  userGroup = group || "anggota";
+  userRole  = role  || "anggota";
   userLevel = level || 99;
 
   document.getElementById("auth-page").classList.add("hidden");
   document.getElementById("main-nav").classList.remove("hidden");
   stopCam("video-signup");
 
-  // Tampilkan/sembunyikan nav berdasarkan akses
   document.getElementById("nav-admin").classList.toggle("hidden",   !userMenus.includes("admin"));
   document.getElementById("nav-setting").classList.toggle("hidden", !userMenus.includes("setting"));
 
-  // Tampilkan/sembunyikan menu di setting
   applyMenuAccess();
 
-  // Update header
   document.getElementById("hdr-user").innerText = localStorage.getItem("user") || "";
-  document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric"
+  });
   document.getElementById("rekap-user-label").innerText = localStorage.getItem("user") || "";
 
   navTo("home");
   loadStatus();
   loadTodayDetail();
 
-  // Set tanggal default admin
   const ad = document.getElementById("adm-date");
   if (ad) ad.value = new Date().toISOString().split("T")[0];
 }
 
 function applyMenuAccess() {
   const map = {
+    "menu-profil":    "profil",
     "menu-anggota":   "anggota",
     "menu-area":      "area",
     "menu-libur":     "libur",
     "menu-aktivitas": "aktivitas",
     "menu-timesheet": "timesheet",
   };
-  Object.entries(map).forEach(([elId, menuKey]) => {
+  Object.entries(map).forEach(([elId, key]) => {
     const el = document.getElementById(elId);
-    if (el) el.classList.toggle("hidden", !userMenus.includes(menuKey));
+    if (el) el.classList.toggle("hidden", !userMenus.includes(key));
   });
 }
 
 function logout() {
-  if (confirm("Yakin ingin keluar?")) { localStorage.clear(); location.reload(); }
+  localStorage.clear();
+  location.reload();
 }
 
 // ============================================================
-// KAMERA
+// NAVIGATION
 // ============================================================
-function startCam(id) {
-  const v = document.getElementById(id);
-  if (!v || v.srcObject) return;
-  navigator.mediaDevices.getUserMedia({ video:{facingMode:"user"}, audio:false })
-    .then(s => { v.srcObject = s; })
-    .catch(e => console.warn("Kamera:", e));
+function navTo(page) {
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  const nav = document.getElementById("nav-" + page);
+  if (nav) nav.classList.add("active");
+  openView("view-" + page);
 }
 
-function stopCam(id) {
-  const v = document.getElementById(id);
-  if (v && v.srcObject) { v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null; }
-}
+function openView(viewId) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const el = document.getElementById(viewId);
+  if (el) el.classList.add("active");
+  window.scrollTo(0, 0);
 
-function takePhoto() {
-  const c = document.getElementById("canvas");
-  const v = document.getElementById("video-modal");
-  if (!v || !v.videoWidth) return "";
-  c.width = v.videoWidth; c.height = v.videoHeight;
-  c.getContext("2d").drawImage(v, 0, 0);
-  return c.toDataURL("image/jpeg", 0.7);
-}
-
-// ============================================================
-// CAMERA MODAL + FACE VERIFY
-// ============================================================
-function showCamModal(title) {
-  document.getElementById("cam-modal-title").innerText = title;
-  document.getElementById("camera-modal").classList.remove("hidden");
-  document.getElementById("camera-status").innerText = "Mendeteksi wajah...";
-  startCam("video-modal");
-}
-
-function hideCamModal() {
-  document.getElementById("camera-modal").classList.add("hidden");
-  stopCam("video-modal");
-}
-
-function cancelVerify() {
-  hideCamModal();
-  if (verifyResolve) { verifyResolve(false); verifyResolve = null; }
-}
-
-async function verifyFace(label) {
-  return new Promise(async (resolve) => {
-    verifyResolve = resolve;
-    showCamModal("🔍 " + label);
-    await new Promise(r => setTimeout(r, 1500));
-
-    if (!faceModelsLoaded) { hideCamModal(); resolve(true); return; }
-
-    const user = localStorage.getItem("user");
-    let savedDesc;
-    try {
-      const r = await fetch("/face-descriptor/" + user);
-      const d = await r.json();
-      if (!d.descriptor || !d.descriptor.length) { hideCamModal(); resolve(true); return; }
-      savedDesc = new Float32Array(d.descriptor);
-    } catch { hideCamModal(); resolve(true); return; }
-
-    let attempts = 0;
-    const tryDetect = async () => {
-      if (!document.getElementById("video-modal").srcObject) { resolve(false); return; }
-      attempts++;
-      document.getElementById("camera-status").innerText = `Mendeteksi... (${attempts}/10)`;
-      const cur = await getFaceDescriptor(document.getElementById("video-modal"));
-      if (cur) {
-        const d = faceapi.euclideanDistance(savedDesc, cur);
-        hideCamModal();
-        verifyResolve = null;
-        if (d <= 0.55) { resolve(true); }
-        else { showToast("❌ Wajah tidak dikenali! Coba lagi.", "error"); resolve(false); }
-      } else if (attempts < 10) {
-        setTimeout(tryDetect, 800);
-      } else {
-        hideCamModal(); verifyResolve = null;
-        showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup.", "error");
-        resolve(false);
-      }
-    };
-    setTimeout(tryDetect, 800);
-  });
-}
-
-// ============================================================
-// ABSENSI
-// ============================================================
-async function sendAbsen(type, label) {
-  const user = localStorage.getItem("user");
-  if (!user) return checkLoginStatus();
-  const ok = await verifyFace(label);
-  if (!ok) return;
-  const photo = takePhoto();
-  const loc   = await getLoc();
-  try {
-    const r = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user, type, time:new Date().toISOString(), lat:loc.lat, lng:loc.lng, photo}) });
-    const d = await r.json();
-    if (d.status === "OK") {
-      const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
-      showToast(msgs[type] || "✅ Berhasil!");
-      loadStatus(); loadTodayDetail();
-    } else if (d.status === "OUT_OF_AREA") {
-      showToast(`❌ Di luar area kantor (${d.distance}m dari ${d.area||"kantor"})`, "error");
-    } else if (d.status === "ALREADY_IN") {
-      showToast("⚠️ Sudah Clock In hari ini", "warning"); loadStatus();
-    }
-  } catch { showToast("❌ Terjadi kesalahan teknis", "error"); }
-}
-
-function clockIn()    { sendAbsen("IN",          "Clock In"); }
-function clockOut()   { sendAbsen("OUT",         "Clock Out"); }
-function breakStart() { sendAbsen("BREAK_START", "Istirahat"); }
-function breakEnd()   { sendAbsen("BREAK_END",   "Lanjut Kerja"); }
-
-async function loadStatus() {
-  const user = localStorage.getItem("user");
-  if (!user) return;
-  try {
-    const r = await fetch("/status/" + user);
-    const d = await r.json();
-    updateBtns(d.status);
-  } catch { updateBtns("OUT"); }
-}
-
-function updateBtns(status) {
-  const el   = document.getElementById("statusText");
-  const bIn  = document.getElementById("btn-in");
-  const bOut = document.getElementById("btn-out");
-  const bBS  = document.getElementById("btn-bs");
-  const bBE  = document.getElementById("btn-be");
-  [bIn,bOut,bBS,bBE].forEach(b => b.classList.add("hidden"));
-  if (status === "IN") {
-    el.innerHTML = '<span class="status-dot" style="background:#27ae60"></span> Sedang Bekerja';
-    el.style.background="#e8f5e9"; el.style.color="#27ae60";
-    bBS.classList.remove("hidden"); bOut.classList.remove("hidden");
-  } else if (status === "BREAK") {
-    el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Sedang Istirahat';
-    el.style.background="#fff3e0"; el.style.color="#f39c12";
-    bBE.classList.remove("hidden");
-  } else {
-    el.innerHTML = '<span class="status-dot" style="background:#95a5a6"></span> Belum Absen';
-    el.style.background="#f0f2f5"; el.style.color="#95a5a6";
-    bIn.classList.remove("hidden");
+  if (viewId === "view-rekap")     { loadRekap(); }
+  if (viewId === "view-admin")     { loadAdmin(); }
+  if (viewId === "view-aktivitas") { loadAktivitas(); }
+  if (viewId === "view-area")      { loadAreas(); }
+  if (viewId === "view-libur")     { loadLibur(); }
+  if (viewId === "view-anggota")   { loadAnggota(); }
+  if (viewId === "view-profil")    { loadProfil(); }
+  if (viewId === "view-timesheet") {
+    const m = document.getElementById("ts-month");
+    if (!m.value) m.value = new Date().toISOString().slice(0, 7);
+    loadTimesheet();
   }
 }
 
-async function loadTodayDetail() {
-  const user  = localStorage.getItem("user");
-  const today = new Date().toISOString().split("T")[0];
+// ============================================================
+// STATUS & REPORT (HOME)
+// ============================================================
+async function loadStatus() {
+  const u = localStorage.getItem("user");
+  if (!u) return;
   try {
-    const r = await fetch("/history/" + user);
+    const r = await fetch("/status/" + u);
     const d = await r.json();
-    const rec = d.find(x => x.date === today);
-    if (rec) {
-      document.getElementById("t-in").innerText  = rec.jamMasuk  ? fmt(rec.jamMasuk)  : "--:--";
-      document.getElementById("t-out").innerText = rec.jamKeluar ? fmt(rec.jamKeluar) : "--:--";
-      if (rec.jamMasuk && rec.jamKeluar)
-        document.getElementById("t-dur").innerText = ((new Date(rec.jamKeluar)-new Date(rec.jamMasuk))/3600000).toFixed(1)+"j";
+    const t = document.getElementById("statusText");
+    const btnIn = document.getElementById("btn-in");
+    const btnBs = document.getElementById("btn-bs");
+    const btnBe = document.getElementById("btn-be");
+    const btnOut= document.getElementById("btn-out");
+
+    btnIn.classList.add("hidden"); btnBs.classList.add("hidden");
+    btnBe.classList.add("hidden"); btnOut.classList.add("hidden");
+
+    if (d.status === "OUT") {
+      t.innerHTML = '<span class="status-dot"></span> Belum Clock In';
+      t.style.color = "#95a5a6";
+      btnIn.classList.remove("hidden");
+    } else if (d.status === "IN") {
+      t.innerHTML = '<span class="status-dot" style="background:#27ae60;"></span> Sedang Bekerja';
+      t.style.color = "#27ae60";
+      btnBs.classList.remove("hidden");
+      btnOut.classList.remove("hidden");
+    } else if (d.status === "BREAK") {
+      t.innerHTML = '<span class="status-dot" style="background:#f39c12;"></span> Istirahat';
+      t.style.color = "#f39c12";
+      btnBe.classList.remove("hidden");
+      btnOut.classList.remove("hidden");
     }
   } catch {}
 }
 
-async function getLoc() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({lat:0,lng:0});
-    navigator.geolocation.getCurrentPosition(
-      p => resolve({lat:p.coords.latitude,lng:p.coords.longitude}),
-      () => resolve({lat:0,lng:0}), {enableHighAccuracy:true,timeout:8000}
-    );
-  });
-}
-
-function fmt(iso) {
-  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+async function loadTodayDetail() {
+  const u = localStorage.getItem("user");
+  if (!u) return;
+  try {
+    const r = await fetch("/history/" + u);
+    const d = await r.json();
+    const today = new Date().toISOString().split("T")[0];
+    const t = d.find(x => x.date === today);
+    const fmt = (x) => x ? new Date(x).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "--:--";
+    document.getElementById("t-in").innerText  = fmt(t?.jamMasuk);
+    document.getElementById("t-out").innerText = fmt(t?.jamKeluar);
+    if (t && t.jamMasuk) {
+      const end = t.jamKeluar ? new Date(t.jamKeluar) : new Date();
+      let ms = end - new Date(t.jamMasuk);
+      t.breaks.forEach(b => {
+        if (b.end) ms -= (new Date(b.end) - new Date(b.start));
+        else if (!t.jamKeluar) ms -= (new Date() - new Date(b.start));
+      });
+      const h = Math.max(0, ms / 3600000).toFixed(1);
+      document.getElementById("t-dur").innerText = h + "j";
+    } else {
+      document.getElementById("t-dur").innerText = "0j";
+    }
+  } catch {}
 }
 
 // ============================================================
 // REKAP
 // ============================================================
 async function loadRekap() {
-  const user = localStorage.getItem("user");
+  const u = localStorage.getItem("user");
+  if (!u) return;
   try {
-    const [rr, hr] = await Promise.all([fetch("/report/"+user), fetch("/history/"+user)]);
-    const rep = await rr.json(), his = await hr.json();
-    document.getElementById("r-kerja").innerText = rep.totalKerja||"0h";
-    document.getElementById("r-break").innerText = rep.totalBreak||"0h";
-    document.getElementById("r-over").innerText  = rep.overtime||"0h";
-    const list = document.getElementById("history-list");
-    if (!his.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
-    list.innerHTML = his.map(d => {
-      const masuk  = d.jamMasuk  ? fmt(d.jamMasuk)  : "--:--";
-      const keluar = d.jamKeluar ? fmt(d.jamKeluar) : "--:--";
-      const dur    = d.jamMasuk && d.jamKeluar ? ((new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000).toFixed(1)+"j" : "-";
-      const late   = d.jamMasuk && new Date(d.jamMasuk).getHours() >= 9;
+    const r1 = await fetch("/report/" + u); const rep = await r1.json();
+    document.getElementById("r-kerja").innerText = rep.totalKerja;
+    document.getElementById("r-break").innerText = rep.totalBreak;
+    document.getElementById("r-over").innerText  = rep.overtime;
+
+    const r2 = await fetch("/history/" + u); const hist = await r2.json();
+    const el = document.getElementById("history-list");
+    if (!hist.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada riwayat</p>'; return; }
+    el.innerHTML = hist.map(h => {
+      const tgl = new Date(h.date).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+      const masuk  = h.jamMasuk  ? new Date(h.jamMasuk).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "--";
+      const keluar = h.jamKeluar ? new Date(h.jamKeluar).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "--";
+      const late = h.jamMasuk && new Date(h.jamMasuk).getHours() >= 9 && new Date(h.jamMasuk).getMinutes() > 0;
       return `<div class="history-item">
-        <div><div class="h-date">${d.date}</div><div class="h-time">Masuk: ${masuk} · Keluar: ${keluar} · ${dur}</div></div>
-        <span class="h-badge ${late?'late':'ok'}">${late?'⚠️ Terlambat':'✅ Tepat'}</span>
+        <div><div class="h-date">${tgl}</div><div class="h-time">${masuk} - ${keluar}</div></div>
+        <span class="h-badge ${late?'late':'ok'}">${late?'⚠ Telat':'✓ OK'}</span>
       </div>`;
     }).join("");
   } catch {}
 }
 
 // ============================================================
+// CLOCK IN / OUT + FACE VERIFY
+// ============================================================
+function clockIn()     { pendingAction = "IN";          openVerify("Clock In"); }
+function clockOut()    { pendingAction = "OUT";         openVerify("Clock Out"); }
+function breakStart()  { pendingAction = "BREAK_START"; openVerify("Istirahat"); }
+function breakEnd()    { pendingAction = "BREAK_END";   openVerify("Lanjut Kerja"); }
+
+async function openVerify(title) {
+  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
+  document.getElementById("cam-modal-title").innerText = "Verifikasi: " + title;
+  document.getElementById("camera-modal").classList.remove("hidden");
+  document.getElementById("camera-status").innerText = "Memuat kamera...";
+  verifyStream = await startCam("video-modal");
+  if (!verifyStream) { cancelVerify(); return; }
+
+  const u = localStorage.getItem("user");
+  try {
+    const r = await fetch("/face-descriptor/" + u);
+    const d = await r.json();
+    storedDescriptor = d.descriptor && d.descriptor.length ? d.descriptor : null;
+  } catch {}
+
+  if (!storedDescriptor) {
+    showToast("⚠️ Data wajah belum terdaftar — absen tanpa verifikasi", "warning");
+    setTimeout(() => { doAbsen(); cancelVerify(); }, 800);
+    return;
+  }
+
+  document.getElementById("camera-status").innerText = "Mendeteksi wajah...";
+  verifyInterval = setInterval(verifyFace, 700);
+}
+
+async function verifyFace() {
+  const v = document.getElementById("video-modal");
+  if (!v || !v.videoWidth) return;
+  const desc = await getFaceDescriptor(v);
+  if (!desc) return;
+  const d = euclideanDist(Array.from(desc), storedDescriptor);
+  const status = document.getElementById("camera-status");
+  if (d < 0.55) {
+    clearInterval(verifyInterval); verifyInterval = null;
+    status.innerText = "✅ Wajah cocok!";
+    status.classList.remove("scanning");
+    setTimeout(() => { doAbsen(); cancelVerify(); }, 400);
+  } else {
+    status.innerText = "Wajah tidak cocok, coba lagi... (" + d.toFixed(2) + ")";
+  }
+}
+
+function cancelVerify() {
+  if (verifyInterval) { clearInterval(verifyInterval); verifyInterval = null; }
+  stopCam("video-modal");
+  document.getElementById("camera-modal").classList.add("hidden");
+  document.getElementById("camera-status").classList.add("scanning");
+}
+
+async function doAbsen() {
+  const u = localStorage.getItem("user");
+  const type = pendingAction;
+  const v = document.getElementById("video-modal");
+  let photo = "";
+  if (v && v.videoWidth) {
+    const c = document.getElementById("canvas");
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext("2d").drawImage(v, 0, 0);
+    photo = c.toDataURL("image/jpeg", 0.5);
+  }
+  let lat = 0, lng = 0;
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }));
+    lat = pos.coords.latitude; lng = pos.coords.longitude;
+  } catch {}
+  try {
+    const r = await fetch("/absen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: u, type, time: new Date().toISOString(), lat, lng, photo })
+    });
+    const d = await r.json();
+    if (r.status === 400 && d.status === "OUT_OF_AREA") {
+      showToast(`❌ Di luar area (${d.area} • ${d.distance}m)`, "error");
+    } else if (d.status === "ALREADY_IN") {
+      showToast("⚠️ Anda sudah Clock In hari ini", "warning");
+    } else if (d.status === "OK") {
+      const label = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Istirahat", BREAK_END:"Lanjut Kerja" }[type];
+      showToast("✅ " + label + " berhasil!");
+      loadStatus(); loadTodayDetail();
+    }
+  } catch { showToast("❌ Gagal kirim absen", "error"); }
+}
+// ============================================================
 // ADMIN
 // ============================================================
 async function loadAdmin() {
-  const date   = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
-  const search = (document.getElementById("adm-search").value||"").toLowerCase();
+  const date = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
+  const search = (document.getElementById("adm-search").value || "").toLowerCase();
   try {
-    const r = await fetch("/admin/today?date="+date);
+    const r = await fetch("/admin/today?date=" + date);
     const d = await r.json();
     document.getElementById("adm-total").innerText = d.totalUsers;
-    document.getElementById("adm-hadir").innerText = d.records.filter(x=>x.status!=="OUT").length;
-    const filtered = d.records.filter(x=>x.user.toLowerCase().includes(search));
-    const list = document.getElementById("admin-list");
-    if (!filtered.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
-    const sc = {IN:"in",BREAK:"break",OUT:"out",DONE:"out"};
-    const sl = {IN:"Bekerja",BREAK:"Istirahat",OUT:"Belum Absen",DONE:"Selesai"};
-    list.innerHTML = filtered.map(x => `
-      <div class="emp-item">
-        <div><div class="emp-name">👤 ${x.user}</div>
-        <div class="emp-time">Masuk: ${x.jamMasuk?fmt(x.jamMasuk):"--:--"} · Keluar: ${x.jamKeluar?fmt(x.jamKeluar):"--:--"}</div></div>
-        <span class="emp-badge ${sc[x.status]||'out'}">${sl[x.status]||x.status}</span>
-      </div>`).join("");
+    const hadir = d.records.filter(x => x.status !== "OUT").length;
+    document.getElementById("adm-hadir").innerText = hadir;
+
+    const filtered = d.records.filter(x => x.user.toLowerCase().includes(search));
+    const el = document.getElementById("admin-list");
+    if (!filtered.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
+    el.innerHTML = filtered.map(x => {
+      const badge = {
+        IN:    '<span class="emp-badge in">🟢 Hadir</span>',
+        BREAK: '<span class="emp-badge break">☕ Istirahat</span>',
+        DONE:  '<span class="emp-badge out">✓ Selesai</span>',
+        OUT:   '<span class="emp-badge out">— Belum</span>'
+      }[x.status];
+      const jm = x.jamMasuk  ? new Date(x.jamMasuk).toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" }) : "--";
+      const jk = x.jamKeluar ? new Date(x.jamKeluar).toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" }) : "--";
+      return `<div class="emp-item">
+        <div><div class="emp-name">${x.user}</div><div class="emp-time">${jm} - ${jk}</div></div>
+        ${badge}
+      </div>`;
+    }).join("");
   } catch {}
 }
 
 // ============================================================
-// ANGGOTA (daftar + group)
+// ANGGOTA (tab Daftar + tab Group/Role)
 // ============================================================
+let _anggotaCache = [];
+
 function switchAnggotaTab(tab) {
-  const isDaftar = tab === "daftar";
-  document.getElementById("panel-daftar").classList.toggle("hidden", !isDaftar);
-  document.getElementById("panel-group").classList.toggle("hidden", isDaftar);
-  document.getElementById("tab-daftar").style.background = isDaftar ? "var(--primary)" : "white";
-  document.getElementById("tab-daftar").style.color      = isDaftar ? "white" : "var(--muted)";
-  document.getElementById("tab-group").style.background  = isDaftar ? "white" : "var(--primary)";
-  document.getElementById("tab-group").style.color       = isDaftar ? "var(--muted)" : "white";
+  const td = document.getElementById("tab-daftar");
+  const tg = document.getElementById("tab-group");
+  const pd = document.getElementById("panel-daftar");
+  const pg = document.getElementById("panel-group");
+  if (tab === "daftar") {
+    td.style.background = "var(--primary)"; td.style.color = "white";
+    tg.style.background = "white";          tg.style.color = "var(--muted)";
+    pd.classList.remove("hidden"); pg.classList.add("hidden");
+  } else {
+    tg.style.background = "var(--primary)"; tg.style.color = "white";
+    td.style.background = "white";          td.style.color = "var(--muted)";
+    pg.classList.remove("hidden"); pd.classList.add("hidden");
+    renderGroupRolePanel();
+  }
 }
 
 async function loadAnggota() {
   try {
     const r = await fetch("/anggota");
     const d = await r.json();
-    const groups = await (await fetch("/groups")).json();
-    const list   = document.getElementById("member-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
-    list.innerHTML = d.map(m => {
-      const gOpts = groups.map(g =>
-        `<option value="${g.id}" ${g.id===m.group?'selected':''}>${g.name}</option>`
-      ).join("");
-      return `<div class="member-item">
-        <div style="display:flex;align-items:center;">
-          <div class="avatar" style="background:${m.groupColor||'#7f8c8d'};">${m.username[0].toUpperCase()}</div>
-          <div><div class="m-name">${m.username}</div>
-          <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <select onchange="changeGroup('${m.username}',this.value)"
-            style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;">
-            ${gOpts}
-          </select>
-          ${m.username !== localStorage.getItem("user") && userLevel <= 2
-            ? `<button onclick="deleteAnggota('${m.username}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>`
-            : ""}
-        </div>
-      </div>`;
-    }).join("");
-  } catch { document.getElementById("member-list").innerHTML='<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
-}
-
-async function changeGroup(username, groupId) {
-  try {
-    const r = await fetch(`/anggota/${username}/group`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({group:groupId}) });
-    const d = await r.json();
-    if (d.status === "OK") { showToast("✅ Jabatan berhasil diubah!"); loadAnggota(); }
-    else showToast("❌ Gagal mengubah jabatan", "error");
-  } catch { showToast("❌ Gagal", "error"); }
-}
-
-async function deleteAnggota(username) {
-  if (!confirm(`Hapus anggota "${username}"? Data absensi akan tetap tersimpan.`)) return;
-  try {
-    const r = await fetch(`/anggota/${username}`, { method:"DELETE" });
-    if ((await r.json()).status === "OK") { showToast("🗑 Anggota dihapus"); loadAnggota(); }
-  } catch { showToast("❌ Gagal menghapus", "error"); }
-}
-
-// ============================================================
-// GROUP & AKSES MENU
-// ============================================================
-const ALL_MENUS = [
-  { key:"home",       label:"🏠 Beranda" },
-  { key:"rekap",      label:"📋 Rekap" },
-  { key:"admin",      label:"👑 Admin Panel" },
-  { key:"setting",    label:"⚙️ Pengaturan" },
-  { key:"anggota",    label:"👥 Anggota" },
-  { key:"area",       label:"📍 Area Kantor" },
-  { key:"libur",      label:"📅 Hari Libur & Cuti" },
-  { key:"aktivitas",  label:"📌 Aktivitas" },
-  { key:"timesheet",  label:"🕐 Timesheet" },
-];
-
-async function loadGroups() {
-  try {
-    const r = await fetch("/groups");
-    const groups = await r.json();
-    const list   = document.getElementById("group-list");
-    list.innerHTML = groups.map(g => {
-      const isOwner   = g.id === "owner";
-      const menuRows  = ALL_MENUS.map(m => {
-        const checked = g.menus.includes(m.key);
-        const disabled = isOwner || m.key === "home"; // home selalu aktif
-        return `<div class="menu-toggle-row">
-          <span class="menu-toggle-label">${m.label}</span>
-          <label class="toggle-switch">
-            <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
-              onchange="toggleGroupMenu('${g.id}','${m.key}',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>`;
-      }).join("");
-      return `<div class="group-item">
-        <div class="group-header" style="background:${g.color};" onclick="toggleGroupBody('gbody-${g.id}')">
+    _anggotaCache = d;
+    const list = document.getElementById("member-list");
+    if (!d.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada anggota</p>'; return; }
+    list.innerHTML = d.map(a => {
+      const initial = (a.fullName || a.username || "?").charAt(0).toUpperCase();
+      const photo = a.profilePhoto
+        ? `<img src="${a.profilePhoto}">`
+        : `<span>${initial}</span>`;
+      return `<div class="member-item" onclick="openDetailAnggota('${a.username}')">
+        <div style="display:flex;align-items:center;flex:1;">
+          <div class="avatar" style="background:${a.roleColor};">${photo}</div>
           <div>
-            <div class="group-title">${g.name} ${isOwner?'👑':''}</div>
-            <div class="group-level">Level ${g.level} · ${g.menus.length} menu aktif</div>
+            <div class="m-name">${a.fullName || a.username}</div>
+            <div class="m-role" style="color:${a.roleColor};">${a.roleName}${a.jabatan ? ' • '+a.jabatan : ''}</div>
           </div>
-          <span style="color:rgba(255,255,255,.7);font-size:20px;">›</span>
         </div>
-        <div class="group-body" id="gbody-${g.id}">
-          ${isOwner ? '<p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Owner selalu memiliki akses penuh ke semua menu.</p>' : ''}
-          ${menuRows}
-        </div>
+        <span class="menu-arrow">›</span>
       </div>`;
     }).join("");
-  } catch { document.getElementById("group-list").innerHTML='<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+  } catch {}
 }
 
-function toggleGroupBody(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.toggle("open");
+// Tab Group — dipakai untuk ubah Role (Owner/Admin/Anggota) per anggota
+function renderGroupRolePanel() {
+  const el = document.getElementById("group-list");
+  if (!_anggotaCache.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p>'; loadAnggota().then(renderGroupRolePanel); return; }
+  el.innerHTML = _anggotaCache.map(a => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f5;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:700;">${a.fullName || a.username}</div>
+        <div style="font-size:11px;color:var(--muted);">@${a.username}</div>
+      </div>
+      <select onchange="changeUserRole('${a.username}', this.value)" style="padding:8px;border:2px solid #e8ecf0;border-radius:8px;font-size:12px;">
+        <option value="owner"   ${a.role==='owner'  ?'selected':''}>Owner</option>
+        <option value="admin"   ${a.role==='admin'  ?'selected':''}>Admin</option>
+        <option value="anggota" ${a.role==='anggota'?'selected':''}>Anggota</option>
+      </select>
+    </div>
+  `).join("");
 }
 
-async function toggleGroupMenu(groupId, menuKey, enabled) {
+async function changeUserRole(username, role) {
+  if (!confirm(`Ubah peran ${username} menjadi ${role.toUpperCase()}?`)) { loadAnggota(); return; }
   try {
-    // Ambil group terbaru, ubah menu, simpan
-    const r = await fetch("/groups");
-    const groups = await r.json();
-    const group  = groups.find(g => g.id === groupId);
-    if (!group) return;
-    if (enabled && !group.menus.includes(menuKey)) group.menus.push(menuKey);
-    if (!enabled) group.menus = group.menus.filter(m => m !== menuKey);
-    // Pastikan home selalu ada
-    if (!group.menus.includes("home")) group.menus.push("home");
-    const rr = await fetch(`/groups/${groupId}/menus`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({menus:group.menus}) });
-    const dd = await rr.json();
-    if (dd.status === "OK") showToast("✅ Akses diperbarui");
-    else if (dd.status === "PROTECTED") showToast("⚠️ Owner tidak bisa diubah", "warning");
-    loadGroups();
-  } catch { showToast("❌ Gagal memperbarui", "error"); }
+    const r = await fetch(`/anggota/${username}/role`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("✅ Peran diperbarui"); loadAnggota(); }
+    else showToast("❌ Gagal ubah peran", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+// ============================================================
+// DETAIL ANGGOTA (modal)
+// ============================================================
+let _daCurrentUser = null;
+
+async function openDetailAnggota(username) {
+  const me = localStorage.getItem("user");
+  _daCurrentUser = username;
+  try {
+    const r = await fetch(`/profil/${username}?by=${encodeURIComponent(me)}`);
+    const d = await r.json();
+
+    document.getElementById("da-title").innerText = "Detail: " + (d.fullName || username);
+    const initial = (d.fullName || username || "?").charAt(0).toUpperCase();
+    document.getElementById("da-initial").innerText = initial;
+    const img = document.getElementById("da-photo");
+    if (d.profilePhoto) { img.src = d.profilePhoto; img.style.display = "block"; document.getElementById("da-initial").style.display = "none"; }
+    else { img.style.display = "none"; document.getElementById("da-initial").style.display = "block"; }
+
+    document.getElementById("da-fullname").value = d.fullName || "";
+    document.getElementById("da-username").value = d.username;
+    document.getElementById("da-religion").value = d.religion || "";
+    document.getElementById("da-role").value     = d.role     || "anggota";
+    document.getElementById("da-jabatan").value  = d.jabatan  || "";
+    document.getElementById("da-lingkup").value  = d.lingkupKerja || "";
+
+    // Gaji hanya Owner bisa lihat/isi
+    if (d.canSeeGaji) {
+      document.getElementById("da-gaji-wrap").style.display = "block";
+      document.getElementById("da-gaji").value = d.nominalGaji || 0;
+    } else {
+      document.getElementById("da-gaji-wrap").style.display = "none";
+    }
+
+    // Role dropdown hanya bisa diubah Owner
+    const canEditRole = userRole === "owner";
+    document.getElementById("da-role").disabled = !canEditRole;
+
+    // Tombol hapus: Owner/Admin, bukan diri sendiri, Admin tidak bisa hapus Owner
+    const canDelete = (userRole === "owner" || userRole === "admin") && (username !== me) && !(d.role === "owner" && userRole !== "owner");
+    document.getElementById("da-delete-btn").classList.toggle("hidden", !canDelete);
+
+    // Non-owner/admin hanya bisa lihat (readonly)
+    const canEdit = (userRole === "owner" || userRole === "admin");
+    ["da-jabatan","da-lingkup","da-gaji"].forEach(id => {
+      const e = document.getElementById(id);
+      if (e) { e.readOnly = !canEdit; e.style.background = canEdit ? "white" : "#f8f9ff"; }
+    });
+
+    document.getElementById("detail-anggota-modal").classList.remove("hidden");
+  } catch { showToast("❌ Gagal memuat detail", "error"); }
+}
+
+async function saveDetailAnggota() {
+  if (!_daCurrentUser) return;
+  const me = localStorage.getItem("user");
+  const body = {
+    by:           me,
+    jabatan:      document.getElementById("da-jabatan").value.trim(),
+    lingkupKerja: document.getElementById("da-lingkup").value.trim(),
+  };
+  if (userRole === "owner") {
+    body.role        = document.getElementById("da-role").value;
+    body.nominalGaji = parseInt(document.getElementById("da-gaji").value) || 0;
+  }
+  try {
+    const r = await fetch(`/profil/${_daCurrentUser}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Detail anggota diperbarui");
+      document.getElementById("detail-anggota-modal").classList.add("hidden");
+      loadAnggota();
+    } else showToast("❌ Gagal menyimpan", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+async function deleteAnggotaFromDetail() {
+  if (!_daCurrentUser) return;
+  if (!confirm(`⚠️ Yakin hapus anggota "${_daCurrentUser}"?`)) return;
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/anggota/${_daCurrentUser}?by=${encodeURIComponent(me)}`, { method: "DELETE" });
+    const d = await r.json();
+    if (d.status === "SELF_NOT_ALLOWED") showToast("❌ Tidak bisa hapus diri sendiri", "error");
+    else if (d.status === "FORBIDDEN")   showToast("❌ Tidak diizinkan", "error");
+    else if (d.status === "OK") {
+      showToast("🗑 Anggota dihapus");
+      document.getElementById("detail-anggota-modal").classList.add("hidden");
+      loadAnggota();
+    } else showToast("❌ Gagal menghapus", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+// ============================================================
+// PROFIL (Menu Setting → Profil)
+// ============================================================
+function switchProfilTab(tab) {
+  const tp = document.getElementById("tab-profil");
+  const tl = document.getElementById("tab-login");
+  const pp = document.getElementById("panel-profil");
+  const pl = document.getElementById("panel-login");
+  if (tab === "profil") {
+    tp.style.background = "var(--primary)"; tp.style.color = "white";
+    tl.style.background = "white";          tl.style.color = "var(--muted)";
+    pp.classList.remove("hidden"); pl.classList.add("hidden");
+  } else {
+    tl.style.background = "var(--primary)"; tl.style.color = "white";
+    tp.style.background = "white";          tp.style.color = "var(--muted)";
+    pl.classList.remove("hidden"); pp.classList.add("hidden");
+  }
+}
+
+async function loadProfil() {
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profil/${me}?by=${encodeURIComponent(me)}`);
+    const d = await r.json();
+
+    // Foto profil
+    const img = document.getElementById("prof-photo-img");
+    const ini = document.getElementById("prof-photo-initial");
+    if (d.profilePhoto) { img.src = d.profilePhoto; img.style.display = "block"; ini.style.display = "none"; }
+    else { img.style.display = "none"; ini.style.display = "block"; ini.innerText = (d.fullName || d.username || "?").charAt(0).toUpperCase(); }
+    img.dataset.pending = "";
+
+    document.getElementById("prof-fullname").value = d.fullName || "";
+    document.getElementById("prof-fullname").readOnly = true;
+    document.getElementById("prof-fullname").style.background = "#f8f9ff";
+    document.getElementById("btn-edit-name").classList.remove("hidden");
+    document.getElementById("btn-save-name").classList.add("hidden");
+
+    document.getElementById("prof-religion").value = d.religion || "";
+    document.getElementById("prof-jabatan").value  = d.jabatan  || "";
+    document.getElementById("prof-role").value     = d.roleName || "";
+    document.getElementById("prof-group").value    = d.groupId  || "";
+    document.getElementById("prof-lingkup").value  = d.lingkupKerja || "";
+
+    if (d.canSeeGaji) {
+      document.getElementById("gaji-wrap").style.display = "block";
+      document.getElementById("prof-gaji").value = "Rp " + (d.nominalGaji || 0).toLocaleString("id-ID");
+    } else {
+      document.getElementById("gaji-wrap").style.display = "none";
+    }
+
+    document.getElementById("prof-username").value = d.username;
+    document.getElementById("prof-password").value = d.password || "";
+    document.getElementById("prof-password").type  = "password";
+
+    const fImg = document.getElementById("face-photo-img");
+    const fEmp = document.getElementById("face-photo-empty");
+    if (d.facePhoto) { fImg.src = d.facePhoto; fImg.style.display = "block"; fEmp.style.display = "none"; }
+    else { fImg.style.display = "none"; fEmp.style.display = "block"; }
+
+    const canDelete = (userRole === "owner" || userRole === "admin");
+    document.getElementById("delete-acc-wrap").style.display = canDelete ? "block" : "none";
+
+    switchProfilTab("profil");
+  } catch { showToast("❌ Gagal memuat profil", "error"); }
+}
+
+function onProfilePhotoPick(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById("prof-photo-img");
+    const ini = document.getElementById("prof-photo-initial");
+    img.src = e.target.result; img.style.display = "block"; ini.style.display = "none";
+    img.dataset.pending = "1";
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveProfilePhoto() {
+  const img = document.getElementById("prof-photo-img");
+  if (!img.dataset.pending) return showToast("ℹ️ Belum ada foto baru dipilih", "warning");
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profil/${me}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: me, profilePhoto: img.src })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("✅ Foto profil tersimpan"); img.dataset.pending = ""; }
+    else showToast("❌ Gagal menyimpan", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+function toggleEditName() {
+  const inp = document.getElementById("prof-fullname");
+  inp.readOnly = false; inp.style.background = "white"; inp.focus();
+  document.getElementById("btn-edit-name").classList.add("hidden");
+  document.getElementById("btn-save-name").classList.remove("hidden");
+}
+
+async function saveName() {
+  const me = localStorage.getItem("user");
+  const val = document.getElementById("prof-fullname").value.trim();
+  if (!val) return showToast("⚠️ Nama tidak boleh kosong", "warning");
+  try {
+    const r = await fetch(`/profil/${me}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: me, fullName: val })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Nama diperbarui");
+      document.getElementById("prof-fullname").readOnly = true;
+      document.getElementById("prof-fullname").style.background = "#f8f9ff";
+      document.getElementById("btn-edit-name").classList.remove("hidden");
+      document.getElementById("btn-save-name").classList.add("hidden");
+    } else showToast("❌ Gagal menyimpan", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+function togglePassShow() {
+  const inp = document.getElementById("prof-password");
+  inp.type = inp.type === "password" ? "text" : "password";
+}
+
+function openChangePass() {
+  document.getElementById("new-pass").value = "";
+  document.getElementById("new-pass2").value = "";
+  document.getElementById("change-pass-modal").classList.remove("hidden");
+}
+
+async function savePassword() {
+  const p1 = document.getElementById("new-pass").value;
+  const p2 = document.getElementById("new-pass2").value;
+  if (p1.length < 4) return showToast("⚠️ Min 4 karakter", "warning");
+  if (p1 !== p2)     return showToast("⚠️ Konfirmasi tidak cocok", "warning");
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profil/${me}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: me, password: p1 })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Password diperbarui");
+      document.getElementById("change-pass-modal").classList.add("hidden");
+      document.getElementById("prof-password").value = p1;
+    } else showToast("❌ Gagal", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+async function openUpdateFace() {
+  document.getElementById("update-face-modal").classList.remove("hidden");
+  await startCam("video-face-update");
+}
+
+function cancelUpdateFace() {
+  stopCam("video-face-update");
+  document.getElementById("update-face-modal").classList.add("hidden");
+}
+
+async function confirmUpdateFace() {
+  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
+  const btn = document.getElementById("btn-confirm-face");
+  btn.innerText = "⏳ Scan..."; btn.disabled = true;
+
+  const v = document.getElementById("video-face-update");
+  const desc = await getFaceDescriptor(v);
+  if (!desc) {
+    btn.innerText = "💾 Simpan"; btn.disabled = false;
+    return showToast("❌ Wajah tidak terdeteksi", "error");
+  }
+  const c = document.getElementById("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  const photo = c.toDataURL("image/jpeg", 0.6);
+
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profil/${me}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: me, faceDescriptor: Array.from(desc), facePhoto: photo })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Data wajah diperbarui");
+      const fImg = document.getElementById("face-photo-img");
+      fImg.src = photo; fImg.style.display = "block";
+      document.getElementById("face-photo-empty").style.display = "none";
+      cancelUpdateFace();
+    } else showToast("❌ Gagal", "error");
+  } catch { showToast("❌ Server error", "error"); }
+  btn.innerText = "💾 Simpan"; btn.disabled = false;
+}
+
+async function deleteMyAccount() {
+  if (!confirm("⚠️ Yakin hapus akun Anda? Tindakan ini tidak bisa dibatalkan!")) return;
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/anggota/${me}?by=${encodeURIComponent(me)}`, { method: "DELETE" });
+    const d = await r.json();
+    if (d.status === "SELF_NOT_ALLOWED") showToast("❌ Anda tidak bisa hapus akun sendiri. Minta Owner lain.", "error");
+    else if (d.status === "OK") {
+      showToast("✅ Akun dihapus");
+      localStorage.clear();
+      setTimeout(() => location.reload(), 1000);
+    } else showToast("❌ Gagal menghapus", "error");
+  } catch { showToast("❌ Server error", "error"); }
 }
 
 // ============================================================
 // AREA
 // ============================================================
-async function loadAreas() {
-  try {
-    const r    = await fetch("/areas");
-    const data = await r.json();
-    const list = document.getElementById("area-list");
-    if (!data.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p>'; return; }
-    list.innerHTML = data.map(a => `
-      <div class="area-item">
-        <div>
-          <div class="area-name">📍 ${a.name}</div>
-          <div class="area-detail">Radius: ${a.radius}m · ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="area-active ${a.active?'on':'off'}" onclick="toggleArea('${a.id}',${!a.active})" style="cursor:pointer;">
-            ${a.active?'✅ Aktif':'❌ Nonaktif'}
-          </span>
-          <button onclick="deleteArea('${a.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
-        </div>
-      </div>`).join("");
-  } catch {}
-}
-
 function getMyLoc() {
-  navigator.geolocation.getCurrentPosition(p => {
-    document.getElementById("area-lat").value = p.coords.latitude.toFixed(7);
-    document.getElementById("area-lng").value = p.coords.longitude.toFixed(7);
-    showToast("📍 Lokasi berhasil diambil!");
-  }, null, {enableHighAccuracy:true});
+  if (!navigator.geolocation) return showToast("❌ Geolocation tidak didukung", "error");
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      document.getElementById("area-lat").value = pos.coords.latitude.toFixed(7);
+      document.getElementById("area-lng").value = pos.coords.longitude.toFixed(7);
+      showToast("📍 Lokasi didapat");
+    },
+    err => showToast("❌ Gagal mendapat lokasi: " + err.message, "error"),
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
 }
-
+// ============================================================
+// AREA (lanjutan)
+// ============================================================
 async function saveArea() {
   const name   = document.getElementById("area-name").value.trim();
   const lat    = document.getElementById("area-lat").value;
   const lng    = document.getElementById("area-lng").value;
-  const radius = document.getElementById("area-radius").value;
-  if (!name || !lat || !lng) return showToast("⚠️ Isi semua field!", "warning");
+  const radius = document.getElementById("area-radius").value || 100;
+  if (!name || !lat || !lng) return showToast("⚠️ Isi nama, lat, lng", "warning");
   try {
-    const r = await fetch("/areas", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name,lat,lng,radius}) });
-    if ((await r.json()).status === "OK") {
-      showToast("✅ Area berhasil ditambahkan!");
+    const r = await fetch("/areas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, lat, lng, radius })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Area ditambahkan");
       document.getElementById("area-name").value = "";
-      document.getElementById("area-lat").value  = "";
-      document.getElementById("area-lng").value  = "";
+      document.getElementById("area-lat").value = "";
+      document.getElementById("area-lng").value = "";
+      document.getElementById("area-radius").value = "100";
       loadAreas();
-    }
-  } catch { showToast("❌ Gagal menyimpan", "error"); }
+    } else showToast("❌ Gagal menyimpan area", "error");
+  } catch { showToast("❌ Server error", "error"); }
 }
 
-async function toggleArea(id, active) {
+async function loadAreas() {
   try {
-    await fetch(`/areas/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({active}) });
-    showToast(active ? "✅ Area diaktifkan" : "❌ Area dinonaktifkan");
-    loadAreas();
+    const r = await fetch("/areas");
+    const d = await r.json();
+    const el = document.getElementById("area-list");
+    if (!d.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p>'; return; }
+    el.innerHTML = d.map(a => `
+      <div class="area-item">
+        <div style="flex:1;min-width:0;">
+          <div class="area-name">${a.name}</div>
+          <div class="area-detail">${a.lat.toFixed(5)}, ${a.lng.toFixed(5)} • R ${a.radius}m</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span class="area-active ${a.active?'on':'off'}" onclick="toggleAreaActive('${a.id}', ${!a.active})" style="cursor:pointer;">
+            ${a.active?'✓ Aktif':'✗ Nonaktif'}
+          </span>
+          <button onclick="deleteArea('${a.id}')" class="btn-red" style="padding:6px 10px;border:none;border-radius:6px;color:white;font-size:11px;cursor:pointer;">🗑</button>
+        </div>
+      </div>
+    `).join("");
+  } catch {}
+}
+
+async function toggleAreaActive(id, active) {
+  try {
+    const r = await fetch(`/areas/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active })
+    });
+    if ((await r.json()).status === "OK") { showToast("✅ Status area diperbarui"); loadAreas(); }
   } catch {}
 }
 
 async function deleteArea(id) {
   if (!confirm("Hapus area ini?")) return;
   try {
-    const r = await fetch(`/areas/${id}`, {method:"DELETE"});
+    const r = await fetch(`/areas/${id}`, { method: "DELETE" });
     if ((await r.json()).status === "OK") { showToast("🗑 Area dihapus"); loadAreas(); }
-  } catch { showToast("❌ Gagal menghapus", "error"); }
+  } catch {}
 }
 
 // ============================================================
@@ -654,16 +984,20 @@ async function loadLibur() {
   try {
     const r = await fetch("/libur");
     const d = await r.json();
-    const list = document.getElementById("libur-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
-    list.innerHTML = d.sort((a,b)=>a.date.localeCompare(b.date)).map(x => `
-      <div class="holiday-item">
-        <div><div class="h-date-text">${x.date}</div><div class="h-name">${x.name}</div></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="h-type ${x.type}">${x.type==='nasional'?'🔴 Nasional':'🟢 Cuti'}</span>
-          <button onclick="deleteLibur('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
+    const el = document.getElementById("libur-list");
+    if (!d.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
+    const sorted = d.sort((a, b) => a.date.localeCompare(b.date));
+    el.innerHTML = sorted.map(h => {
+      const tgl = new Date(h.date).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "long", year: "numeric" });
+      return `<div class="holiday-item">
+        <div style="flex:1;">
+          <div class="h-date-text">${tgl}</div>
+          <div class="h-name">${h.name}</div>
         </div>
-      </div>`).join("");
+        <span class="h-type ${h.type}">${h.type === 'nasional' ? '🔴 Libur' : '🟢 Cuti'}</span>
+        <button onclick="deleteLibur('${h.id}')" class="btn-red" style="padding:6px 10px;border:none;border-radius:6px;color:white;font-size:11px;cursor:pointer;margin-left:6px;">🗑</button>
+      </div>`;
+    }).join("");
   } catch {}
 }
 
@@ -671,22 +1005,27 @@ async function saveLibur() {
   const date = document.getElementById("libur-date").value;
   const name = document.getElementById("libur-name").value.trim();
   const type = document.getElementById("libur-type").value;
-  if (!date || !name) return showToast("⚠️ Isi tanggal dan nama!", "warning");
+  if (!date || !name) return showToast("⚠️ Isi tanggal & nama", "warning");
   try {
-    const r = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({date,name,type}) });
-    if ((await r.json()).status === "OK") {
-      showToast("✅ Berhasil ditambahkan!");
+    const r = await fetch("/libur", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, name, type })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Libur ditambahkan");
       document.getElementById("libur-date").value = "";
       document.getElementById("libur-name").value = "";
       loadLibur();
-    }
-  } catch { showToast("❌ Gagal menyimpan", "error"); }
+    } else showToast("❌ Gagal menyimpan", "error");
+  } catch { showToast("❌ Server error", "error"); }
 }
 
 async function deleteLibur(id) {
   if (!confirm("Hapus data ini?")) return;
   try {
-    const r = await fetch(`/libur/${id}`, {method:"DELETE"});
+    const r = await fetch(`/libur/${id}`, { method: "DELETE" });
     if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
   } catch {}
 }
@@ -699,13 +1038,13 @@ async function loadAktivitas() {
     const r = await fetch("/aktivitas");
     const d = await r.json();
     const list = document.getElementById("aktivitas-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada aktivitas</p>'; return; }
-    const icons  = {IN:"🟢",OUT:"🔴",BREAK_START:"☕",BREAK_END:"💪"};
-    const labels = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"};
+    if (!d.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada aktivitas</p>'; return; }
+    const icons  = { IN:"🟢", OUT:"🔴", BREAK_START:"☕", BREAK_END:"💪" };
+    const labels = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" };
     list.innerHTML = d.map(a => `
       <div class="act-item">
-        <div class="act-user">${icons[a.type]||"📌"} ${a.user}</div>
-        <div class="act-desc">${labels[a.type]||a.type}</div>
+        <div class="act-user">${icons[a.type] || "📌"} ${a.user}</div>
+        <div class="act-desc">${labels[a.type] || a.type}</div>
         <div class="act-time">${new Date(a.time).toLocaleString("id-ID")}</div>
       </div>`).join("");
   } catch {}
@@ -716,22 +1055,22 @@ async function loadAktivitas() {
 // ============================================================
 async function loadTimesheet() {
   const month  = document.getElementById("ts-month").value;
-  const search = (document.getElementById("ts-search").value||"").toLowerCase();
+  const search = (document.getElementById("ts-search").value || "").toLowerCase();
   if (!month) return;
   try {
-    const r = await fetch("/timesheet?month="+month);
+    const r = await fetch("/timesheet?month=" + month);
     const d = await r.json();
     const filtered = d.filter(x => x.user.toLowerCase().includes(search));
     const el = document.getElementById("ts-content");
-    if (!filtered.length) { el.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
+    if (!filtered.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
     el.innerHTML = `<table class="ts-table">
       <thead><tr><th>Nama</th><th>Hari</th><th>Jam Kerja</th><th>Lembur</th></tr></thead>
-      <tbody>${filtered.map(x=>`
+      <tbody>${filtered.map(x => `
         <tr>
           <td><b>${x.user}</b></td>
           <td>${x.totalDays}</td>
           <td>${x.totalJam}j</td>
-          <td style="color:${parseFloat(x.overtime)>0?'var(--warning)':'var(--muted)'};">${x.overtime}j</td>
+          <td style="color:${parseFloat(x.overtime) > 0 ? 'var(--warning)' : 'var(--muted)'};">${x.overtime}j</td>
         </tr>`).join("")}
       </tbody>
     </table>`;

@@ -1,256 +1,175 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Absensi Smart</title>
-  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
-  <style>
-    :root {
-      --primary:#4f8ef7; --success:#27ae60; --danger:#e74c3c;
-      --warning:#f39c12; --bg:#f0f2f5; --card:#fff; --text:#2c3e50; --muted:#95a5a6;
-    }
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
-
-    /* TOAST */
-    #toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
-      background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;
-      font-size:14px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:9999;
-      transition:transform .4s cubic-bezier(.175,.885,.32,1.275);white-space:nowrap;}
-    #toast.show{transform:translateX(-50%) translateY(0);}
-    #toast.error{background:var(--danger);}
-    #toast.warning{background:var(--warning);}
-
-    /* AUTH */
-    #auth-page{position:fixed;top:0;left:0;width:100%;height:100%;
-      background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;
-      display:flex;align-items:center;justify-content:center;overflow-y:auto;}
-    .auth-card{background:white;padding:32px 28px;border-radius:20px;
-      box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
-    .auth-logo{font-size:40px;margin-bottom:4px;}
-    .auth-card h2{font-size:20px;margin-bottom:20px;}
-    .auth-card input{width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;
-      border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-    .auth-card input:focus{border-color:var(--primary);}
-    .signup-camera-wrap{margin:12px 0 6px;}
-    .signup-camera-wrap p{font-size:12px;color:var(--muted);margin-bottom:8px;}
-    .signup-camera{width:140px;height:140px;margin:0 auto;border-radius:50%;overflow:hidden;
-      background:#1a1a2e;border:3px solid var(--primary);}
-    .signup-camera video{width:100%;height:100%;object-fit:cover;}
-    #faceStatus{font-size:12px;margin:8px 0 4px;color:var(--muted);}
-
-    /* CAMERA MODAL */
-    #camera-modal{position:fixed;top:0;left:0;width:100%;height:100%;
-      background:rgba(0,0,0,.88);z-index:800;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;}
-    .camera-ring{width:220px;height:220px;border-radius:50%;overflow:hidden;
-      border:4px solid var(--primary);margin:0 auto 20px;
-      box-shadow:0 0 0 8px rgba(79,142,247,.2);}
-    .camera-ring video{width:100%;height:100%;object-fit:cover;}
-    #camera-status{color:#a0cfff;font-size:13px;margin-bottom:16px;text-align:center;}
-    .camera-modal-title{color:white;font-size:15px;margin-bottom:16px;font-weight:600;}
-    .camera-cancel-btn{padding:12px 30px;border:none;border-radius:50px;
-      font-weight:700;font-size:15px;cursor:pointer;background:rgba(255,255,255,.15);color:white;}
-
-    /* LAYOUT */
-    /* Semua "view" (page utama, sub-page) disembunyikan secara default */
-    .view{display:none;}
-    .view.active{display:block;}
-
-    .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:20px 16px 50px;margin:-16px -16px 0;}
-    .top-header h3{font-size:18px;}
-    .top-header p{font-size:13px;opacity:.8;margin-top:2px;}
-    .header-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
-
-    .page-wrap{padding:16px;animation:fadeIn .3s ease;}
-
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;
-      box-shadow:0 4px 20px rgba(0,0,0,.08);}
-    .card+.card{margin-top:16px;}
-    .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
-
-    /* STATUS */
-    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;
-      border-radius:50px;font-weight:700;font-size:14px;background:#f0f2f5;color:var(--muted);margin-bottom:16px;}
-    .status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
-
-    /* BUTTONS */
-    .btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-    .btn-absen{padding:14px 10px;border:none;border-radius:12px;font-weight:700;font-size:14px;
-      cursor:pointer;transition:.2s;display:flex;flex-direction:column;align-items:center;gap:4px;}
-    .btn-absen:active{transform:scale(.96);}
-    .btn-full{grid-column:span 2;}
-    .btn-in   {background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;box-shadow:0 4px 15px rgba(46,204,113,.35);}
-    .btn-out  {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;box-shadow:0 4px 15px rgba(231,76,60,.35);}
-    .btn-break{background:linear-gradient(135deg,#e67e22,#f39c12);color:white;box-shadow:0 4px 15px rgba(243,156,18,.35);}
-    .btn-blue {background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;}
-    .btn-red  {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;}
-    .btn-green{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;}
-    .btn-gray {background:#f0f2f5;color:var(--text);}
-    .hidden{display:none!important;}
-
-    /* STAT */
-    .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
-    .stat-box{background:#f8f9ff;border-radius:12px;padding:12px 8px;text-align:center;}
-    .stat-box .val{font-size:20px;font-weight:800;color:var(--primary);}
-    .stat-box .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
-
-    /* HISTORY */
-    .history-item{display:flex;justify-content:space-between;align-items:center;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .history-item:last-child{border-bottom:none;}
-    .h-date{font-size:13px;font-weight:700;}
-    .h-time{font-size:12px;color:var(--muted);margin-top:2px;}
-    .h-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
-    .h-badge.ok  {background:#e8f5e9;color:var(--success);}
-    .h-badge.late{background:#fff3e0;color:var(--warning);}
-
-    /* ADMIN */
-    .adm-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
-    .adm-stat-box{border-radius:12px;padding:16px;text-align:center;color:white;}
-    .adm-stat-box .val{font-size:28px;font-weight:800;}
-    .adm-stat-box .lbl{font-size:12px;opacity:.8;}
-    .emp-item{display:flex;justify-content:space-between;align-items:center;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .emp-item:last-child{border-bottom:none;}
-    .emp-name{font-size:14px;font-weight:700;}
-    .emp-time{font-size:12px;color:var(--muted);}
-    .emp-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
-    .emp-badge.in   {background:#e8f5e9;color:var(--success);}
-    .emp-badge.break{background:#fff3e0;color:var(--warning);}
-    .emp-badge.out  {background:#fce4ec;color:var(--danger);}
-
-    /* MENU LIST */
-    .menu-list{margin-top:4px;}
-    .menu-item{display:flex;align-items:center;justify-content:space-between;
-      padding:14px 4px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:.15s;}
-    .menu-item:last-child{border-bottom:none;}
-    .menu-item:active{background:#f8f9ff;border-radius:10px;}
-    .menu-left{display:flex;align-items:center;gap:12px;}
-    .menu-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
-    .menu-title{font-size:14px;font-weight:700;}
-    .menu-sub{font-size:11px;color:var(--muted);margin-top:1px;}
-    .menu-arrow{color:#ccc;font-size:20px;font-weight:300;}
-
-    /* SUB-HEADER (untuk halaman dalam) */
-    .sub-header{display:flex;align-items:center;gap:12px;
-      background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px;margin:-16px -16px 0;}
-    .sub-header h3{font-size:16px;}
-    .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
-      border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
-
-    /* ANGGOTA */
-    .member-item{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .member-item:last-child{border-bottom:none;}
-    .avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
-      justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;margin-right:10px;}
-    .m-name{font-size:14px;font-weight:700;}
-    .m-role{font-size:11px;margin-top:1px;}
-    .role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
-
-    /* GROUP */
-    .group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;
-      box-shadow:0 2px 8px rgba(0,0,0,.06);}
-    .group-header{display:flex;align-items:center;justify-content:space-between;
-      padding:14px 16px;cursor:pointer;}
-    .group-title{font-size:14px;font-weight:700;color:white;}
-    .group-level{font-size:11px;color:rgba(255,255,255,.7);}
-    .group-body{background:#f8f9ff;padding:12px 16px;display:none;}
-    .group-body.open{display:block;}
-    .menu-toggle-row{display:flex;align-items:center;justify-content:space-between;
-      padding:8px 0;border-bottom:1px solid #eee;}
-    .menu-toggle-row:last-child{border-bottom:none;}
-    .menu-toggle-label{font-size:13px;color:var(--text);}
-    .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
-    .toggle-switch input{opacity:0;width:0;height:0;}
-    .toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;
-      border-radius:24px;cursor:pointer;transition:.3s;}
-    .toggle-slider:before{content:"";position:absolute;width:18px;height:18px;
-      left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
-    input:checked+.toggle-slider{background:var(--primary);}
-    input:checked+.toggle-slider:before{transform:translateX(20px);}
-
-    /* AREA */
-    .area-item{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .area-item:last-child{border-bottom:none;}
-    .area-name{font-size:14px;font-weight:700;}
-    .area-detail{font-size:11px;color:var(--muted);margin-top:2px;}
-    .area-active{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;}
-    .area-active.on {background:#e8f5e9;color:var(--success);}
-    .area-active.off{background:#fce4ec;color:var(--danger);}
-
-    /* HOLIDAY */
-    .holiday-item{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .holiday-item:last-child{border-bottom:none;}
-    .h-date-text{font-size:12px;color:var(--primary);font-weight:700;}
-    .h-name{font-size:14px;font-weight:600;margin-top:1px;}
-    .h-type{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
-    .h-type.nasional{background:#fce4ec;color:#c62828;}
-    .h-type.cuti    {background:#e8f5e9;color:#2e7d32;}
-
-    /* AKTIVITAS */
-    .act-item{padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .act-item:last-child{border-bottom:none;}
-    .act-user{font-size:13px;font-weight:700;}
-    .act-desc{font-size:12px;color:var(--muted);margin-top:2px;}
-    .act-time{font-size:11px;color:#b2bec3;margin-top:2px;}
-
-    /* TIMESHEET */
-    .ts-table{width:100%;border-collapse:collapse;font-size:12px;}
-    .ts-table th{background:#f8f9ff;padding:8px 6px;text-align:left;font-weight:700;color:var(--muted);}
-    .ts-table td{padding:10px 6px;border-bottom:1px solid #f0f2f5;}
-    .ts-table tr:last-child td{border-bottom:none;}
-
-    /* FORM */
-    .form-group{margin-bottom:12px;}
-    .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
-    .form-group input,.form-group select{width:100%;padding:11px 12px;
-      border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-    .form-group input:focus,.form-group select:focus{border-color:var(--primary);}
-    .btn-row{display:flex;gap:10px;margin-top:4px;}
-    .btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
-
-    /* NAV */
-    .bottom-nav{position:fixed;bottom:0;width:100%;background:white;
-      display:flex;border-top:1px solid #e8ecf0;padding:8px 0;
-      box-shadow:0 -4px 20px rgba(0,0,0,.06);}
-    .nav-btn{flex:1;background:none;color:var(--muted);font-size:10px;
-      display:flex;flex-direction:column;align-items:center;gap:3px;
-      border:none;cursor:pointer;padding:4px;transition:.2s;}
-    .nav-btn .ni{font-size:20px;}
-    .nav-btn.active{color:var(--primary);}
-
-    /* COPYRIGHT */
-    .copyright{text-align:center;padding:24px 0 8px;}
-    .copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
-    .copyright p:last-child {font-size:11px;color:#b2bec3;margin-top:2px;}
-
-    /* FILTER ROW */
-    .filter-row{display:flex;gap:8px;margin-bottom:12px;}
-    .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;
-      border-radius:8px;font-size:13px;outline:none;}
-
-    @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
-    .scanning{animation:pulse 1s infinite;}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Absensi Smart</title>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+<style>
+:root{--primary:#4f8ef7;--success:#27ae60;--danger:#e74c3c;--warning:#f39c12;--bg:#f0f2f5;--card:#fff;--text:#2c3e50;--muted:#95a5a6;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
+#toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;font-size:14px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:9999;transition:transform .4s cubic-bezier(.175,.885,.32,1.275);white-space:nowrap;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+#toast.error{background:var(--danger);}
+#toast.warning{background:var(--warning);}
+#auth-page{position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;display:flex;align-items:center;justify-content:center;overflow-y:auto;}
+.auth-card{background:white;padding:32px 28px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
+.auth-logo{font-size:40px;margin-bottom:4px;}
+.auth-card h2{font-size:20px;margin-bottom:20px;}
+.auth-card input,.auth-card select{width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;background:white;}
+.auth-card input:focus,.auth-card select:focus{border-color:var(--primary);}
+.signup-camera-wrap{margin:12px 0 6px;}
+.signup-camera-wrap p{font-size:12px;color:var(--muted);margin-bottom:8px;}
+.signup-camera{width:140px;height:140px;margin:0 auto;border-radius:50%;overflow:hidden;background:#1a1a2e;border:3px solid var(--primary);}
+.signup-camera video{width:100%;height:100%;object-fit:cover;}
+#faceStatus{font-size:12px;margin:8px 0 4px;color:var(--muted);}
+#camera-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.88);z-index:800;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.camera-ring{width:220px;height:220px;border-radius:50%;overflow:hidden;border:4px solid var(--primary);margin:0 auto 20px;box-shadow:0 0 0 8px rgba(79,142,247,.2);}
+.camera-ring video{width:100%;height:100%;object-fit:cover;}
+#camera-status{color:#a0cfff;font-size:13px;margin-bottom:16px;text-align:center;}
+.camera-modal-title{color:white;font-size:15px;margin-bottom:16px;font-weight:600;}
+.camera-cancel-btn{padding:12px 30px;border:none;border-radius:50px;font-weight:700;font-size:15px;cursor:pointer;background:rgba(255,255,255,.15);color:white;}
+.view{display:none;}
+.view.active{display:block;}
+.top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;padding:20px 16px 50px;margin:-16px -16px 0;}
+.top-header h3{font-size:18px;}
+.top-header p{font-size:13px;opacity:.8;margin-top:2px;}
+.header-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
+.page-wrap{padding:16px;animation:fadeIn .3s ease;}
+.card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;box-shadow:0 4px 20px rgba(0,0,0,.08);}
+.card+.card{margin-top:16px;}
+.card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;border-radius:50px;font-weight:700;font-size:14px;background:#f0f2f5;color:var(--muted);margin-bottom:16px;}
+.status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.btn-absen{padding:14px 10px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.btn-absen:active{transform:scale(.96);}
+.btn-full{grid-column:span 2;}
+.btn-in{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;box-shadow:0 4px 15px rgba(46,204,113,.35);}
+.btn-out{background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;box-shadow:0 4px 15px rgba(231,76,60,.35);}
+.btn-break{background:linear-gradient(135deg,#e67e22,#f39c12);color:white;box-shadow:0 4px 15px rgba(243,156,18,.35);}
+.btn-blue{background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;}
+.btn-red{background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;}
+.btn-green{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;}
+.btn-gray{background:#f0f2f5;color:var(--text);}
+.hidden{display:none!important;}
+.stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
+.stat-box{background:#f8f9ff;border-radius:12px;padding:12px 8px;text-align:center;}
+.stat-box .val{font-size:20px;font-weight:800;color:var(--primary);}
+.stat-box .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+.history-item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f0f2f5;}
+.history-item:last-child{border-bottom:none;}
+.h-date{font-size:13px;font-weight:700;}
+.h-time{font-size:12px;color:var(--muted);margin-top:2px;}
+.h-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
+.h-badge.ok{background:#e8f5e9;color:var(--success);}
+.h-badge.late{background:#fff3e0;color:var(--warning);}
+.adm-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.adm-stat-box{border-radius:12px;padding:16px;text-align:center;color:white;}
+.adm-stat-box .val{font-size:28px;font-weight:800;}
+.adm-stat-box .lbl{font-size:12px;opacity:.8;}
+.emp-item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f0f2f5;}
+.emp-item:last-child{border-bottom:none;}
+.emp-name{font-size:14px;font-weight:700;}
+.emp-time{font-size:12px;color:var(--muted);}
+.emp-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
+.emp-badge.in{background:#e8f5e9;color:var(--success);}
+.emp-badge.break{background:#fff3e0;color:var(--warning);}
+.emp-badge.out{background:#fce4ec;color:var(--danger);}
+.menu-list{margin-top:4px;}
+.menu-item{display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:.15s;}
+.menu-item:last-child{border-bottom:none;}
+.menu-item:active{background:#f8f9ff;border-radius:10px;}
+.menu-left{display:flex;align-items:center;gap:12px;}
+.menu-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.menu-title{font-size:14px;font-weight:700;}
+.menu-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.menu-arrow{color:#ccc;font-size:20px;font-weight:300;}
+.sub-header{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;padding:16px;margin:-16px -16px 0;}
+.sub-header h3{font-size:16px;}
+.back-btn{background:rgba(255,255,255,.2);border:none;color:white;border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
+.member-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;cursor:pointer;}
+.member-item:last-child{border-bottom:none;}
+.member-item:active{background:#f8f9ff;border-radius:8px;}
+.avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;margin-right:10px;overflow:hidden;}
+.avatar img{width:100%;height:100%;object-fit:cover;}
+.m-name{font-size:14px;font-weight:700;}
+.m-role{font-size:11px;margin-top:1px;}
+.role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
+.group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.group-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;}
+.group-title{font-size:14px;font-weight:700;color:white;}
+.group-level{font-size:11px;color:rgba(255,255,255,.7);}
+.group-body{background:#f8f9ff;padding:12px 16px;display:none;}
+.group-body.open{display:block;}
+.menu-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;}
+.menu-toggle-row:last-child{border-bottom:none;}
+.menu-toggle-label{font-size:13px;color:var(--text);}
+.toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
+.toggle-switch input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.3s;}
+.toggle-slider:before{content:"";position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
+input:checked+.toggle-slider{background:var(--primary);}
+input:checked+.toggle-slider:before{transform:translateX(20px);}
+.area-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;}
+.area-item:last-child{border-bottom:none;}
+.area-name{font-size:14px;font-weight:700;}
+.area-detail{font-size:11px;color:var(--muted);margin-top:2px;}
+.area-active{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;}
+.area-active.on{background:#e8f5e9;color:var(--success);}
+.area-active.off{background:#fce4ec;color:var(--danger);}
+.holiday-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;}
+.holiday-item:last-child{border-bottom:none;}
+.h-date-text{font-size:12px;color:var(--primary);font-weight:700;}
+.h-name{font-size:14px;font-weight:600;margin-top:1px;}
+.h-type{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
+.h-type.nasional{background:#fce4ec;color:#c62828;}
+.h-type.cuti{background:#e8f5e9;color:#2e7d32;}
+.act-item{padding:12px 0;border-bottom:1px solid #f0f2f5;}
+.act-item:last-child{border-bottom:none;}
+.act-user{font-size:13px;font-weight:700;}
+.act-desc{font-size:12px;color:var(--muted);margin-top:2px;}
+.act-time{font-size:11px;color:#b2bec3;margin-top:2px;}
+.ts-table{width:100%;border-collapse:collapse;font-size:12px;}
+.ts-table th{background:#f8f9ff;padding:8px 6px;text-align:left;font-weight:700;color:var(--muted);}
+.ts-table td{padding:10px 6px;border-bottom:1px solid #f0f2f5;}
+.ts-table tr:last-child td{border-bottom:none;}
+.form-group{margin-bottom:12px;}
+.form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
+.form-group input,.form-group select{width:100%;padding:11px 12px;border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;}
+.form-group input:focus,.form-group select:focus{border-color:var(--primary);}
+.btn-row{display:flex;gap:10px;margin-top:4px;}
+.btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
+.profil-photo{width:110px;height:110px;margin:0 auto 10px;border-radius:50%;overflow:hidden;background:#e8ecf0;display:flex;align-items:center;justify-content:center;border:3px solid var(--primary);}
+.profil-photo img{width:100%;height:100%;object-fit:cover;}
+.profil-photo .initial{font-size:40px;color:var(--primary);font-weight:700;}
+.face-thumb{width:140px;height:140px;margin:4px auto;border-radius:12px;overflow:hidden;background:#1a1a2e;border:2px solid var(--primary);display:flex;align-items:center;justify-content:center;}
+.face-thumb img{width:100%;height:100%;object-fit:cover;}
+.modal-bg{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:850;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal-box{background:white;border-radius:16px;padding:22px;width:100%;max-width:340px;max-height:90vh;overflow-y:auto;}
+.bottom-nav{position:fixed;bottom:0;width:100%;background:white;display:flex;border-top:1px solid #e8ecf0;padding:8px 0;box-shadow:0 -4px 20px rgba(0,0,0,.06);}
+.nav-btn{flex:1;background:none;color:var(--muted);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;cursor:pointer;padding:4px;transition:.2s;}
+.nav-btn .ni{font-size:20px;}
+.nav-btn.active{color:var(--primary);}
+.copyright{text-align:center;padding:24px 0 8px;}
+.copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
+.copyright p:last-child{font-size:11px;color:#b2bec3;margin-top:2px;}
+.filter-row{display:flex;gap:8px;margin-bottom:12px;}
+.filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;border-radius:8px;font-size:13px;outline:none;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+.scanning{animation:pulse 1s infinite;}
+</style>
 </head>
 <body>
 
 <div id="toast"></div>
 
-<!-- CAMERA MODAL -->
+<!-- CAMERA MODAL (verifikasi absen) -->
 <div id="camera-modal" class="hidden">
   <p class="camera-modal-title" id="cam-modal-title">Verifikasi Wajah</p>
-  <div class="camera-ring">
-    <video id="video-modal" autoplay playsinline muted></video>
-  </div>
+  <div class="camera-ring"><video id="video-modal" autoplay playsinline muted></video></div>
   <div id="camera-status" class="scanning">Mendeteksi wajah...</div>
   <button class="camera-cancel-btn" onclick="cancelVerify()">Batal</button>
 </div>
@@ -266,23 +185,25 @@
         <div class="signup-camera"><video id="video-signup" autoplay playsinline muted></video></div>
       </div>
       <div id="faceStatus">⏳ Memuat model wajah...</div>
+      <input type="text" id="fullName" placeholder="Nama Lengkap">
+      <select id="religion">
+        <option value="">-- Pilih Agama --</option>
+        <option value="Islam">Islam</option>
+        <option value="Kristen">Kristen</option>
+        <option value="Katolik">Katolik</option>
+        <option value="Hindu">Hindu</option>
+        <option value="Buddha">Buddha</option>
+        <option value="Konghucu">Konghucu</option>
+      </select>
     </div>
-    <input type="text"     id="username" placeholder="Username">
+    <input type="text" id="username" placeholder="Username">
     <input type="password" id="password" placeholder="Password">
-    <button onclick="handleAuth()" id="btn-auth-main"
-      style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;
-      background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;">
-      Login
-    </button>
-    <p style="font-size:12px;color:#95a5a6;margin-top:14px;" id="auth-toggle-text">
-      Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>
-    </p>
+    <button onclick="handleAuth()" id="btn-auth-main" style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;">Login</button>
+    <p style="font-size:12px;color:#95a5a6;margin-top:14px;" id="auth-toggle-text">Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a></p>
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: HOME -->
-<!-- ============================================================ -->
+<!-- HOME -->
 <div id="view-home" class="view">
   <div class="page-wrap">
     <div class="top-header">
@@ -295,10 +216,10 @@
         <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
       </div>
       <div class="btn-grid">
-        <button id="btn-in"    class="btn-absen btn-in    btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
-        <button id="btn-bs"    class="btn-absen btn-break hidden"   onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
-        <button id="btn-be"    class="btn-absen btn-in    hidden"   onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button>
-        <button id="btn-out"   class="btn-absen btn-out   hidden"   onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
+        <button id="btn-in" class="btn-absen btn-in btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
+        <button id="btn-bs" class="btn-absen btn-break hidden" onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
+        <button id="btn-be" class="btn-absen btn-in hidden" onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button>
+        <button id="btn-out" class="btn-absen btn-out hidden" onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
       </div>
     </div>
     <div class="card" style="margin-top:16px;">
@@ -315,10 +236,7 @@
     </div>
   </div>
 </div>
-
-<!-- ============================================================ -->
-<!-- VIEW: REKAP -->
-<!-- ============================================================ -->
+<!-- REKAP -->
 <div id="view-rekap" class="view">
   <div class="page-wrap">
     <div class="top-header"><h3>📋 Rekap Absensi</h3><p id="rekap-user-label"></p></div>
@@ -336,9 +254,7 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: ADMIN -->
-<!-- ============================================================ -->
+<!-- ADMIN -->
 <div id="view-admin" class="view">
   <div class="page-wrap">
     <div class="top-header"><h3>👑 Admin Panel</h3><p>Monitor semua karyawan</p></div>
@@ -360,15 +276,19 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: SETTING (daftar menu) -->
-<!-- ============================================================ -->
+<!-- SETTING -->
 <div id="view-setting" class="view">
   <div class="page-wrap">
     <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div>
     <div class="card">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
+        <div class="menu-item" id="menu-profil" onclick="openView('view-profil')">
+          <div class="menu-left">
+            <div class="menu-icon" style="background:#ede7f6;">👤</div>
+            <div><div class="menu-title">Profil</div><div class="menu-sub">Data diri & keamanan akun</div></div>
+          </div><span class="menu-arrow">›</span>
+        </div>
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
           <div class="menu-left">
             <div class="menu-icon" style="background:#e3f2fd;">👥</div>
@@ -403,51 +323,114 @@
     </div>
     <div class="card" style="margin-top:16px;">
       <h4>👤 Akun</h4>
-      <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;
-        background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-        🚪 Logout
-      </button>
+      <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">🚪 Logout</button>
     </div>
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: ANGGOTA (submenu: daftar + group) -->
-<!-- ============================================================ -->
+<!-- PROFIL (BARU) -->
+<div id="view-profil" class="view">
+  <div class="page-wrap">
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>👤 Profil</h3>
+    </div>
+    <div style="margin-top:16px;">
+      <!-- Tab switcher -->
+      <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
+        <button id="tab-profil" onclick="switchProfilTab('profil')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">👤 Profil</button>
+        <button id="tab-login" onclick="switchProfilTab('login')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;">🔒 Login & Keamanan</button>
+      </div>
+
+      <!-- PANEL PROFIL -->
+      <div id="panel-profil">
+        <div class="card" style="margin-top:0;text-align:center;">
+          <div class="profil-photo">
+            <span id="prof-photo-initial" class="initial">?</span>
+            <img id="prof-photo-img" src="" style="display:none;">
+          </div>
+          <input type="file" id="prof-photo-file" accept="image/*" style="display:none;" onchange="onProfilePhotoPick(event)">
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">
+            <button onclick="document.getElementById('prof-photo-file').click()" class="btn-gray" style="padding:8px 14px;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">📷 Ubah Foto</button>
+            <button onclick="saveProfilePhoto()" class="btn-green" style="padding:8px 14px;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:white;">💾 Simpan</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>Data Diri</h4>
+          <div class="form-group">
+            <label>Nama Lengkap</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="prof-fullname" readonly style="background:#f8f9ff;">
+              <button onclick="toggleEditName()" id="btn-edit-name" class="btn-gray" style="padding:10px 12px;border:none;border-radius:8px;cursor:pointer;font-weight:700;">✏️</button>
+              <button onclick="saveName()" id="btn-save-name" class="btn-green hidden" style="padding:10px 12px;border:none;border-radius:8px;color:white;cursor:pointer;font-weight:700;">💾</button>
+            </div>
+          </div>
+          <div class="form-group"><label>Agama</label><input type="text" id="prof-religion" readonly style="background:#f8f9ff;"></div>
+          <div class="form-group"><label>Jabatan</label><input type="text" id="prof-jabatan" readonly style="background:#f8f9ff;" placeholder="(Diisi oleh Owner)"></div>
+          <div class="form-group"><label>Peran</label><input type="text" id="prof-role" readonly style="background:#f8f9ff;"></div>
+          <div class="form-group"><label>Group</label><input type="text" id="prof-group" readonly style="background:#f8f9ff;" placeholder="(Belum ada group)"></div>
+          <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="prof-lingkup" readonly style="background:#f8f9ff;" placeholder="(Diisi oleh Owner)"></div>
+          <div class="form-group" id="gaji-wrap" style="display:none;">
+            <label>Nominal Gaji (hanya Owner yang bisa lihat)</label>
+            <input type="text" id="prof-gaji" readonly style="background:#fff8e1;">
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL LOGIN -->
+      <div id="panel-login" class="hidden">
+        <div class="card" style="margin-top:0;">
+          <h4>Login & Keamanan</h4>
+          <div class="form-group"><label>Username</label><input type="text" id="prof-username" readonly style="background:#f8f9ff;"></div>
+          <div class="form-group">
+            <label>Password</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="password" id="prof-password" readonly style="background:#f8f9ff;">
+              <button onclick="togglePassShow()" id="btn-show-pass" class="btn-gray" style="padding:10px 12px;border:none;border-radius:8px;cursor:pointer;font-weight:700;">👁</button>
+            </div>
+            <button onclick="openChangePass()" class="btn-blue" style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer;">Ubah Password</button>
+          </div>
+          <div class="form-group">
+            <label>Foto Wajah Terdaftar</label>
+            <div class="face-thumb">
+              <img id="face-photo-img" src="" style="display:none;">
+              <span id="face-photo-empty" style="color:#95a5a6;font-size:12px;">Belum ada foto</span>
+            </div>
+            <button onclick="openUpdateFace()" class="btn-blue" style="width:100%;margin-top:10px;padding:10px;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer;">📸 Perbarui Data Wajah</button>
+          </div>
+          <div id="delete-acc-wrap" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #f0f2f5;">
+            <label style="display:block;font-size:12px;color:var(--danger);margin-bottom:8px;font-weight:700;">⚠️ Zona Bahaya</label>
+            <button onclick="deleteMyAccount()" class="btn-red" style="width:100%;padding:12px;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer;">🗑️ Hapus Akun</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ANGGOTA -->
 <div id="view-anggota" class="view">
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>👥 Anggota</h3>
     </div>
-    <div style="margin-top:46px;">
-      <!-- Submenu tabs -->
+    <div style="margin-top:16px;">
       <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
-        <button id="tab-daftar" onclick="switchAnggotaTab('daftar')"
-          style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-          👤 Daftar Anggota
-        </button>
-        <button id="tab-group" onclick="switchAnggotaTab('group')"
-          style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
-          🏷️ Group
-        </button>
+        <button id="tab-daftar" onclick="switchAnggotaTab('daftar')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">👤 Daftar Anggota</button>
+        <button id="tab-group" onclick="switchAnggotaTab('group')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">🏷️ Group</button>
       </div>
-
-      <!-- Tab: Daftar Anggota -->
       <div id="panel-daftar">
         <div class="card" style="margin-top:0;">
           <h4>Daftar Karyawan</h4>
           <div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
         </div>
       </div>
-
-      <!-- Tab: Group -->
       <div id="panel-group" class="hidden">
         <div class="card" style="margin-top:0;">
-          <h4>Pengaturan Group & Akses Menu</h4>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-            Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.
-          </p>
+          <h4>Pengaturan Peran Anggota</h4>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Atur peran setiap anggota (Owner/Admin/Anggota).</p>
           <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
         </div>
       </div>
@@ -455,16 +438,14 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: AREA -->
-<!-- ============================================================ -->
+<!-- AREA -->
 <div id="view-area" class="view">
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📍 Area Kantor</h3>
     </div>
-    <div style="margin-top:46px;">
+    <div style="margin-top:16px;">
       <div class="card" style="margin-top:0;">
         <h4>Tambah Area Baru</h4>
         <div class="form-group"><label>Nama Area</label><input type="text" id="area-name" placeholder="contoh: Kantor Pusat, Cabang Bali"></div>
@@ -473,7 +454,7 @@
         <div class="form-group"><label>Radius (meter)</label><input type="number" id="area-radius" placeholder="100" value="100"></div>
         <div class="btn-row">
           <button onclick="getMyLoc()" class="btn-gray">📍 Lokasi Saya</button>
-          <button onclick="saveArea()" class="btn-green">➕ Tambah Area</button>
+          <button onclick="saveArea()" class="btn-green" style="color:white;">➕ Tambah Area</button>
         </div>
       </div>
       <div class="card" style="margin-top:16px;">
@@ -484,16 +465,14 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: HARI LIBUR & CUTI -->
-<!-- ============================================================ -->
+<!-- LIBUR -->
 <div id="view-libur" class="view">
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📅 Hari Libur & Cuti</h3>
     </div>
-    <div style="margin-top:46px;">
+    <div style="margin-top:16px;">
       <div class="card" style="margin-top:0;">
         <h4>Tambah Libur / Cuti</h4>
         <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div>
@@ -505,7 +484,7 @@
             <option value="cuti">🟢 Cuti</option>
           </select>
         </div>
-        <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah</button>
+        <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;color:white;">➕ Tambah</button>
       </div>
       <div class="card" style="margin-top:16px;">
         <h4>Daftar Libur & Cuti</h4>
@@ -515,16 +494,14 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: AKTIVITAS -->
-<!-- ============================================================ -->
+<!-- AKTIVITAS -->
 <div id="view-aktivitas" class="view">
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📌 Aktivitas</h3>
     </div>
-    <div style="margin-top:46px;">
+    <div style="margin-top:16px;">
       <div class="card" style="margin-top:0;">
         <h4>Log Aktivitas Terkini</h4>
         <div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
@@ -533,20 +510,18 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: TIMESHEET -->
-<!-- ============================================================ -->
+<!-- TIMESHEET -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>🕐 Timesheet</h3>
     </div>
-    <div style="margin-top:46px;">
+    <div style="margin-top:16px;">
       <div class="card" style="margin-top:0;">
         <div class="filter-row">
           <input type="month" id="ts-month" onchange="loadTimesheet()">
-          <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
+          <input type="text" id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
         </div>
         <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
       </div>
@@ -554,6 +529,62 @@
   </div>
 </div>
 
+<!-- MODAL: Update Face -->
+<div id="update-face-modal" class="hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.88);z-index:850;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+  <p style="color:white;font-weight:700;margin-bottom:16px;">📸 Perbarui Data Wajah</p>
+  <div class="camera-ring"><video id="video-face-update" autoplay playsinline muted></video></div>
+  <p style="color:#a0cfff;font-size:13px;margin:14px 0;">Hadapkan wajah ke kamera</p>
+  <div style="display:flex;gap:10px;">
+    <button onclick="cancelUpdateFace()" style="padding:12px 24px;border:none;border-radius:50px;background:rgba(255,255,255,.15);color:white;font-weight:700;cursor:pointer;">Batal</button>
+    <button onclick="confirmUpdateFace()" id="btn-confirm-face" style="padding:12px 24px;border:none;border-radius:50px;background:#2ecc71;color:white;font-weight:700;cursor:pointer;">💾 Simpan</button>
+  </div>
+</div>
+
+<!-- MODAL: Change Password -->
+<div id="change-pass-modal" class="hidden modal-bg">
+  <div class="modal-box">
+    <h4>🔒 Ubah Password</h4>
+    <div class="form-group"><label>Password Baru</label><input type="password" id="new-pass" placeholder="Min 4 karakter"></div>
+    <div class="form-group"><label>Konfirmasi</label><input type="password" id="new-pass2" placeholder="Ulangi password"></div>
+    <div class="btn-row">
+      <button onclick="document.getElementById('change-pass-modal').classList.add('hidden')" class="btn-gray">Batal</button>
+      <button onclick="savePassword()" class="btn-green" style="color:white;">Simpan</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: Detail Anggota (diklik dari daftar) -->
+<div id="detail-anggota-modal" class="hidden modal-bg">
+  <div class="modal-box">
+    <h4 id="da-title">Detail Anggota</h4>
+    <div style="text-align:center;margin-bottom:14px;">
+      <div class="profil-photo" style="width:80px;height:80px;">
+        <span id="da-initial" class="initial" style="font-size:28px;">?</span>
+        <img id="da-photo" src="" style="display:none;">
+      </div>
+    </div>
+    <div class="form-group"><label>Nama Lengkap</label><input type="text" id="da-fullname" readonly style="background:#f8f9ff;"></div>
+    <div class="form-group"><label>Username</label><input type="text" id="da-username" readonly style="background:#f8f9ff;"></div>
+    <div class="form-group"><label>Agama</label><input type="text" id="da-religion" readonly style="background:#f8f9ff;"></div>
+    <div class="form-group"><label>Peran</label>
+      <select id="da-role">
+        <option value="owner">Owner</option>
+        <option value="admin">Admin</option>
+        <option value="anggota">Anggota</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Jabatan</label><input type="text" id="da-jabatan" placeholder="contoh: Staff Ekspor"></div>
+    <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="da-lingkup" placeholder="contoh: Lapangan, Kantor"></div>
+    <div class="form-group" id="da-gaji-wrap" style="display:none;">
+      <label>Nominal Gaji</label>
+      <input type="number" id="da-gaji" placeholder="0">
+    </div>
+    <div class="btn-row">
+      <button onclick="document.getElementById('detail-anggota-modal').classList.add('hidden')" class="btn-gray">Tutup</button>
+      <button onclick="saveDetailAnggota()" class="btn-green" style="color:white;">Simpan</button>
+    </div>
+    <button id="da-delete-btn" onclick="deleteAnggotaFromDetail()" class="btn-red hidden" style="width:100%;margin-top:10px;padding:12px;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer;">🗑️ Hapus Anggota</button>
+  </div>
+</div>
 <!-- BOTTOM NAV -->
 <nav id="main-nav" class="bottom-nav hidden">
   <button onclick="navTo('home')"    class="nav-btn active" id="nav-home">   <span class="ni">🏠</span>Beranda</button>
