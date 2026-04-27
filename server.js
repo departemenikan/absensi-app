@@ -81,15 +81,16 @@ app.post("/signup", (req, res) => {
   users[username] = {
     password,
     faceDescriptor: faceDescriptor || [],
-    group: isFirst ? "owner" : "anggota",
+    group:       isFirst ? "owner"   : "anggota",
+    peran:       isFirst ? "Owner"   : "Anggota",
     namaLengkap: namaLengkap || "",
-    agama: agama || "",
-    jabatan: "",
-    peran: "",
-    lingkupKerja: "",
+    agama:       agama || "",
+    jabatan:     "",
+    divisi:      "",
+    statusKerja: "Kantor",
     nominalGaji: "",
-    photo: "",
-    createdAt: new Date().toISOString()
+    photo:       "",
+    createdAt:   new Date().toISOString()
   };
   save(F.users, users);
   res.send({ status: "OK" });
@@ -227,11 +228,12 @@ app.get("/profile/:username", (req, res) => {
     namaLengkap: user.namaLengkap  || "",
     agama:       user.agama        || "",
     jabatan:     user.jabatan      || "",
-    peran:       user.peran        || "",
+    peran:       user.peran || group?.name || "Anggota",
     group:       user.group        || "anggota",
     groupName:   group?.name       || "Anggota",
     groupColor:  group?.color      || "#7f8c8d",
-    lingkupKerja:user.lingkupKerja || "",
+    divisi:      user.divisi      || "",
+    statusKerja: user.statusKerja  || "Kantor",
     nominalGaji: user.nominalGaji  || "",
     photo:       user.photo        || "",
     faceDescriptor: user.faceDescriptor || [],
@@ -241,7 +243,7 @@ app.get("/profile/:username", (req, res) => {
 app.put("/profile/:username", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  const allowed = ["namaLengkap","agama","jabatan","peran","lingkupKerja","nominalGaji"];
+  const allowed = ["namaLengkap","agama","jabatan","divisi","statusKerja","nominalGaji"];
   allowed.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
   save(F.users, users);
   res.send({ status: "OK" });

@@ -874,8 +874,8 @@ function renderProfil() {
   document.getElementById("pf-agama").innerText   = d.agama        || "—";
   document.getElementById("pf-jabatan").innerText = d.jabatan      || "—";
   document.getElementById("pf-peran").innerText   = d.peran        || "—";
-  document.getElementById("pf-group").innerText   = d.groupName    || "—";
-  document.getElementById("pf-lingkup").innerText = d.lingkupKerja || "—";
+  document.getElementById("pf-divisi").innerText      = d.divisi      || "—";
+  document.getElementById("pf-status-kerja").innerText = d.statusKerja  || "Kantor";
 
   // Gaji — hanya terlihat oleh owner
   const rowGaji = document.getElementById("row-gaji");
