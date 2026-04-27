@@ -236,8 +236,124 @@ function applyMenuAccess() {
 }
 
 function logout() {
-  if (confirm("Yakin ingin keluar?")) { localStorage.clear(); location.reload(); }
+  uConfirm({
+    icon: "🚪",
+    title: "Keluar Aplikasi",
+    msg: "Yakin ingin logout dari akun ini?",
+    btnOk: "Ya, Keluar", btnOkClass: "danger",
+    onOk: () => { localStorage.clear(); location.reload(); }
+  });
 }
+
+// ============================================================
+// UNIVERSAL MODAL ENGINE
+// ============================================================
+const _uModal = {
+  overlay: null, title: null, sub: null, body: null, btns: null,
+  _cb: null,
+  init() {
+    if (this.overlay) return;
+    this.overlay = document.getElementById("u-modal-overlay");
+    this.title   = document.getElementById("u-modal-title");
+    this.sub     = document.getElementById("u-modal-sub");
+    this.body    = document.getElementById("u-modal-body");
+    this.btns    = document.getElementById("u-modal-btns");
+    this.overlay.addEventListener("click", e => { if (e.target === this.overlay) this.close(); });
+  },
+  open(titleTxt, subTxt, bodyHTML, btnsHTML) {
+    this.init();
+    this.title.innerHTML = titleTxt || "";
+    this.sub.innerHTML   = subTxt   || "";
+    this.body.innerHTML  = bodyHTML || "";
+    this.btns.innerHTML  = btnsHTML || "";
+    this.overlay.classList.add("open");
+    setTimeout(() => { const inp = this.body.querySelector("input"); if (inp) inp.focus(); }, 350);
+  },
+  close() {
+    this.init();
+    this.overlay.classList.remove("open");
+  }
+};
+
+// Modal input teks generik
+function uInput({ title, sub="", placeholder="", value="", type="text", onOk }) {
+  _uModal.open(
+    title, sub,
+    `<input class="u-modal-input" id="u-inp" type="${type}" placeholder="${placeholder}" value="${value}" autocomplete="off">`,
+    `<button class="u-modal-btn cancel" onclick="_uModal.close()">Batal</button>
+     <button class="u-modal-btn primary" onclick="_uInputSubmit()">Simpan</button>`
+  );
+  _uModal._cb = onOk;
+  setTimeout(() => {
+    const el = document.getElementById("u-inp");
+    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") _uInputSubmit(); });
+  }, 360);
+}
+function _uInputSubmit() {
+  const val = document.getElementById("u-inp")?.value ?? "";
+  _uModal.close();
+  if (_uModal._cb) _uModal._cb(val);
+}
+
+// Modal pilih opsi
+function uSelect({ title, sub="", options=[], current="", onOk }) {
+  const opts = options.map(o =>
+    `<button class="u-modal-opt${o===current?' selected':''}" onclick="_uSelectSubmit('${o}')">${o}</button>`
+  ).join("");
+  _uModal.open(title, sub, `<div class="u-modal-options">${opts}</div>`, "");
+  _uModal._cb = onOk;
+}
+function _uSelectSubmit(val) {
+  _uModal.close();
+  if (_uModal._cb) _uModal._cb(val);
+}
+
+// Modal konfirmasi
+function uConfirm({ icon="⚠️", title, msg, btnOk="Ya", btnOkClass="primary", onOk }) {
+  _uModal.open(
+    title, "",
+    `<div class="u-modal-confirm-icon">${icon}</div>
+     <div class="u-modal-confirm-msg">${msg}</div>`,
+    `<button class="u-modal-btn cancel" onclick="_uModal.close()">Batal</button>
+     <button class="u-modal-btn ${btnOkClass}" onclick="_uConfirmOk()">${btnOk}</button>`
+  );
+  _uModal._cb = onOk;
+}
+function _uConfirmOk() { _uModal.close(); if (_uModal._cb) _uModal._cb(); }
+
+// Modal password (toggle lihat/sembunyikan, tanpa password lama)
+function uPassword({ title, sub="", onOk }) {
+  _uModal.open(
+    title, sub,
+    `<div class="u-modal-input-wrap">
+       <input class="u-modal-input" id="u-pw-new" type="password" placeholder="Password baru" autocomplete="new-password">
+       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-new',this)">👁️</button>
+     </div>
+     <div class="u-modal-input-wrap">
+       <input class="u-modal-input" id="u-pw-cfm" type="password" placeholder="Konfirmasi password baru" autocomplete="new-password">
+       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-cfm',this)">👁️</button>
+     </div>`,
+    `<button class="u-modal-btn cancel" onclick="_uModal.close()">Batal</button>
+     <button class="u-modal-btn primary" onclick="_uPasswordSubmit()">Simpan</button>`
+  );
+  _uModal._cb = onOk;
+}
+function _uToggleEye(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  btn.textContent = show ? "🙈" : "👁️";
+}
+function _uPasswordSubmit() {
+  const pw  = document.getElementById("u-pw-new")?.value  || "";
+  const cfm = document.getElementById("u-pw-cfm")?.value || "";
+  if (pw.length < 6) return showToast("⚠️ Password minimal 6 karakter", "warning");
+  if (pw !== cfm)   return showToast("⚠️ Konfirmasi password tidak cocok!", "warning");
+  _uModal.close();
+  if (_uModal._cb) _uModal._cb(pw);
+}
+
 
 // ============================================================
 // KAMERA
@@ -523,11 +639,18 @@ async function changeGroup(username, groupId) {
 }
 
 async function deleteAnggota(username) {
-  if (!confirm(`Hapus anggota "${username}"? Data absensi akan tetap tersimpan.`)) return;
-  try {
-    const r = await fetch(`/anggota/${username}`, { method:"DELETE" });
-    if ((await r.json()).status === "OK") { showToast("🗑 Anggota dihapus"); loadAnggota(); }
-  } catch { showToast("❌ Gagal menghapus", "error"); }
+  uConfirm({
+    icon: "👤",
+    title: "Hapus Anggota",
+    msg: `Hapus akun <b>${username}</b>?<br>Data absensi akan tetap tersimpan.`,
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/anggota/${username}`, { method:"DELETE" });
+        if ((await r.json()).status === "OK") { showToast("🗑 Anggota dihapus"); loadAnggota(); }
+      } catch { showToast("❌ Gagal menghapus", "error"); }
+    }
+  });
 }
 
 // ============================================================
@@ -734,11 +857,18 @@ async function toggleArea(id, active) {
 }
 
 async function deleteArea(id) {
-  if (!confirm("Hapus area ini?")) return;
-  try {
-    const r = await fetch(`/areas/${id}`, {method:"DELETE"});
-    if ((await r.json()).status === "OK") { showToast("🗑 Area dihapus"); loadAreas(); }
-  } catch { showToast("❌ Gagal menghapus", "error"); }
+  uConfirm({
+    icon: "📍",
+    title: "Hapus Area",
+    msg: "Yakin ingin menghapus area ini?<br>Tindakan tidak bisa dibatalkan.",
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/areas/${id}`, {method:"DELETE"});
+        if ((await r.json()).status === "OK") { showToast("🗑 Area dihapus"); loadAreas(); }
+      } catch { showToast("❌ Gagal menghapus", "error"); }
+    }
+  });
 }
 
 // ============================================================
@@ -778,11 +908,18 @@ async function saveLibur() {
 }
 
 async function deleteLibur(id) {
-  if (!confirm("Hapus data ini?")) return;
-  try {
-    const r = await fetch(`/libur/${id}`, {method:"DELETE"});
-    if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
-  } catch {}
+  uConfirm({
+    icon: "📅",
+    title: "Hapus Data Libur",
+    msg: "Yakin ingin menghapus data libur ini?",
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/libur/${id}`, {method:"DELETE"});
+        if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
+      } catch {}
+    }
+  });
 }
 
 // ============================================================
@@ -875,7 +1012,14 @@ function renderProfil() {
   document.getElementById("pf-jabatan").innerText = d.jabatan      || "—";
   document.getElementById("pf-peran").innerText   = d.peran        || "—";
   document.getElementById("pf-divisi").innerText      = d.divisi      || "—";
-  document.getElementById("pf-status-kerja").innerText = d.statusKerja  || "Kantor";
+  // Status Kerja: hanya tampil jika "Tugas Luar"
+  const rowStatusKerja = document.getElementById("row-status-kerja");
+  if (d.statusKerja === "Tugas Luar") {
+    rowStatusKerja.style.display = "flex";
+    document.getElementById("pf-status-kerja").innerText = "🚗 Tugas Luar";
+  } else {
+    rowStatusKerja.style.display = "none";
+  }
 
   // Gaji — hanya terlihat oleh owner
   const rowGaji = document.getElementById("row-gaji");
@@ -1017,24 +1161,23 @@ async function profilSavePhoto() {
 // ── EDIT FIELD ───────────────────────────────────────────────
 function profilEditField(field, label) {
   const cur = _profilData ? (_profilData[field] || "") : "";
-  const val = prompt(`Ubah ${label}:`, cur);
-  if (val === null) return; // batal
-  profilSaveField(field, val.trim());
+  uInput({
+    title: `Ubah ${label}`,
+    placeholder: label,
+    value: cur,
+    onOk: val => { if (val.trim() !== "") profilSaveField(field, val.trim()); }
+  });
 }
 
 async function profilEditAgama() {
   const agamas = ["Islam","Kristen","Katolik","Hindu","Buddha","Konghucu"];
   const cur    = _profilData?.agama || "";
-  const idx    = agamas.indexOf(cur);
-  const pilih  = prompt(
-    "Pilih Agama:\n" + agamas.map((a,i)=>`${i+1}. ${a}`).join("\n") +
-    "\n\nKetik angka pilihan:",
-    idx >= 0 ? idx + 1 : ""
-  );
-  if (!pilih) return;
-  const chosen = agamas[parseInt(pilih) - 1];
-  if (!chosen) return showToast("⚠️ Pilihan tidak valid", "warning");
-  profilSaveField("agama", chosen);
+  uSelect({
+    title: "Pilih Agama",
+    options: agamas,
+    current: cur,
+    onOk: val => profilSaveField("agama", val)
+  });
 }
 
 async function profilSaveField(field, value) {
@@ -1050,20 +1193,22 @@ async function profilSaveField(field, value) {
 
 // ── GANTI PASSWORD ───────────────────────────────────────────
 async function profilChangePassword() {
-  const oldPw = prompt("Masukkan password lama:");
-  if (!oldPw) return;
-  const newPw = prompt("Masukkan password baru (min. 6 karakter):");
-  if (!newPw || newPw.length < 6) return showToast("⚠️ Password minimal 6 karakter", "warning");
-  const konfirm = prompt("Konfirmasi password baru:");
-  if (konfirm !== newPw) return showToast("⚠️ Konfirmasi password tidak cocok!", "warning");
   const me = localStorage.getItem("user");
-  try {
-    const r = await fetch(`/profile/${me}/password`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({oldPassword:oldPw, newPassword:newPw}) });
-    const d = await r.json();
-    if (d.status === "OK") showToast("✅ Password berhasil diubah!");
-    else if (d.status === "WRONG_PASSWORD") showToast("❌ Password lama salah!", "error");
-    else showToast("❌ Gagal mengubah password", "error");
-  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+  uPassword({
+    title: "Ubah Password",
+    sub: "Masukkan password baru untuk akun ini",
+    onOk: async (newPw) => {
+      try {
+        const r = await fetch(`/profile/${me}/password`, {
+          method:"PUT", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({ newPassword: newPw })
+        });
+        const d = await r.json();
+        if (d.status === "OK") showToast("✅ Password berhasil diubah!");
+        else showToast("❌ Gagal mengubah password", "error");
+      } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+    }
+  });
 }
 
 // ── PERBARUI DATA WAJAH ──────────────────────────────────────
@@ -1122,14 +1267,21 @@ async function profilSaveFace() {
 async function profilHapusAkun() {
   const target = document.getElementById("hapus-target-select")?.value;
   if (!target) return showToast("⚠️ Pilih akun yang akan dihapus!", "warning");
-  if (!confirm(`Hapus akun "${target}"? Tindakan ini tidak bisa dibatalkan.\nData absensi tetap tersimpan.`)) return;
-  try {
-    const r = await fetch(`/anggota/${target}`, {method:"DELETE"});
-    if ((await r.json()).status === "OK") {
-      showToast(`🗑 Akun "${target}" berhasil dihapus`);
-      populateHapusSelect();
-    } else showToast("❌ Gagal menghapus", "error");
-  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+  uConfirm({
+    icon: "🗑️",
+    title: "Hapus Akun",
+    msg: `Hapus akun <b>${target}</b>?<br>Tindakan ini <b>tidak bisa dibatalkan</b>.<br><span style="color:#27ae60;">Data absensi tetap tersimpan.</span>`,
+    btnOk: "Hapus Permanen", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/anggota/${target}`, {method:"DELETE"});
+        if ((await r.json()).status === "OK") {
+          showToast(`🗑 Akun "${target}" berhasil dihapus`);
+          populateHapusSelect();
+        } else showToast("❌ Gagal menghapus", "error");
+      } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+    }
+  });
 }
 
 // ============================================================

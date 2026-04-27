@@ -87,7 +87,7 @@ app.post("/signup", (req, res) => {
     agama:       agama || "",
     jabatan:     "",
     divisi:      "",
-    statusKerja: "Kantor",
+    statusKerja: "",
     nominalGaji: "",
     photo:       "",
     createdAt:   new Date().toISOString()
@@ -233,7 +233,7 @@ app.get("/profile/:username", (req, res) => {
     groupName:   group?.name       || "Anggota",
     groupColor:  group?.color      || "#7f8c8d",
     divisi:      user.divisi      || "",
-    statusKerja: user.statusKerja  || "Kantor",
+    statusKerja: user.statusKerja  || "",
     nominalGaji: user.nominalGaji  || "",
     photo:       user.photo        || "",
     faceDescriptor: user.faceDescriptor || [],
@@ -268,8 +268,8 @@ app.put("/profile/:username/face", (req, res) => {
 app.put("/profile/:username/password", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  const { oldPassword, newPassword } = req.body;
-  if (users[req.params.username].password !== oldPassword) return res.send({ status: "WRONG_PASSWORD" });
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) return res.send({ status: "INVALID" });
   users[req.params.username].password = newPassword;
   save(F.users, users);
   res.send({ status: "OK" });
