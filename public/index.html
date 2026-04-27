@@ -97,21 +97,6 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);pa
 .m-name{font-size:14px;font-weight:700;}
 .m-role{font-size:11px;margin-top:1px;}
 .role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
-.group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
-.group-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;}
-.group-title{font-size:14px;font-weight:700;color:white;}
-.group-level{font-size:11px;color:rgba(255,255,255,.7);}
-.group-body{background:#f8f9ff;padding:12px 16px;display:none;}
-.group-body.open{display:block;}
-.menu-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;}
-.menu-toggle-row:last-child{border-bottom:none;}
-.menu-toggle-label{font-size:13px;color:var(--text);}
-.toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
-.toggle-switch input{opacity:0;width:0;height:0;}
-.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.3s;}
-.toggle-slider:before{content:"";position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
-input:checked+.toggle-slider{background:var(--primary);}
-input:checked+.toggle-slider:before{transform:translateX(20px);}
 .area-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;}
 .area-item:last-child{border-bottom:none;}
 .area-name{font-size:14px;font-weight:700;}
@@ -157,6 +142,22 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
 .copyright p:last-child{font-size:11px;color:#b2bec3;margin-top:2px;}
 .filter-row{display:flex;gap:8px;margin-bottom:12px;}
 .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;border-radius:8px;font-size:13px;outline:none;}
+
+/* BATCH 2 — DIVISI */
+.divisi-card{background:white;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.divisi-card h5{font-size:15px;font-weight:700;margin-bottom:4px;}
+.divisi-card .sub{font-size:12px;color:var(--muted);margin-bottom:8px;}
+.divisi-card .mgr{display:inline-block;font-size:11px;background:#ede7f6;color:#5e35b1;padding:3px 10px;border-radius:50px;font-weight:700;margin-right:6px;}
+.divisi-card .mc{display:inline-block;font-size:11px;background:#e3f2fd;color:#1565c0;padding:3px 10px;border-radius:50px;font-weight:700;}
+.divisi-card .acts{display:flex;gap:6px;margin-top:10px;}
+.divisi-card .acts button{flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;}
+.member-chip{display:inline-flex;align-items:center;gap:6px;background:#f0f2f5;padding:5px 10px;border-radius:50px;font-size:12px;margin:3px 4px 3px 0;}
+.member-chip .x{cursor:pointer;color:var(--danger);font-weight:700;font-size:14px;}
+.picker-list{max-height:180px;overflow-y:auto;border:1px solid #e8ecf0;border-radius:10px;padding:6px;background:#f8f9ff;}
+.picker-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;}
+.picker-item:hover{background:white;}
+.picker-item input{width:auto;margin:0;}
+
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
 .scanning{animation:pulse 1s infinite;}
@@ -166,7 +167,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
 
 <div id="toast"></div>
 
-<!-- CAMERA MODAL (verifikasi absen) -->
+<!-- CAMERA MODAL -->
 <div id="camera-modal" class="hidden">
   <p class="camera-modal-title" id="cam-modal-title">Verifikasi Wajah</p>
   <div class="camera-ring"><video id="video-modal" autoplay playsinline muted></video></div>
@@ -236,6 +237,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
     </div>
   </div>
 </div>
+
 <!-- REKAP -->
 <div id="view-rekap" class="view">
   <div class="page-wrap">
@@ -244,6 +246,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
       <div class="stat-row">
         <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
         <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
+        <div class="stat-box"><div class="val"
         <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
       </div>
     </div>
@@ -292,7 +295,14 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
           <div class="menu-left">
             <div class="menu-icon" style="background:#e3f2fd;">👥</div>
-            <div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & jabatan</div></div>
+            <div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & peran</div></div>
+          </div><span class="menu-arrow">›</span>
+        </div>
+        <!-- BATCH 2: Menu Divisi BARU -->
+        <div class="menu-item" id="menu-divisi" onclick="openView('view-divisi')">
+          <div class="menu-left">
+            <div class="menu-icon" style="background:#e0f7fa;">🏢</div>
+            <div><div class="menu-title">Divisi</div><div class="menu-sub">Kelola divisi & manager</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
         <div class="menu-item" id="menu-area" onclick="openView('view-area')">
@@ -328,7 +338,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
   </div>
 </div>
 
-<!-- PROFIL (BARU) -->
+<!-- PROFIL -->
 <div id="view-profil" class="view">
   <div class="page-wrap">
     <div class="sub-header">
@@ -336,13 +346,11 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
       <h3>👤 Profil</h3>
     </div>
     <div style="margin-top:16px;">
-      <!-- Tab switcher -->
       <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
         <button id="tab-profil" onclick="switchProfilTab('profil')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">👤 Profil</button>
         <button id="tab-login" onclick="switchProfilTab('login')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;">🔒 Login & Keamanan</button>
       </div>
 
-      <!-- PANEL PROFIL -->
       <div id="panel-profil">
         <div class="card" style="margin-top:0;text-align:center;">
           <div class="profil-photo">
@@ -369,7 +377,8 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
           <div class="form-group"><label>Agama</label><input type="text" id="prof-religion" readonly style="background:#f8f9ff;"></div>
           <div class="form-group"><label>Jabatan</label><input type="text" id="prof-jabatan" readonly style="background:#f8f9ff;" placeholder="(Diisi oleh Owner)"></div>
           <div class="form-group"><label>Peran</label><input type="text" id="prof-role" readonly style="background:#f8f9ff;"></div>
-          <div class="form-group"><label>Group</label><input type="text" id="prof-group" readonly style="background:#f8f9ff;" placeholder="(Belum ada group)"></div>
+          <!-- BATCH 2: Divisi (read-only, bisa banyak) -->
+          <div class="form-group"><label>Divisi</label><input type="text" id="prof-divisi" readonly style="background:#f8f9ff;" placeholder="(Belum tergabung divisi)"></div>
           <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="prof-lingkup" readonly style="background:#f8f9ff;" placeholder="(Diisi oleh Owner)"></div>
           <div class="form-group" id="gaji-wrap" style="display:none;">
             <label>Nominal Gaji (hanya Owner yang bisa lihat)</label>
@@ -378,7 +387,6 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
         </div>
       </div>
 
-      <!-- PANEL LOGIN -->
       <div id="panel-login" class="hidden">
         <div class="card" style="margin-top:0;">
           <h4>Login & Keamanan</h4>
@@ -409,7 +417,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
   </div>
 </div>
 
-<!-- ANGGOTA -->
+<!-- ANGGOTA (tab diubah jadi "Peran") -->
 <div id="view-anggota" class="view">
   <div class="page-wrap">
     <div class="sub-header">
@@ -419,7 +427,8 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
     <div style="margin-top:16px;">
       <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
         <button id="tab-daftar" onclick="switchAnggotaTab('daftar')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">👤 Daftar Anggota</button>
-        <button id="tab-group" onclick="switchAnggotaTab('group')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">🏷️ Group</button>
+        <!-- BATCH 2: Tab "Group" diubah nama jadi "Peran" -->
+        <button id="tab-peran" onclick="switchAnggotaTab('peran')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">🎖️ Peran</button>
       </div>
       <div id="panel-daftar">
         <div class="card" style="margin-top:0;">
@@ -427,12 +436,31 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
           <div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
         </div>
       </div>
-      <div id="panel-group" class="hidden">
+      <div id="panel-peran" class="hidden">
         <div class="card" style="margin-top:0;">
           <h4>Pengaturan Peran Anggota</h4>
           <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Atur peran setiap anggota (Owner/Admin/Anggota).</p>
-          <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+          <div id="peran-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DIVISI (BATCH 2 — BARU) -->
+<div id="view-divisi" class="view">
+  <div class="page-wrap">
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>🏢 Divisi</h3>
+    </div>
+    <div style="margin-top:16px;">
+      <div class="card" style="margin-top:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h4 style="margin:0;">Daftar Divisi</h4>
+          <button onclick="openDivisiForm()" class="btn-green" style="padding:8px 14px;border:none;border-radius:8px;color:white;font-weight:700;font-size:12px;cursor:pointer;">➕ Tambah Divisi</button>
+        </div>
+        <div id="divisi-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
       </div>
     </div>
   </div>
@@ -464,7 +492,6 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
     </div>
   </div>
 </div>
-
 <!-- LIBUR -->
 <div id="view-libur" class="view">
   <div class="page-wrap">
@@ -552,7 +579,8 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
     </div>
   </div>
 </div>
-<!-- MODAL: Detail Anggota (diklik dari daftar) -->
+
+<!-- MODAL: Detail Anggota -->
 <div id="detail-anggota-modal" class="hidden modal-bg">
   <div class="modal-box">
     <h4 id="da-title">Detail Anggota</h4>
@@ -572,6 +600,8 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
         <option value="anggota">Anggota</option>
       </select>
     </div>
+    <!-- BATCH 2: Divisi read-only -->
+    <div class="form-group"><label>Divisi</label><input type="text" id="da-divisi" readonly style="background:#f8f9ff;" placeholder="(Atur di menu Divisi)"></div>
     <div class="form-group"><label>Jabatan</label><input type="text" id="da-jabatan" placeholder="contoh: Staff Ekspor"></div>
     <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="da-lingkup" placeholder="contoh: Lapangan, Kantor"></div>
     <div class="form-group" id="da-gaji-wrap" style="display:none;">
@@ -585,6 +615,54 @@ input:checked+.toggle-slider:before{transform:translateX(20px);}
     <button id="da-delete-btn" onclick="deleteAnggotaFromDetail()" class="btn-red hidden" style="width:100%;margin-top:10px;padding:12px;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer;">🗑️ Hapus Anggota</button>
   </div>
 </div>
+
+<!-- MODAL: Form Divisi (Tambah / Edit) — BATCH 2 BARU -->
+<div id="divisi-form-modal" class="hidden modal-bg">
+  <div class="modal-box">
+    <h4 id="df-title">🏢 Tambah Divisi</h4>
+    <div class="form-group">
+      <label>Nama Divisi</label>
+      <input type="text" id="df-name" placeholder="contoh: Tim Ekspor, Divisi Keuangan">
+    </div>
+    <div class="form-group">
+      <label>Manager Divisi</label>
+      <select id="df-manager">
+        <option value="">-- Tanpa Manager --</option>
+      </select>
+      <p style="font-size:11px;color:var(--muted);margin-top:4px;">Manager otomatis menjadi anggota divisi.</p>
+    </div>
+    <div class="form-group">
+      <label>Anggota Divisi</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="text" id="df-member-search" placeholder="Cari nama..." oninput="filterDfMembers()" style="flex:1;">
+        <button onclick="toggleSelectAllMembers()" class="btn-gray" style="padding:10px 12px;border:none;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer;">Pilih Semua</button>
+      </div>
+      <div id="df-picker" class="picker-list"></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:4px;">Terpilih: <span id="df-count">0</span> anggota</p>
+    </div>
+    <div class="btn-row">
+      <button onclick="closeDivisiForm()" class="btn-gray">Batal</button>
+      <button onclick="saveDivisiForm()" class="btn-green" style="color:white;">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Detail Divisi (lihat anggota) — BATCH 2 BARU -->
+<div id="divisi-detail-modal" class="hidden modal-bg">
+  <div class="modal-box">
+    <h4 id="dd-title">🏢 Detail Divisi</h4>
+    <div class="form-group"><label>Nama Divisi</label><input type="text" id="dd-name" readonly style="background:#f8f9ff;"></div>
+    <div class="form-group"><label>Manager</label><input type="text" id="dd-manager" readonly style="background:#f8f9ff;"></div>
+    <div class="form-group">
+      <label>Anggota (<span id="dd-count">0</span>)</label>
+      <div id="dd-members" style="max-height:220px;overflow-y:auto;border:1px solid #e8ecf0;border-radius:10px;padding:8px;background:#f8f9ff;"></div>
+    </div>
+    <div class="btn-row">
+      <button onclick="document.getElementById('divisi-detail-modal').classList.add('hidden')" class="btn-gray">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <!-- BOTTOM NAV -->
 <nav id="main-nav" class="bottom-nav hidden">
   <button onclick="navTo('home')"    class="nav-btn active" id="nav-home">   <span class="ni">🏠</span>Beranda</button>

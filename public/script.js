@@ -10,6 +10,11 @@ let userMenus        = [];
 let userRole         = "";
 let userLevel        = 99;
 
+// BATCH 2 — state untuk form divisi
+let _divisiEditId    = null;     // null = tambah, berisi id = edit
+let _dfAllMembers    = [];       // cache list anggota untuk picker
+let _dfSelected      = new Set();// usernames yang terpilih
+
 // ============================================================
 // TOAST
 // ============================================================
@@ -94,15 +99,15 @@ function toggleAuthMode() {
   const isLogin  = title.innerText === "Login";
 
   if (isLogin) {
-    title.innerText    = "Sign Up";
-    mainBtn.innerText  = "Sign Up";
-    toggle.innerHTML   = 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
+    title.innerText   = "Sign Up";
+    mainBtn.innerText = "Sign Up";
+    toggle.innerHTML  = 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
     faceSect.classList.remove("hidden");
     startCam("video-signup");
   } else {
-    title.innerText    = "Login";
-    mainBtn.innerText  = "Login";
-    toggle.innerHTML   = 'Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>';
+    title.innerText   = "Login";
+    mainBtn.innerText = "Login";
+    toggle.innerHTML  = 'Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>';
     faceSect.classList.add("hidden");
     stopCam("video-signup");
   }
@@ -132,7 +137,6 @@ async function doSignUp(u, p) {
       showToast("❌ Wajah tidak terdeteksi! Pencahayaan kurang?", "error");
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
-    // Snapshot foto wajah
     const c = document.getElementById("canvas");
     c.width = videoEl.videoWidth; c.height = videoEl.videoHeight;
     c.getContext("2d").drawImage(videoEl, 0, 0);
@@ -239,6 +243,7 @@ function applyMenuAccess() {
   const map = {
     "menu-profil":    "profil",
     "menu-anggota":   "anggota",
+    "menu-divisi":    "divisi",      // BATCH 2
     "menu-area":      "area",
     "menu-libur":     "libur",
     "menu-aktivitas": "aktivitas",
@@ -278,6 +283,7 @@ function openView(viewId) {
   if (viewId === "view-libur")     { loadLibur(); }
   if (viewId === "view-anggota")   { loadAnggota(); }
   if (viewId === "view-profil")    { loadProfil(); }
+  if (viewId === "view-divisi")    { loadDivisi(); }   // BATCH 2
   if (viewId === "view-timesheet") {
     const m = document.getElementById("ts-month");
     if (!m.value) m.value = new Date().toISOString().slice(0, 7);
@@ -470,7 +476,7 @@ async function doAbsen() {
 // ADMIN
 // ============================================================
 async function loadAdmin() {
-  const date = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
+  const date   = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
   const search = (document.getElementById("adm-search").value || "").toLowerCase();
   try {
     const r = await fetch("/admin/today?date=" + date);
@@ -500,24 +506,24 @@ async function loadAdmin() {
 }
 
 // ============================================================
-// ANGGOTA (tab Daftar + tab Group/Role)
+// ANGGOTA (tab Daftar + tab Peran)
 // ============================================================
 let _anggotaCache = [];
 
 function switchAnggotaTab(tab) {
   const td = document.getElementById("tab-daftar");
-  const tg = document.getElementById("tab-group");
+  const tp = document.getElementById("tab-peran");
   const pd = document.getElementById("panel-daftar");
-  const pg = document.getElementById("panel-group");
+  const pp = document.getElementById("panel-peran");
   if (tab === "daftar") {
     td.style.background = "var(--primary)"; td.style.color = "white";
-    tg.style.background = "white";          tg.style.color = "var(--muted)";
-    pd.classList.remove("hidden"); pg.classList.add("hidden");
+    tp.style.background = "white";          tp.style.color = "var(--muted)";
+    pd.classList.remove("hidden"); pp.classList.add("hidden");
   } else {
-    tg.style.background = "var(--primary)"; tg.style.color = "white";
+    tp.style.background = "var(--primary)"; tp.style.color = "white";
     td.style.background = "white";          td.style.color = "var(--muted)";
-    pg.classList.remove("hidden"); pd.classList.add("hidden");
-    renderGroupRolePanel();
+    pp.classList.remove("hidden"); pd.classList.add("hidden");
+    renderPeranPanel();
   }
 }
 
@@ -533,12 +539,13 @@ async function loadAnggota() {
       const photo = a.profilePhoto
         ? `<img src="${a.profilePhoto}">`
         : `<span>${initial}</span>`;
+      const jabDiv = [a.jabatan, a.divisiNames].filter(Boolean).join(' • ');
       return `<div class="member-item" onclick="openDetailAnggota('${a.username}')">
-        <div style="display:flex;align-items:center;flex:1;">
+        <div style="display:flex;align-items:center;flex:1;min-width:0;">
           <div class="avatar" style="background:${a.roleColor};">${photo}</div>
-          <div>
+          <div style="min-width:0;">
             <div class="m-name">${a.fullName || a.username}</div>
-            <div class="m-role" style="color:${a.roleColor};">${a.roleName}${a.jabatan ? ' • '+a.jabatan : ''}</div>
+            <div class="m-role" style="color:${a.roleColor};">${a.roleName}${jabDiv ? ' • '+jabDiv : ''}</div>
           </div>
         </div>
         <span class="menu-arrow">›</span>
@@ -547,10 +554,10 @@ async function loadAnggota() {
   } catch {}
 }
 
-// Tab Group — dipakai untuk ubah Role (Owner/Admin/Anggota) per anggota
-function renderGroupRolePanel() {
-  const el = document.getElementById("group-list");
-  if (!_anggotaCache.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p>'; loadAnggota().then(renderGroupRolePanel); return; }
+// Tab Peran — ubah role per anggota
+function renderPeranPanel() {
+  const el = document.getElementById("peran-list");
+  if (!_anggotaCache.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p>'; loadAnggota().then(renderPeranPanel); return; }
   el.innerHTML = _anggotaCache.map(a => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f5;gap:10px;">
       <div style="flex:1;min-width:0;">
@@ -605,8 +612,9 @@ async function openDetailAnggota(username) {
     document.getElementById("da-role").value     = d.role     || "anggota";
     document.getElementById("da-jabatan").value  = d.jabatan  || "";
     document.getElementById("da-lingkup").value  = d.lingkupKerja || "";
+    // BATCH 2: tampilkan divisi (read-only)
+    document.getElementById("da-divisi").value   = d.divisiNames || "";
 
-    // Gaji hanya Owner bisa lihat/isi
     if (d.canSeeGaji) {
       document.getElementById("da-gaji-wrap").style.display = "block";
       document.getElementById("da-gaji").value = d.nominalGaji || 0;
@@ -614,15 +622,12 @@ async function openDetailAnggota(username) {
       document.getElementById("da-gaji-wrap").style.display = "none";
     }
 
-    // Role dropdown hanya bisa diubah Owner
     const canEditRole = userRole === "owner";
     document.getElementById("da-role").disabled = !canEditRole;
 
-    // Tombol hapus: Owner/Admin, bukan diri sendiri, Admin tidak bisa hapus Owner
     const canDelete = (userRole === "owner" || userRole === "admin") && (username !== me) && !(d.role === "owner" && userRole !== "owner");
     document.getElementById("da-delete-btn").classList.toggle("hidden", !canDelete);
 
-    // Non-owner/admin hanya bisa lihat (readonly)
     const canEdit = (userRole === "owner" || userRole === "admin");
     ["da-jabatan","da-lingkup","da-gaji"].forEach(id => {
       const e = document.getElementById(id);
@@ -678,6 +683,193 @@ async function deleteAnggotaFromDetail() {
 }
 
 // ============================================================
+// DIVISI (BATCH 2 — BARU)
+// ============================================================
+async function loadDivisi() {
+  try {
+    const r = await fetch("/divisi");
+    const d = await r.json();
+    const el = document.getElementById("divisi-list");
+    if (!d.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada divisi. Klik "+ Tambah Divisi" untuk membuat.</p>';
+      return;
+    }
+    el.innerHTML = d.map(div => {
+      const mgrName = div.manager ? (div.manager.fullName || div.managerUsername) : "(Belum ada manager)";
+      return `<div class="divisi-card">
+        <h5>🏢 ${div.name}</h5>
+        <div class="sub">
+          <span class="mgr">👑 ${mgrName}</span>
+          <span class="mc">👥 ${div.memberCount} anggota</span>
+        </div>
+        <div class="acts">
+          <button class="btn-blue" style="color:white;" onclick="openDivisiDetail('${div.id}')">👁 Detail</button>
+          <button class="btn-gray" onclick="openDivisiForm('${div.id}')">✏️ Edit</button>
+          <button class="btn-red" style="color:white;" onclick="deleteDivisi('${div.id}','${div.name.replace(/'/g,"\\'")}')">🗑</button>
+        </div>
+      </div>`;
+    }).join("");
+  } catch { showToast("❌ Gagal memuat divisi", "error"); }
+}
+
+// ---- FORM TAMBAH / EDIT DIVISI ----
+async function openDivisiForm(id = null) {
+  _divisiEditId = id;
+  _dfSelected = new Set();
+  document.getElementById("df-title").innerText = id ? "✏️ Edit Divisi" : "🏢 Tambah Divisi";
+  document.getElementById("df-name").value = "";
+  document.getElementById("df-manager").innerHTML = '<option value="">-- Tanpa Manager --</option>';
+  document.getElementById("df-member-search").value = "";
+
+  // Load daftar anggota utk picker & dropdown manager
+  try {
+    const r = await fetch("/anggota");
+    _dfAllMembers = await r.json();
+    // Dropdown manager
+    const sel = document.getElementById("df-manager");
+    _dfAllMembers.forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a.username;
+      opt.innerText = `${a.fullName || a.username} (${a.roleName})`;
+      sel.appendChild(opt);
+    });
+  } catch {
+    showToast("❌ Gagal memuat daftar anggota", "error"); return;
+  }
+
+  // Kalau edit, isi data existing
+  if (id) {
+    try {
+      const r = await fetch("/divisi/" + id);
+      const d = await r.json();
+      document.getElementById("df-name").value = d.name || "";
+      document.getElementById("df-manager").value = d.managerUsername || "";
+      (d.memberUsernames || []).forEach(u => _dfSelected.add(u));
+    } catch {}
+  }
+
+  renderDfPicker();
+  document.getElementById("divisi-form-modal").classList.remove("hidden");
+}
+
+function closeDivisiForm() {
+  document.getElementById("divisi-form-modal").classList.add("hidden");
+  _divisiEditId = null;
+  _dfSelected.clear();
+}
+
+function renderDfPicker() {
+  const search = (document.getElementById("df-member-search").value || "").toLowerCase();
+  const list = _dfAllMembers.filter(a =>
+    (a.fullName || "").toLowerCase().includes(search) ||
+    a.username.toLowerCase().includes(search)
+  );
+  const el = document.getElementById("df-picker");
+  if (!list.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:10px;font-size:12px;">Tidak ada anggota</p>'; }
+  else {
+    el.innerHTML = list.map(a => {
+      const checked = _dfSelected.has(a.username) ? "checked" : "";
+      return `<label class="picker-item">
+        <input type="checkbox" ${checked} onchange="toggleDfMember('${a.username}', this.checked)">
+        <span>${a.fullName || a.username} <span style="color:var(--muted);font-size:11px;">(${a.roleName})</span></span>
+      </label>`;
+    }).join("");
+  }
+  document.getElementById("df-count").innerText = _dfSelected.size;
+}
+
+function filterDfMembers() { renderDfPicker(); }
+
+function toggleDfMember(username, checked) {
+  if (checked) _dfSelected.add(username);
+  else         _dfSelected.delete(username);
+  document.getElementById("df-count").innerText = _dfSelected.size;
+}
+
+function toggleSelectAllMembers() {
+  // Kalau semua sudah kepilih → clear, kalau belum → pilih semua yang terlihat (sesuai filter)
+  const search = (document.getElementById("df-member-search").value || "").toLowerCase();
+  const visible = _dfAllMembers.filter(a =>
+    (a.fullName || "").toLowerCase().includes(search) ||
+    a.username.toLowerCase().includes(search)
+  );
+  const allSelected = visible.every(a => _dfSelected.has(a.username));
+  if (allSelected) visible.forEach(a => _dfSelected.delete(a.username));
+  else             visible.forEach(a => _dfSelected.add(a.username));
+  renderDfPicker();
+}
+
+async function saveDivisiForm() {
+  const name = document.getElementById("df-name").value.trim();
+  if (!name) return showToast("⚠️ Nama Divisi wajib", "warning");
+  const managerUsername = document.getElementById("df-manager").value || "";
+  const memberUsernames = Array.from(_dfSelected);
+  const me = localStorage.getItem("user");
+
+  try {
+    const url  = _divisiEditId ? `/divisi/${_divisiEditId}` : "/divisi";
+    const verb = _divisiEditId ? "PUT" : "POST";
+    const r = await fetch(url, {
+      method: verb,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: me, name, managerUsername, memberUsernames })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast(_divisiEditId ? "✅ Divisi diperbarui" : "✅ Divisi dibuat");
+      closeDivisiForm();
+      loadDivisi();
+    } else if (d.status === "EXIST") {
+      showToast("⚠️ " + (d.msg || "Nama divisi sudah ada"), "warning");
+    } else {
+      showToast("❌ " + (d.msg || "Gagal menyimpan"), "error");
+    }
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+async function deleteDivisi(id, name) {
+  if (!confirm(`⚠️ Yakin hapus divisi "${name}"?\nAnggota tidak akan dihapus, hanya lepas dari divisi ini.`)) return;
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/divisi/${id}?by=${encodeURIComponent(me)}`, { method: "DELETE" });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("🗑 Divisi dihapus"); loadDivisi(); }
+    else showToast("❌ Gagal menghapus", "error");
+  } catch { showToast("❌ Server error", "error"); }
+}
+
+// ---- DETAIL DIVISI ----
+async function openDivisiDetail(id) {
+  try {
+    const r = await fetch("/divisi");
+    const all = await r.json();
+    const div = all.find(x => x.id === id);
+    if (!div) return showToast("❌ Divisi tidak ditemukan", "error");
+
+    document.getElementById("dd-title").innerText = "🏢 " + div.name;
+    document.getElementById("dd-name").value = div.name;
+    document.getElementById("dd-manager").value = div.manager ? (div.manager.fullName || div.managerUsername) : "(Belum ada)";
+    document.getElementById("dd-count").innerText = div.memberCount;
+
+    const membersEl = document.getElementById("dd-members");
+    if (!div.members.length) {
+      membersEl.innerHTML = '<p style="color:var(--muted);text-align:center;padding:10px;font-size:12px;">Belum ada anggota</p>';
+    } else {
+      membersEl.innerHTML = div.members.map(m => {
+        const isMgr = div.managerUsername === m.username;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid #e8ecf0;">
+          <div>
+            <div style="font-size:13px;font-weight:700;">${m.fullName || m.username}${isMgr ? ' 👑' : ''}</div>
+            <div style="font-size:11px;color:var(--muted);">@${m.username}</div>
+          </div>
+          <span style="font-size:10px;padding:3px 8px;border-radius:50px;background:#f0f2f5;color:var(--muted);font-weight:700;">${m.role || ""}</span>
+        </div>`;
+      }).join("");
+    }
+    document.getElementById("divisi-detail-modal").classList.remove("hidden");
+  } catch { showToast("❌ Gagal memuat detail", "error"); }
+}
+// ============================================================
 // PROFIL (Menu Setting → Profil)
 // ============================================================
 function switchProfilTab(tab) {
@@ -718,7 +910,8 @@ async function loadProfil() {
     document.getElementById("prof-religion").value = d.religion || "";
     document.getElementById("prof-jabatan").value  = d.jabatan  || "";
     document.getElementById("prof-role").value     = d.roleName || "";
-    document.getElementById("prof-group").value    = d.groupId  || "";
+    // BATCH 2: field Divisi menggantikan Group
+    document.getElementById("prof-divisi").value   = d.divisiNames || "";
     document.getElementById("prof-lingkup").value  = d.lingkupKerja || "";
 
     if (d.canSeeGaji) {
@@ -908,9 +1101,7 @@ function getMyLoc() {
     { enableHighAccuracy: true, timeout: 8000 }
   );
 }
-// ============================================================
-// AREA (lanjutan)
-// ============================================================
+
 async function saveArea() {
   const name   = document.getElementById("area-name").value.trim();
   const lat    = document.getElementById("area-lat").value;

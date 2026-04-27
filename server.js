@@ -17,6 +17,7 @@ const F = {
   libur:     path.join(DATA_DIR, "libur.json"),
   aktivitas: path.join(DATA_DIR, "aktivitas.json"),
   groups:    path.join(DATA_DIR, "groups.json"),
+  divisi:    path.join(DATA_DIR, "divisi.json"),   // BARU (Batch 2)
 };
 
 function load(file, def) {
@@ -40,19 +41,19 @@ function logAktivitas(user, type, time) {
 }
 
 // ========================
-// ROLE (3 level app-management: owner / admin / anggota)
+// ROLE
 // ========================
 const ROLES = {
   owner:   { name: "Owner",   level: 1, color: "#8e44ad",
-    menus: ["home","rekap","admin","setting","profil","anggota","group","area","libur","aktivitas","timesheet"] },
+    menus: ["home","rekap","admin","setting","profil","anggota","divisi","area","libur","aktivitas","timesheet"] },
   admin:   { name: "Admin",   level: 2, color: "#2980b9",
-    menus: ["home","rekap","admin","setting","profil","anggota","group","area","libur","aktivitas","timesheet"] },
+    menus: ["home","rekap","admin","setting","profil","anggota","divisi","area","libur","aktivitas","timesheet"] },
   anggota: { name: "Anggota", level: 3, color: "#7f8c8d",
     menus: ["home","rekap","setting","profil"] },
 };
 function getRoleInfo(r) { return ROLES[r] || ROLES.anggota; }
 
-// Migrasi field lama "group" (manager/koordinator/dll) -> "role" (owner/admin/anggota)
+// Migrasi user
 function migrateUser(u) {
   let changed = false;
   if (!u.role) {
@@ -62,7 +63,7 @@ function migrateUser(u) {
     else                      u.role = "anggota";
     changed = true;
   }
-  if (u.fullName     === undefined) { u.fullName = u.fullName || ""; changed = true; }
+  if (u.fullName     === undefined) { u.fullName = ""; changed = true; }
   if (u.religion     === undefined) { u.religion = ""; changed = true; }
   if (u.facePhoto    === undefined) { u.facePhoto = ""; changed = true; }
   if (u.profilePhoto === undefined) { u.profilePhoto = ""; changed = true; }
@@ -71,6 +72,8 @@ function migrateUser(u) {
   if (u.tugasLuar    === undefined) { u.tugasLuar = false; changed = true; }
   if (u.groupId      === undefined) { u.groupId = null; changed = true; }
   if (u.nominalGaji  === undefined) { u.nominalGaji = 0; changed = true; }
+  // BATCH 2: divisiIds = array id divisi tempat user tergabung
+  if (u.divisiIds    === undefined) { u.divisiIds = []; changed = true; }
   return changed;
 }
 function migrateAllUsers() {
@@ -81,8 +84,45 @@ function migrateAllUsers() {
 }
 migrateAllUsers();
 
-// Init file groups (untuk divisi — dipakai di Batch 2)
 if (!fs.existsSync(F.groups)) save(F.groups, []);
+if (!fs.existsSync(F.divisi)) save(F.divisi, []);
+
+// ========================
+// HELPERS DIVISI
+// ========================
+// Sinkronkan user.divisiIds dari data divisi (source of truth = divisi.json)
+function syncUserDivisiIds() {
+  const divisi = load(F.divisi, []);
+  const users  = load(F.users, {});
+  const map = {}; // username -> [divisiId]
+  divisi.forEach(d => {
+    const all = new Set(d.memberUsernames || []);
+    if (d.managerUsername) all.add(d.managerUsername); // manager otomatis anggota
+    all.forEach(u => {
+      if (!map[u]) map[u] = [];
+      if (!map[u].includes(d.id)) map[u].push(d.id);
+    });
+  });
+  let changed = false;
+  Object.keys(users).forEach(uname => {
+    const newList = map[uname] || [];
+    const oldList = users[uname].divisiIds || [];
+    if (JSON.stringify(newList.sort()) !== JSON.stringify([...oldList].sort())) {
+      users[uname].divisiIds = newList;
+      changed = true;
+    }
+  });
+  if (changed) save(F.users, users);
+}
+
+// Dipanggil untuk memastikan manager juga ada di memberUsernames
+function normalizeDivisi(d) {
+  d.memberUsernames = Array.isArray(d.memberUsernames) ? [...new Set(d.memberUsernames)] : [];
+  if (d.managerUsername && !d.memberUsernames.includes(d.managerUsername)) {
+    d.memberUsernames.push(d.managerUsername);
+  }
+  return d;
+}
 
 // ========================
 // AUTH
@@ -106,6 +146,7 @@ app.post("/signup", (req, res) => {
     profilePhoto:   "",
     role:           isFirst ? "owner" : "anggota",
     groupId:        null,
+    divisiIds:      [],                           // BATCH 2
     jabatan:        "",
     lingkupKerja:   "",
     tugasLuar:      false,
@@ -145,8 +186,8 @@ app.get("/face-descriptor/:username", (req, res) => {
 // PROFIL
 // ========================
 app.get("/profil/:username", (req, res) => {
-  const users = load(F.users, {});
-  const user  = users[req.params.username];
+  const users  = load(F.users, {});
+  const user   = users[req.params.username];
   if (!user) return res.status(404).send({ status: "NOT_FOUND" });
 
   const requester = req.query.by || "";
@@ -156,6 +197,13 @@ app.get("/profil/:username", (req, res) => {
   const isAdmin   = reqUser && reqUser.role === "admin";
   const canLogin  = isSelf || isOwner || isAdmin;
 
+  // BATCH 2: kumpulkan nama divisi
+  const divisi = load(F.divisi, []);
+  const divs   = (user.divisiIds || [])
+    .map(id => divisi.find(x => x.id === id))
+    .filter(Boolean)
+    .map(d => ({ id: d.id, name: d.name, isManager: d.managerUsername === req.params.username }));
+
   res.send({
     username:     req.params.username,
     fullName:     user.fullName     || "",
@@ -163,6 +211,8 @@ app.get("/profil/:username", (req, res) => {
     role:         user.role         || "anggota",
     roleName:     getRoleInfo(user.role).name,
     groupId:      user.groupId      || null,
+    divisiList:   divs,                                      // BATCH 2
+    divisiNames:  divs.map(d => d.name).join(", "),          // BATCH 2
     jabatan:      user.jabatan      || "",
     lingkupKerja: user.lingkupKerja || "",
     tugasLuar:    user.tugasLuar    || false,
@@ -210,7 +260,6 @@ app.put("/profil/:username", (req, res) => {
   save(F.users, users);
   res.send({ status: "OK" });
 });
-
 // ========================
 // ABSENSI
 // ========================
@@ -306,10 +355,15 @@ app.get("/admin/today", (req, res) => {
 // ANGGOTA
 // ========================
 app.get("/anggota", (req, res) => {
-  const users = load(F.users, {});
-  const list  = Object.keys(users).map(u => {
+  const users  = load(F.users, {});
+  const divisi = load(F.divisi, []);
+  const list   = Object.keys(users).map(u => {
     const usr = users[u];
     const r = getRoleInfo(usr.role || "anggota");
+    const divNames = (usr.divisiIds || [])
+      .map(id => divisi.find(x => x.id === id))
+      .filter(Boolean)
+      .map(d => d.name);
     return {
       username:     u,
       fullName:     usr.fullName || u,
@@ -319,7 +373,8 @@ app.get("/anggota", (req, res) => {
       religion:     usr.religion || "",
       profilePhoto: usr.profilePhoto || "",
       jabatan:      usr.jabatan  || "",
-      groupId:      usr.groupId  || null,
+      divisiIds:    usr.divisiIds || [],            // BATCH 2
+      divisiNames:  divNames.join(", "),            // BATCH 2
       createdAt:    usr.createdAt|| ""
     };
   });
@@ -341,11 +396,23 @@ app.delete("/anggota/:username", (req, res) => {
 
   delete users[req.params.username];
   save(F.users, users);
+
+  // BATCH 2: hapus juga dari semua divisi
+  const divisi = load(F.divisi, []);
+  let divChanged = false;
+  divisi.forEach(d => {
+    if (d.managerUsername === req.params.username) { d.managerUsername = ""; divChanged = true; }
+    const before = d.memberUsernames.length;
+    d.memberUsernames = d.memberUsernames.filter(m => m !== req.params.username);
+    if (d.memberUsernames.length !== before) divChanged = true;
+  });
+  if (divChanged) save(F.divisi, divisi);
+
   res.send({ status: "OK" });
 });
 
 // ========================
-// ROLES (dropdown pilihan role)
+// ROLES
 // ========================
 app.get("/roles", (req, res) => {
   res.send(Object.entries(ROLES).map(([id, r]) => ({
@@ -354,12 +421,10 @@ app.get("/roles", (req, res) => {
 });
 
 // ========================
-// GROUP (divisi — detail di Batch 2)
-// Kompatibilitas lama: endpoint ubah role via /anggota/:username/group
+// GROUP (endpoint lama, dipertahankan untuk kompatibilitas)
 // ========================
 app.get("/groups", (req, res) => res.send(load(F.groups, [])));
 
-// Kompat: ubah role user (dipakai tab "Group" lama -> kita jadikan ubah ROLE)
 app.put("/anggota/:username/role", (req, res) => {
   const users = load(F.users, {});
   const u = users[req.params.username];
@@ -367,6 +432,150 @@ app.put("/anggota/:username/role", (req, res) => {
   if (!ROLES[req.body.role]) return res.send({ status: "INVALID_ROLE" });
   u.role = req.body.role;
   save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// ========================
+// DIVISI (BATCH 2) — CRUD lengkap
+// Struktur 1 divisi:
+// { id, name, managerUsername, memberUsernames:[], createdAt }
+// ========================
+
+// List semua divisi (dengan detail manager & anggota)
+app.get("/divisi", (req, res) => {
+  const divisi = load(F.divisi, []);
+  const users  = load(F.users, {});
+  const out = divisi.map(d => {
+    const mgr = users[d.managerUsername];
+    const members = (d.memberUsernames || []).map(u => {
+      const usr = users[u];
+      return usr ? {
+        username: u,
+        fullName: usr.fullName || u,
+        role:     usr.role     || "anggota",
+        roleName: getRoleInfo(usr.role).name,
+        profilePhoto: usr.profilePhoto || "",
+        isManager: u === d.managerUsername
+      } : null;
+    }).filter(Boolean);
+    return {
+      id: d.id,
+      name: d.name,
+      managerUsername: d.managerUsername || "",
+      managerName: mgr ? (mgr.fullName || d.managerUsername) : "",
+      memberUsernames: d.memberUsernames || [],
+      memberCount: members.length,
+      members,
+      createdAt: d.createdAt || ""
+    };
+  });
+  res.send(out);
+});
+
+// Detail 1 divisi
+app.get("/divisi/:id", (req, res) => {
+  const divisi = load(F.divisi, []);
+  const d = divisi.find(x => x.id === req.params.id);
+  if (!d) return res.status(404).send({ status: "NOT_FOUND" });
+  const users = load(F.users, {});
+  const members = (d.memberUsernames || []).map(u => {
+    const usr = users[u];
+    return usr ? {
+      username: u,
+      fullName: usr.fullName || u,
+      role:     usr.role     || "anggota",
+      roleName: getRoleInfo(usr.role).name,
+      profilePhoto: usr.profilePhoto || "",
+      isManager: u === d.managerUsername
+    } : null;
+  }).filter(Boolean);
+  res.send({
+    id: d.id,
+    name: d.name,
+    managerUsername: d.managerUsername || "",
+    memberUsernames: d.memberUsernames || [],
+    members,
+    createdAt: d.createdAt || ""
+  });
+});
+
+// Buat divisi baru — hanya Owner/Admin
+app.post("/divisi", (req, res) => {
+  const users = load(F.users, {});
+  const requester = req.body.by || "";
+  const reqUser = users[requester];
+  if (!reqUser || (reqUser.role !== "owner" && reqUser.role !== "admin"))
+    return res.status(403).send({ status: "FORBIDDEN" });
+
+  const { name, managerUsername, memberUsernames } = req.body;
+  if (!name || !name.trim()) return res.send({ status: "ERROR", msg: "Nama Divisi wajib" });
+
+  // Validasi: manager (kalau diisi) harus ada di daftar user
+  if (managerUsername && !users[managerUsername])
+    return res.send({ status: "ERROR", msg: "Manager tidak ditemukan" });
+
+  // Validasi: semua member harus ada
+  const mems = Array.isArray(memberUsernames) ? memberUsernames.filter(u => users[u]) : [];
+
+  const divisi = load(F.divisi, []);
+  const newDiv = normalizeDivisi({
+    id: Date.now().toString(),
+    name: name.trim(),
+    managerUsername: managerUsername || "",
+    memberUsernames: mems,
+    createdAt: new Date().toISOString()
+  });
+  divisi.push(newDiv);
+  save(F.divisi, divisi);
+  syncUserDivisiIds();
+  res.send({ status: "OK", id: newDiv.id });
+});
+
+// Update divisi — hanya Owner/Admin
+app.put("/divisi/:id", (req, res) => {
+  const users = load(F.users, {});
+  const requester = req.body.by || "";
+  const reqUser = users[requester];
+  if (!reqUser || (reqUser.role !== "owner" && reqUser.role !== "admin"))
+    return res.status(403).send({ status: "FORBIDDEN" });
+
+  const divisi = load(F.divisi, []);
+  const d = divisi.find(x => x.id === req.params.id);
+  if (!d) return res.status(404).send({ status: "NOT_FOUND" });
+
+  if (req.body.name !== undefined) {
+    if (!req.body.name.trim()) return res.send({ status: "ERROR", msg: "Nama Divisi wajib" });
+    d.name = req.body.name.trim();
+  }
+  if (req.body.managerUsername !== undefined) {
+    if (req.body.managerUsername && !users[req.body.managerUsername])
+      return res.send({ status: "ERROR", msg: "Manager tidak ditemukan" });
+    d.managerUsername = req.body.managerUsername || "";
+  }
+  if (req.body.memberUsernames !== undefined) {
+    d.memberUsernames = (Array.isArray(req.body.memberUsernames) ? req.body.memberUsernames : [])
+      .filter(u => users[u]);
+  }
+  normalizeDivisi(d);
+  save(F.divisi, divisi);
+  syncUserDivisiIds();
+  res.send({ status: "OK" });
+});
+
+// Hapus divisi — hanya Owner/Admin
+app.delete("/divisi/:id", (req, res) => {
+  const users = load(F.users, {});
+  const requester = req.query.by || "";
+  const reqUser = users[requester];
+  if (!reqUser || (reqUser.role !== "owner" && reqUser.role !== "admin"))
+    return res.status(403).send({ status: "FORBIDDEN" });
+
+  const divisi = load(F.divisi, []);
+  const idx = divisi.findIndex(x => x.id === req.params.id);
+  if (idx === -1) return res.status(404).send({ status: "NOT_FOUND" });
+  divisi.splice(idx, 1);
+  save(F.divisi, divisi);
+  syncUserDivisiIds();
   res.send({ status: "OK" });
 });
 
