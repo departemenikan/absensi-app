@@ -1056,19 +1056,6 @@ async function perbaruiWajah() {
   } catch { showToast("❌ Error", "error"); }
 }
 
-// ============================================================
-// TOGGLE LIHAT PASSWORD (icon mata)
-// ============================================================
-function toggleLihatPassword() {
-  const input = document.getElementById("lihatPassword");
-  if (!input) return;
-  if (input.type === "password") {
-    input.type = "text";
-  } else {
-    input.type = "password";
-  }
-}
-
 async function hapusAkun() {
   const user = localStorage.getItem("user");
   if (!confirm(`PERINGATAN: Akun "${user}" akan dihapus permanen. Lanjutkan?`)) return;
@@ -1140,32 +1127,6 @@ function editPhotoProfil() {
   } else {
     uploadFotoProfil();
   }
-}
-
-// ============================================================
-// PERBARUI WAJAH (popup kamera)
-// ============================================================
-async function perbaruiWajah() {
-  const user = localStorage.getItem("user");
-  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
-  
-  // Tampilkan modal kamera (tanpa verifikasi, hanya mengambil descriptor)
-  showCamModal("Perbarui Data Wajah", false);
-  await new Promise(r => setTimeout(r, 1500));
-  const video = document.getElementById("video-modal");
-  const desc = await getFaceDescriptor(video);
-  hideCamModal();
-  if (!desc) return showToast("❌ Wajah tidak terdeteksi", "error");
-  try {
-    const res = await fetch("/update-wajah", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: user, faceDescriptor: Array.from(desc) })
-    });
-    const d = await res.json();
-    if (d.status === "OK") showToast("✅ Data wajah diperbarui");
-    else showToast("❌ Gagal update", "error");
-  } catch { showToast("❌ Error", "error"); }
 }
 
 // ============================================================
