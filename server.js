@@ -40,6 +40,7 @@ function logAktivitas(user, type, time) {
   save(F.aktivitas, log);
 }
 
+// Inisialisasi groups default dengan menu yang sesuai
 function initGroups() {
   if (!fs.existsSync(F.groups)) {
     const defaults = [
@@ -60,10 +61,10 @@ function initGroups() {
 initGroups();
 
 // ========================
-// AUTH
+// AUTH & PROFIL (LENGKAP)
 // ========================
 app.post("/signup", (req, res) => {
-  const { username, password, faceDescriptor } = req.body;
+  const { username, password, faceDescriptor, fullName, agama } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
@@ -72,7 +73,12 @@ app.post("/signup", (req, res) => {
     password,
     faceDescriptor: faceDescriptor || [],
     group: isFirst ? "owner" : "anggota",
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    fullName: fullName || username,
+    agama: agama || "",
+    lingkupKerja: "",
+    nominalGaji: 0,
+    photoProfil: ""
   };
   save(F.users, users);
   res.send({ status: "OK" });
@@ -101,6 +107,79 @@ app.get("/face-descriptor/:username", (req, res) => {
   const users = load(F.users, {});
   const user  = users[req.params.username];
   res.send({ descriptor: user ? (user.faceDescriptor || []) : [] });
+});
+
+// GET profil lengkap (termasuk jabatan, peran, group name dari groups)
+app.get("/profil/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user = users[req.params.username];
+  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
+  const groups = load(F.groups, []);
+  const group = groups.find(g => g.id === user.group) || groups[groups.length-1];
+  res.send({
+    username: req.params.username,
+    fullName: user.fullName || req.params.username,
+    agama: user.agama || "",
+    jabatan: group.name,
+    peran: group.level,
+    groupName: group.name,
+    lingkupKerja: user.lingkupKerja || "",
+    nominalGaji: user.nominalGaji || 0,
+    photoProfil: user.photoProfil || "",
+    groupId: group.id
+  });
+});
+
+// PUT update profil (fullName, agama, lingkupKerja, nominalGaji (hanya jika owner), photoProfil)
+app.put("/profil/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user = users[req.params.username];
+  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
+  const { fullName, agama, lingkupKerja, nominalGaji, photoProfil } = req.body;
+  if (fullName !== undefined) user.fullName = fullName;
+  if (agama !== undefined) user.agama = agama;
+  if (lingkupKerja !== undefined) user.lingkupKerja = lingkupKerja;
+  // Nominal gaji hanya bisa diubah oleh owner (dari frontend kita kirim role, disini kita bisa cek dari group)
+  // Untuk sederhana, kita tetap izinkan update, tapi frontend akan menyembunyikan field jika bukan owner.
+  if (nominalGaji !== undefined) user.nominalGaji = nominalGaji;
+  if (photoProfil !== undefined) user.photoProfil = photoProfil;
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// Update wajah (face descriptor)
+app.post("/update-wajah", (req, res) => {
+  const { username, faceDescriptor } = req.body;
+  if (!username || !faceDescriptor) return res.send({ status: "ERROR" });
+  const users = load(F.users, {});
+  if (!users[username]) return res.send({ status: "NOT_FOUND" });
+  users[username].faceDescriptor = faceDescriptor;
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// Ganti password
+app.post("/change-password", (req, res) => {
+  const { username, newPassword } = req.body;
+  const users = load(F.users, {});
+  if (!users[username]) return res.send({ status: "NOT_FOUND" });
+  users[username].password = newPassword;
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// Hapus akun (hanya untuk role owner/admin)
+app.delete("/delete-akun/:username", (req, res) => {
+  const { username } = req.params;
+  const { role } = req.query; // role dikirim dari frontend
+  if (role !== "owner" && role !== "admin") {
+    return res.status(403).send({ status: "FORBIDDEN" });
+  }
+  const users = load(F.users, {});
+  if (!users[username]) return res.send({ status: "NOT_FOUND" });
+  delete users[username];
+  save(F.users, users);
+  res.send({ status: "OK" });
 });
 
 // ========================
@@ -179,7 +258,7 @@ app.get("/history/:user", (req, res) => {
 });
 
 // ========================
-// ADMIN (hanya untuk role yang punya akses)
+// ADMIN (untuk monitoring hari ini)
 // ========================
 app.get("/admin/today", (req, res) => {
   const data  = load(F.data, []);

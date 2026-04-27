@@ -1,233 +1,507 @@
-<!DOCTYPE html><html lang="id"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Absensi Smart</title> <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script> <style> :root { --primary:#4f8ef7; --success:#27ae60; --danger:#e74c3c; --warning:#f39c12; --bg:#f0f2f5; --card:#fff; --text:#2c3e50; --muted:#95a5a6; } *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
-/* TOAST */
-#toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
-background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;
-font-size:14px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:9999;
-transition:transform .4s cubic-bezier(.175,.885,.32,1.275);white-space:nowrap;}
-#toast.show{transform:translateX(-50%) translateY(0);}
-#toast.error{background:var(--danger);}
-#toast.warning{background:var(--warning);}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absensi Smart</title>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <style>
+    :root {
+      --primary:#4f8ef7; --success:#27ae60; --danger:#e74c3c;
+      --warning:#f39c12; --bg:#f0f2f5; --card:#fff; --text:#2c3e50; --muted:#95a5a6;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
 
-/* AUTH */
-#auth-page{position:fixed;top:0;left:0;width:100%;height:100%;
-background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;
-display:flex;align-items:center;justify-content:center;overflow-y:auto;}
-.auth-card{background:white;padding:32px 28px;border-radius:20px;
-box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
-.auth-logo{font-size:40px;margin-bottom:4px;}
-.auth-card h2{font-size:20px;margin-bottom:20px;}
-.auth-card input{width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;
-border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-.auth-card input:focus{border-color:var(--primary);}
-.signup-camera-wrap{margin:12px 0 6px;}
-.signup-camera-wrap p{font-size:12px;color:var(--muted);margin-bottom:8px;}
-.signup-camera{width:140px;height:140px;margin:0 auto;border-radius:50%;overflow:hidden;
-background:#1a1a2e;border:3px solid var(--primary);}
-.signup-camera video{width:100%;height:100%;object-fit:cover;}
-#faceStatus{font-size:12px;margin:8px 0 4px;color:var(--muted);}
+    /* TOAST */
+    #toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
+    background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;
+    font-size:14px;box-shadow:0 8px 25px rgba(0,0,0,.2);z-index:9999;
+    transition:transform .4s cubic-bezier(.175,.885,.32,1.275);white-space:nowrap;}
+    #toast.show{transform:translateX(-50%) translateY(0);}
+    #toast.error{background:var(--danger);}
+    #toast.warning{background:var(--warning);}
 
-/* CAMERA MODAL */
-#camera-modal{position:fixed;top:0;left:0;width:100%;height:100%;
-background:rgba(0,0,0,.88);z-index:800;
-display:flex;flex-direction:column;align-items:center;justify-content:center;}
-.camera-ring{width:220px;height:220px;border-radius:50%;overflow:hidden;
-border:4px solid var(--primary);margin:0 auto 20px;
-box-shadow:0 0 0 8px rgba(79,142,247,.2);}
-.camera-ring video{width:100%;height:100%;object-fit:cover;}
-#camera-status{color:#a0cfff;font-size:13px;margin-bottom:16px;text-align:center;}
-.camera-modal-title{color:white;font-size:15px;margin-bottom:16px;font-weight:600;}
-.camera-cancel-btn{padding:12px 30px;border:none;border-radius:50px;
-font-weight:700;font-size:15px;cursor:pointer;background:rgba(255,255,255,.15);color:white;}
+    /* AUTH */
+    #auth-page{position:fixed;top:0;left:0;width:100%;height:100%;
+    background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;
+    display:flex;align-items:center;justify-content:center;overflow-y:auto;}
+    .auth-card{background:white;padding:32px 28px;border-radius:20px;
+    box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
+    .auth-logo{font-size:40px;margin-bottom:4px;}
+    .auth-card h2{font-size:20px;margin-bottom:20px;}
+    .auth-card input{width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;
+    border-radius:10px;font-size:14px;outline:none;transition:.2s;}
+    .auth-card input:focus{border-color:var(--primary);}
+    .signup-camera-wrap{margin:12px 0 6px;}
+    .signup-camera-wrap p{font-size:12px;color:var(--muted);margin-bottom:8px;}
+    .signup-camera{width:140px;height:140px;margin:0 auto;border-radius:50%;overflow:hidden;
+    background:#1a1a2e;border:3px solid var(--primary);}
+    .signup-camera video{width:100%;height:100%;object-fit:cover;}
+    #faceStatus{font-size:12px;margin:8px 0 4px;color:var(--muted);}
 
-/* LAYOUT */
-.view{display:none;}
-.view.active{display:block;}
+    /* CAMERA MODAL */
+    #camera-modal{position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,.88);z-index:800;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;}
+    .camera-ring{width:220px;height:220px;border-radius:50%;overflow:hidden;
+    border:4px solid var(--primary);margin:0 auto 20px;
+    box-shadow:0 0 0 8px rgba(79,142,247,.2);}
+    .camera-ring video{width:100%;height:100%;object-fit:cover;}
+    #camera-status{color:#a0cfff;font-size:13px;margin-bottom:16px;text-align:center;}
+    .camera-modal-title{color:white;font-size:15px;margin-bottom:16px;font-weight:600;}
+    .camera-cancel-btn{padding:12px 30px;border:none;border-radius:50px;
+    font-weight:700;font-size:15px;cursor:pointer;background:rgba(255,255,255,.15);color:white;}
 
-.top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-color:white;padding:20px 16px 50px;margin:-16px -16px 0;}
-.top-header h3{font-size:18px;}
-.top-header p{font-size:13px;opacity:.8;margin-top:2px;}
-.header-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
+    /* LAYOUT */
+    .view{display:none;}
+    .view.active{display:block;}
 
-.page-wrap{padding:16px;animation:fadeIn .3s ease;}
+    .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
+    color:white;padding:20px 16px 50px;margin:-16px -16px 0;}
+    .top-header h3{font-size:18px;}
+    .top-header p{font-size:13px;opacity:.8;margin-top:2px;}
+    .header-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
 
-.card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;
-box-shadow:0 4px 20px rgba(0,0,0,.08);}
-.card+.card{margin-top:16px;}
-.card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
+    .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-/* STATUS */
-.status-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;
-border-radius:50px;font-weight:700;font-size:14px;background:#f0f2f5;color:var(--muted);margin-bottom:16px;}
-.status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;
+    box-shadow:0 4px 20px rgba(0,0,0,.08);}
+    .card+.card{margin-top:16px;}
+    .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
 
-/* BUTTONS */
-.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.btn-absen{padding:14px 10px;border:none;border-radius:12px;font-weight:700;font-size:14px;
-cursor:pointer;transition:.2s;display:flex;flex-direction:column;align-items:center;gap:4px;}
-.btn-absen:active{transform:scale(.96);}
-.btn-full{grid-column:span 2;}
-.btn-in {background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;box-shadow:0 4px 15px rgba(46,204,113,.35);}
-.btn-out {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;box-shadow:0 4px 15px rgba(231,76,60,.35);}
-.btn-break{background:linear-gradient(135deg,#e67e22,#f39c12);color:white;box-shadow:0 4px 15px rgba(243,156,18,.35);}
-.btn-blue {background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;}
-.btn-red {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;}
-.btn-green{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;}
-.btn-gray {background:#f0f2f5;color:var(--text);}
-.hidden{display:none!important;}
+    /* STATUS */
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;
+    border-radius:50px;font-weight:700;font-size:14px;background:#f0f2f5;color:var(--muted);margin-bottom:16px;}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
 
-/* STAT */
-.stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
-.stat-box{background:#f8f9ff;border-radius:12px;padding:12px 8px;text-align:center;}
-.stat-box .val{font-size:20px;font-weight:800;color:var(--primary);}
-.stat-box .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+    /* BUTTONS */
+    .btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .btn-absen{padding:14px 10px;border:none;border-radius:12px;font-weight:700;font-size:14px;
+    cursor:pointer;transition:.2s;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .btn-absen:active{transform:scale(.96);}
+    .btn-full{grid-column:span 2;}
+    .btn-in {background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;box-shadow:0 4px 15px rgba(46,204,113,.35);}
+    .btn-out {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;box-shadow:0 4px 15px rgba(231,76,60,.35);}
+    .btn-break{background:linear-gradient(135deg,#e67e22,#f39c12);color:white;box-shadow:0 4px 15px rgba(243,156,18,.35);}
+    .btn-blue {background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;}
+    .btn-red {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;}
+    .btn-green{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;}
+    .btn-gray {background:#f0f2f5;color:var(--text);}
+    .hidden{display:none!important;}
 
-/* HISTORY */
-.history-item{display:flex;justify-content:space-between;align-items:center;
-padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.history-item:last-child{border-bottom:none;}
-.h-date{font-size:13px;font-weight:700;}
-.h-time{font-size:12px;color:var(--muted);margin-top:2px;}
-.h-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
-.h-badge.ok {background:#e8f5e9;color:var(--success);}
-.h-badge.late{background:#fff3e0;color:var(--warning);}
+    /* STAT */
+    .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
+    .stat-box{background:#f8f9ff;border-radius:12px;padding:12px 8px;text-align:center;}
+    .stat-box .val{font-size:20px;font-weight:800;color:var(--primary);}
+    .stat-box .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
 
-/* ADMIN */
-.adm-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
-.adm-stat-box{border-radius:12px;padding:16px;text-align:center;color:white;}
-.adm-stat-box .val{font-size:28px;font-weight:800;}
-.adm-stat-box .lbl{font-size:12px;opacity:.8;}
-.emp-item{display:flex;justify-content:space-between;align-items:center;
-padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.emp-item:last-child{border-bottom:none;}
-.emp-name{font-size:14px;font-weight:700;}
-.emp-time{font-size:12px;color:var(--muted);}
-.emp-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
-.emp-badge.in {background:#e8f5e9;color:var(--success);}
-.emp-badge.break{background:#fff3e0;color:var(--warning);}
-.emp-badge.out {background:#fce4ec;color:var(--danger);}
+    /* HISTORY */
+    .history-item{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .history-item:last-child{border-bottom:none;}
+    .h-date{font-size:13px;font-weight:700;}
+    .h-time{font-size:12px;color:var(--muted);margin-top:2px;}
+    .h-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
+    .h-badge.ok {background:#e8f5e9;color:var(--success);}
+    .h-badge.late{background:#fff3e0;color:var(--warning);}
 
-/* MENU LIST */
-.menu-list{margin-top:4px;}
-.menu-item{display:flex;align-items:center;justify-content:space-between;
-padding:14px 4px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:.15s;}
-.menu-item:last-child{border-bottom:none;}
-.menu-item:active{background:#f8f9ff;border-radius:10px;}
-.menu-left{display:flex;align-items:center;gap:12px;}
-.menu-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
-.menu-title{font-size:14px;font-weight:700;}
-.menu-sub{font-size:11px;color:var(--muted);margin-top:1px;}
-.menu-arrow{color:#ccc;font-size:20px;font-weight:300;}
+    /* ADMIN */
+    .adm-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+    .adm-stat-box{border-radius:12px;padding:16px;text-align:center;color:white;}
+    .adm-stat-box .val{font-size:28px;font-weight:800;}
+    .adm-stat-box .lbl{font-size:12px;opacity:.8;}
+    .emp-item{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .emp-item:last-child{border-bottom:none;}
+    .emp-name{font-size:14px;font-weight:700;}
+    .emp-time{font-size:12px;color:var(--muted);}
+    .emp-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
+    .emp-badge.in {background:#e8f5e9;color:var(--success);}
+    .emp-badge.break{background:#fff3e0;color:var(--warning);}
+    .emp-badge.out {background:#fce4ec;color:var(--danger);}
 
-/* SUB-HEADER */
-.sub-header{display:flex;align-items:center;gap:12px;
-background:linear-gradient(135deg,#1a237e,#4f8ef7);
-color:white;padding:16px;margin:-16px -16px 0;}
-.sub-header h3{font-size:16px;}
-.back-btn{background:rgba(255,255,255,.2);border:none;color:white;
-border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
+    /* MENU LIST */
+    .menu-list{margin-top:4px;}
+    .menu-item{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 4px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:.15s;}
+    .menu-item:last-child{border-bottom:none;}
+    .menu-item:active{background:#f8f9ff;border-radius:10px;}
+    .menu-left{display:flex;align-items:center;gap:12px;}
+    .menu-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+    .menu-title{font-size:14px;font-weight:700;}
+    .menu-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+    .menu-arrow{color:#ccc;font-size:20px;font-weight:300;}
 
-/* ANGGOTA */
-.member-item{display:flex;align-items:center;justify-content:space-between;
-padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.member-item:last-child{border-bottom:none;}
-.avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
-justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;margin-right:10px;}
-.m-name{font-size:14px;font-weight:700;}
-.m-role{font-size:11px;margin-top:1px;}
-.role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
+    /* SUB-HEADER */
+    .sub-header{display:flex;align-items:center;gap:12px;
+    background:linear-gradient(135deg,#1a237e,#4f8ef7);
+    color:white;padding:16px;margin:-16px -16px 0;}
+    .sub-header h3{font-size:16px;}
+    .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
+    border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
 
-/* GROUP */
-.group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;
-box-shadow:0 2px 8px rgba(0,0,0,.06);}
-.group-header{display:flex;align-items:center;justify-content:space-between;
-padding:14px 16px;cursor:pointer;}
-.group-title{font-size:14px;font-weight:700;color:white;}
-.group-level{font-size:11px;color:rgba(255,255,255,.7);}
-.group-body{background:#f8f9ff;padding:12px 16px;display:none;}
-.group-body.open{display:block;}
-.menu-toggle-row{display:flex;align-items:center;justify-content:space-between;
-padding:8px 0;border-bottom:1px solid #eee;}
-.menu-toggle-row:last-child{border-bottom:none;}
-.menu-toggle-label{font-size:13px;color:var(--text);}
-.toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
-.toggle-switch input{opacity:0;width:0;height:0;}
-.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;
-border-radius:24px;cursor:pointer;transition:.3s;}
-.toggle-slider:before{content:"";position:absolute;width:18px;height:18px;
-left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
-input:checked+.toggle-slider{background:var(--primary);}
-input:checked+.toggle-slider:before{transform:translateX(20px);}
+    /* ANGGOTA */
+    .member-item{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .member-item:last-child{border-bottom:none;}
+    .avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;margin-right:10px;}
+    .m-name{font-size:14px;font-weight:700;}
+    .m-role{font-size:11px;margin-top:1px;}
+    .role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
 
-/* AREA */
-.area-item{display:flex;align-items:center;justify-content:space-between;
-padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.area-item:last-child{border-bottom:none;}
-.area-name{font-size:14px;font-weight:700;}
-.area-detail{font-size:11px;color:var(--muted);margin-top:2px;}
-.area-active{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;}
-.area-active.on {background:#e8f5e9;color:var(--success);}
-.area-active.off{background:#fce4ec;color:var(--danger);}
+    /* GROUP */
+    .group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);}
+    .group-header{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;cursor:pointer;}
+    .group-title{font-size:14px;font-weight:700;color:white;}
+    .group-level{font-size:11px;color:rgba(255,255,255,.7);}
+    .group-body{background:#f8f9ff;padding:12px 16px;display:none;}
+    .group-body.open{display:block;}
+    .menu-toggle-row{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 0;border-bottom:1px solid #eee;}
+    .menu-toggle-row:last-child{border-bottom:none;}
+    .menu-toggle-label{font-size:13px;color:var(--text);}
+    .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
+    .toggle-switch input{opacity:0;width:0;height:0;}
+    .toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;
+    border-radius:24px;cursor:pointer;transition:.3s;}
+    .toggle-slider:before{content:"";position:absolute;width:18px;height:18px;
+    left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
+    input:checked+.toggle-slider{background:var(--primary);}
+    input:checked+.toggle-slider:before{transform:translateX(20px);}
 
-/* HOLIDAY */
-.holiday-item{display:flex;align-items:center;justify-content:space-between;
-padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.holiday-item:last-child{border-bottom:none;}
-.h-date-text{font-size:12px;color:var(--primary);font-weight:700;}
-.h-name{font-size:14px;font-weight:600;margin-top:1px;}
-.h-type{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
-.h-type.nasional{background:#fce4ec;color:#c62828;}
-.h-type.cuti {background:#e8f5e9;color:#2e7d32;}
+    /* AREA */
+    .area-item{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .area-item:last-child{border-bottom:none;}
+    .area-name{font-size:14px;font-weight:700;}
+    .area-detail{font-size:11px;color:var(--muted);margin-top:2px;}
+    .area-active{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;}
+    .area-active.on {background:#e8f5e9;color:var(--success);}
+    .area-active.off{background:#fce4ec;color:var(--danger);}
 
-/* AKTIVITAS */
-.act-item{padding:12px 0;border-bottom:1px solid #f0f2f5;}
-.act-item:last-child{border-bottom:none;}
-.act-user{font-size:13px;font-weight:700;}
-.act-desc{font-size:12px;color:var(--muted);margin-top:2px;}
-.act-time{font-size:11px;color:#b2bec3;margin-top:2px;}
+    /* HOLIDAY */
+    .holiday-item{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .holiday-item:last-child{border-bottom:none;}
+    .h-date-text{font-size:12px;color:var(--primary);font-weight:700;}
+    .h-name{font-size:14px;font-weight:600;margin-top:1px;}
+    .h-type{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
+    .h-type.nasional{background:#fce4ec;color:#c62828;}
+    .h-type.cuti {background:#e8f5e9;color:#2e7d32;}
 
-/* TIMESHEET */
-.ts-table{width:100%;border-collapse:collapse;font-size:12px;}
-.ts-table th{background:#f8f9ff;padding:8px 6px;text-align:left;font-weight:700;color:var(--muted);}
-.ts-table td{padding:10px 6px;border-bottom:1px solid #f0f2f5;}
-.ts-table tr:last-child td{border-bottom:none;}
+    /* AKTIVITAS */
+    .act-item{padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .act-item:last-child{border-bottom:none;}
+    .act-user{font-size:13px;font-weight:700;}
+    .act-desc{font-size:12px;color:var(--muted);margin-top:2px;}
+    .act-time{font-size:11px;color:#b2bec3;margin-top:2px;}
 
-/* FORM */
-.form-group{margin-bottom:12px;}
-.form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
-.form-group input,.form-group select{width:100%;padding:11px 12px;
-border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-.form-group input:focus,.form-group select:focus{border-color:var(--primary);}
-.btn-row{display:flex;gap:10px;margin-top:4px;}
-.btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
-textarea{width:100%;border-radius:10px;border:2px solid #e8ecf0;padding:8px;font-family:inherit;}
+    /* TIMESHEET */
+    .ts-table{width:100%;border-collapse:collapse;font-size:12px;}
+    .ts-table th{background:#f8f9ff;padding:8px 6px;text-align:left;font-weight:700;color:var(--muted);}
+    .ts-table td{padding:10px 6px;border-bottom:1px solid #f0f2f5;}
+    .ts-table tr:last-child td{border-bottom:none;}
 
-/* NAV */
-.bottom-nav{position:fixed;bottom:0;width:100%;background:white;
-display:flex;border-top:1px solid #e8ecf0;padding:8px 0;
-box-shadow:0 -4px 20px rgba(0,0,0,.06);}
-.nav-btn{flex:1;background:none;color:var(--muted);font-size:10px;
-display:flex;flex-direction:column;align-items:center;gap:3px;
-border:none;cursor:pointer;padding:4px;transition:.2s;}
-.nav-btn .ni{font-size:20px;}
-.nav-btn.active{color:var(--primary);}
+    /* FORM */
+    .form-group{margin-bottom:12px;}
+    .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
+    .form-group input,.form-group select{width:100%;padding:11px 12px;
+    border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;}
+    .form-group input:focus,.form-group select:focus{border-color:var(--primary);}
+    .btn-row{display:flex;gap:10px;margin-top:4px;}
+    .btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
+    textarea{width:100%;border-radius:10px;border:2px solid #e8ecf0;padding:8px;font-family:inherit;}
 
-/* COPYRIGHT */
-.copyright{text-align:center;padding:24px 0 8px;}
-.copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
-.copyright p:last-child {font-size:11px;color:#b2bec3;margin-top:2px;}
+    /* NAV */
+    .bottom-nav{position:fixed;bottom:0;width:100%;background:white;
+    display:flex;border-top:1px solid #e8ecf0;padding:8px 0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.06);}
+    .nav-btn{flex:1;background:none;color:var(--muted);font-size:10px;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    border:none;cursor:pointer;padding:4px;transition:.2s;}
+    .nav-btn .ni{font-size:20px;}
+    .nav-btn.active{color:var(--primary);}
 
-/* FILTER ROW */
-.filter-row{display:flex;gap:8px;margin-bottom:12px;}
-.filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;
-border-radius:8px;font-size:13px;outline:none;}
+    /* COPYRIGHT */
+    .copyright{text-align:center;padding:24px 0 8px;}
+    .copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
+    .copyright p:last-child {font-size:11px;color:#b2bec3;margin-top:2px;}
 
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
-.scanning{animation:pulse 1s infinite;}
-</style>
+    /* FILTER ROW */
+    .filter-row{display:flex;gap:8px;margin-bottom:12px;}
+    .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;
+    border-radius:8px;font-size:13px;outline:none;}
 
-</head> <body><div id="toast"></div><!-- CAMERA MODAL --><div id="camera-modal" class="hidden"> <p class="camera-modal-title" id="cam-modal-title">Verifikasi Wajah</p> <div class="camera-ring"> <video id="video-modal" autoplay playsinline muted></video> </div> <div id="camera-status" class="scanning">Mendeteksi wajah...</div> <button class="camera-cancel-btn" onclick="cancelVerify()">Batal</button> </div><!-- AUTH --><div id="auth-page"> <div class="auth-card"> <div class="auth-logo">🏢</div> <h2 id="auth-title">Login</h2> <div id="face-signup-section" class="hidden"> <div class="signup-camera-wrap"> <p>Hadapkan wajah ke kamera</p> <div class="signup-camera"><video id="video-signup" autoplay playsinline muted></video></div> </div> <div id="faceStatus">⏳ Memuat model wajah...</div> </div> <input type="text" id="username" placeholder="Username"> <input type="password" id="password" placeholder="Password"> <button onclick="handleAuth()" id="btn-auth-main" style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px; background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;"> Login </button> <p style="font-size:12px;color:#95a5a6;margin-top:14px;" id="auth-toggle-text"> Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a> </p> </div> </div><!-- ============================================================ --><!-- VIEW: HOME --><!-- ============================================================ --><div id="view-home" class="view"> <div class="page-wrap"> <div class="top-header"> <h3>👋 Selamat Datang</h3> <div class="header-user" id="hdr-user"></div> <p id="hdr-date"></p> </div> <div class="card"> <div style="text-align:center;margin-bottom:16px;"> <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div> </div> <div class="btn-grid"> <button id="btn-in" class="btn-absen btn-in btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button> <button id="btn-bs" class="btn-absen btn-break hidden" onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button> <button id="btn-be" class="btn-absen btn-in hidden" onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button> <button id="btn-out" class="btn-absen btn-out hidden" onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button> </div> </div> <div class="card" style="margin-top:16px;"> <h4>📊 Hari Ini</h4> <div class="stat-row"> <div class="stat-box"><div class="val" id="t-in">--:--</div><div class="lbl">Masuk</div></div> <div class="stat-box"><div class="val" id="t-out">--:--</div><div class="lbl">Keluar</div></div> <div class="stat-box"><div class="val" id="t-dur">0j</div><div class="lbl">Durasi</div></div> </div> </div> <div class="copyright"> <p>Copyright &copy; 2026 Sukodo</p> <p>All Rights Reserved.</p> </div> </div> </div><!-- ============================================================ --><!-- VIEW: TIMESHEET (dashboard) --><!-- ============================================================ --><div id="view-timesheet" class="view"> <div class="page-wrap"> <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja</p></div> <div class="card"> <div class="filter-row"> <input type="month" id="ts-month" onchange="loadTimesheet()"> <input type="text" id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()"> </div> <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: CUTI (dashboard) --><!-- ============================================================ --><div id="view-cuti" class="view"> <div class="page-wrap"> <div class="top-header"> <h3>📅 Pengajuan Cuti</h3> <p id="cuti-user-label"></p> </div> <div class="card"> <h4>Ajukan Cuti Baru</h4> <div class="form-group"><label>Tanggal Mulai</label><input type="date" id="cuti-start"></div> <div class="form-group"><label>Tanggal Selesai (opsional)</label><input type="date" id="cuti-end"></div> <div class="form-group"><label>Alasan</label><textarea id="cuti-reason" rows="2"></textarea></div> <button onclick="ajukanCuti()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;">📨 Ajukan Cuti</button> </div> <div class="card" style="margin-top:16px;"> <h4>Riwayat Cuti Saya</h4> <div id="cuti-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: SETTING --><!-- ============================================================ --><div id="view-setting" class="view"> <div class="page-wrap"> <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div> <div class="card"> <h4>🗂️ Menu</h4> <div class="menu-list"> <div class="menu-item" id="menu-profil" onclick="openView('view-profil')"> <div class="menu-left"><div class="menu-icon" style="background:#e3f2fd;">👤</div><div><div class="menu-title">Profil</div><div class="menu-sub">Informasi akun & ganti password</div></div></div><span class="menu-arrow">›</span> </div> <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')"> <div class="menu-left"><div class="menu-icon" style="background:#e8f5e9;">👥</div><div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & jabatan</div></div></div><span class="menu-arrow">›</span> </div> <div class="menu-item" id="menu-area" onclick="openView('view-area')"> <div class="menu-left"><div class="menu-icon" style="background:#e3f2fd;">📍</div><div><div class="menu-title">Area Kantor</div><div class="menu-sub">Kelola lokasi absensi</div></div></div><span class="menu-arrow">›</span> </div> <div class="menu-item" id="menu-libur" onclick="openView('view-libur')"> <div class="menu-left"><div class="menu-icon" style="background:#fce4ec;">📅</div><div><div class="menu-title">Hari Libur & Cuti</div><div class="menu-sub">Jadwal libur & cuti</div></div></div><span class="menu-arrow">›</span> </div> <div class="menu-item" id="menu-aktivitas" onclick="openView('view-aktivitas')"> <div class="menu-left"><div class="menu-icon" style="background:#f3e5f5;">📌</div><div><div class="menu-title">Aktivitas</div><div class="menu-sub">Log aktivitas terkini</div></div></div><span class="menu-arrow">›</span> </div> <div class="menu-item" id="menu-rekap" onclick="openView('view-rekap')"> <div class="menu-left"><div class="menu-icon" style="background:#fff3e0;">📋</div><div><div class="menu-title">Rekap</div><div class="menu-sub">Ringkasan absensi & riwayat</div></div></div><span class="menu-arrow">›</span> </div> </div> </div> <div class="card" style="margin-top:16px;"> <h4>👤 Akun</h4> <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;">🚪 Logout</button> </div> </div> </div><!-- ============================================================ --><!-- VIEW: REKAP (dipanggil dari setting) --><!-- ============================================================ --><div id="view-rekap" class="view"> <div class="page-wrap"> <div class="sub-header"> <button class="back-btn" onclick="openView('view-setting')">‹</button> <h3>📋 Rekap Absensi</h3> </div> <div style="margin-top:46px;"> <div class="card"> <div class="stat-row"> <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div> <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div> <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div> </div> </div> <div class="card" style="margin-top:16px;"> <h4>📅 Riwayat</h4> <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div> </div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: ANGGOTA (submenu) --><!-- ============================================================ --><div id="view-anggota" class="view"> <div class="page-wrap"> <div class="sub-header"> <button class="back-btn" onclick="openView('view-setting')">‹</button> <h3>👥 Anggota</h3> </div> <div style="margin-top:46px;"> <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;"> <button id="tab-daftar" onclick="switchAnggotaTab('daftar')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;">👤 Daftar Anggota</button> <button id="tab-group" onclick="switchAnggotaTab('group')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;">🏷️ Group</button> </div> <div id="panel-daftar"> <div class="card" style="margin-top:0;"><h4>Daftar Karyawan</h4><div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div> </div> <div id="panel-group" class="hidden"> <div class="card" style="margin-top:0;"><h4>Pengaturan Group & Akses Menu</h4><p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.</p><div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div> </div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: AREA --><!-- ============================================================ --><div id="view-area" class="view"> <div class="page-wrap"> <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📍 Area Kantor</h3></div> <div style="margin-top:46px;"> <div class="card"><h4>Tambah Area Baru</h4> <div class="form-group"><label>Nama Area</label><input type="text" id="area-name" placeholder="contoh: Kantor Pusat"></div> <div class="form-group"><label>Latitude</label><input type="number" id="area-lat" step="0.0000001"></div> <div class="form-group"><label>Longitude</label><input type="number" id="area-lng" step="0.0000001"></div> <div class="form-group"><label>Radius (meter)</label><input type="number" id="area-radius" value="100"></div> <div class="btn-row"><button onclick="getMyLoc()" class="btn-gray">📍 Lokasi Saya</button><button onclick="saveArea()" class="btn-green">➕ Tambah Area</button></div> </div> <div class="card"><h4>Daftar Area</h4><div id="area-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p></div></div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: HARI LIBUR & CUTI --><!-- ============================================================ --><div id="view-libur" class="view"> <div class="page-wrap"> <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📅 Hari Libur & Cuti</h3></div> <div style="margin-top:46px;"> <div class="card"><h4>Tambah Libur / Cuti</h4> <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div> <div class="form-group"><label>Nama</label><input type="text" id="libur-name" placeholder="contoh: Lebaran"></div> <div class="form-group"><label>Jenis</label><select id="libur-type"><option value="nasional">🔴 Hari Libur Nasional</option><option value="cuti">🟢 Cuti</option></select></div> <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;">➕ Tambah</button> </div> <div class="card"><h4>Daftar Libur & Cuti</h4><div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div></div> </div> </div> </div><!-- ============================================================ --><!-- VIEW: AKTIVITAS --><!-- ============================================================ --><div id="view-aktivitas" class="view"> <div class="page-wrap"> <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📌 Aktivitas</h3></div> <div style="margin-top:46px;"><div class="card"><h4>Log Aktivitas Terkini</h4><div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div></div> </div> </div><!-- ============================================================ --><!-- VIEW: PROFIL (sederhana) --><!-- ============================================================ --><div id="view-profil" class="view"> <div class="page-wrap"> <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>👤 Profil Saya</h3></div> <div style="margin-top:46px;"> <div class="card"><h4>Informasi Akun</h4><p><strong>Username:</strong> <span id="profil-username"></span></p><p><strong>Jabatan:</strong> <span id="profil-group"></span></p><hr style="margin:16px 0;"><h4>Ganti Password</h4><div class="form-group"><label>Password Baru</label><input type="password" id="new-password" placeholder="Masukkan password baru"></div><button onclick="gantiPassword()" class="btn-blue" style="width:100%;padding:12px;">Simpan Password</button></div> </div> </div> </div><!-- BOTTOM NAV --><nav id="main-nav" class="bottom-nav hidden"> <button onclick="navTo('home')" class="nav-btn active" id="nav-home"> <span class="ni">🏠</span>Beranda</button> <button onclick="navTo('timesheet')" class="nav-btn" id="nav-timesheet"><span class="ni">🕐</span>Timesheet</button> <button onclick="navTo('cuti')" class="nav-btn" id="nav-cuti"> <span class="ni">📅</span>Cuti</button> <button onclick="navTo('setting')" class="nav-btn" id="nav-setting"> <span class="ni">⚙️</span>Setting</button> </nav>
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+    .scanning{animation:pulse 1s infinite;}
+  </style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- CAMERA MODAL -->
+<div id="camera-modal" class="hidden">
+  <p class="camera-modal-title" id="cam-modal-title">Verifikasi Wajah</p>
+  <div class="camera-ring">
+    <video id="video-modal" autoplay playsinline muted></video>
+  </div>
+  <div id="camera-status" class="scanning">Mendeteksi wajah...</div>
+  <button class="camera-cancel-btn" onclick="cancelVerify()">Batal</button>
+</div>
+
+<!-- AUTH PAGE -->
+<div id="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">🏢</div>
+    <h2 id="auth-title">Login</h2>
+    <div id="face-signup-section" class="hidden">
+      <div class="signup-camera-wrap">
+        <p>Hadapkan wajah ke kamera</p>
+        <div class="signup-camera"><video id="video-signup" autoplay playsinline muted></video></div>
+      </div>
+      <div id="faceStatus">⏳ Memuat model wajah...</div>
+    </div>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <!-- Tambahan field untuk sign up (nama lengkap, agama) -->
+    <div id="signup-fields" class="hidden">
+      <input type="text" id="fullNameSignup" placeholder="Nama Lengkap">
+      <select id="agamaSignup">
+        <option value="">Agama</option>
+        <option>Islam</option><option>Kristen</option><option>Katolik</option>
+        <option>Hindu</option><option>Buddha</option><option>Konghucu</option>
+      </select>
+    </div>
+    <button onclick="handleAuth()" id="btn-auth-main"
+      style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;
+      background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;">
+      Login
+    </button>
+    <p style="font-size:12px;color:#95a5a6;margin-top:14px;" id="auth-toggle-text">
+      Belum punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Sign Up</a>
+    </p>
+  </div>
+</div>
+
+<!-- VIEW: HOME -->
+<div id="view-home" class="view">
+  <div class="page-wrap">
+    <div class="top-header">
+      <h3>👋 Selamat Datang</h3>
+      <div class="header-user" id="hdr-user"></div>
+      <p id="hdr-date"></p>
+    </div>
+    <div class="card">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
+      </div>
+      <div class="btn-grid">
+        <button id="btn-in" class="btn-absen btn-in btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
+        <button id="btn-bs" class="btn-absen btn-break hidden" onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
+        <button id="btn-be" class="btn-absen btn-in hidden" onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button>
+        <button id="btn-out" class="btn-absen btn-out hidden" onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h4>📊 Hari Ini</h4>
+      <div class="stat-row">
+        <div class="stat-box"><div class="val" id="t-in">--:--</div><div class="lbl">Masuk</div></div>
+        <div class="stat-box"><div class="val" id="t-out">--:--</div><div class="lbl">Keluar</div></div>
+        <div class="stat-box"><div class="val" id="t-dur">0j</div><div class="lbl">Durasi</div></div>
+      </div>
+    </div>
+    <div class="copyright"><p>Copyright &copy; 2026 Sukodo</p><p>All Rights Reserved.</p></div>
+  </div>
+</div>
+
+<!-- VIEW: TIMESHEET (dashboard) -->
+<div id="view-timesheet" class="view">
+  <div class="page-wrap">
+    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja</p></div>
+    <div class="card">
+      <div class="filter-row">
+        <input type="month" id="ts-month" onchange="loadTimesheet()">
+        <input type="text" id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
+      </div>
+      <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: CUTI (dashboard) -->
+<div id="view-cuti" class="view">
+  <div class="page-wrap">
+    <div class="top-header"><h3>📅 Pengajuan Cuti</h3><p id="cuti-user-label"></p></div>
+    <div class="card">
+      <h4>Ajukan Cuti Baru</h4>
+      <div class="form-group"><label>Tanggal Mulai</label><input type="date" id="cuti-start"></div>
+      <div class="form-group"><label>Tanggal Selesai (opsional)</label><input type="date" id="cuti-end"></div>
+      <div class="form-group"><label>Alasan</label><textarea id="cuti-reason" rows="2"></textarea></div>
+      <button onclick="ajukanCuti()" class="btn-green" style="width:100%;padding:12px;">📨 Ajukan Cuti</button>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h4>Riwayat Cuti Saya</h4>
+      <div id="cuti-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: SETTING -->
+<div id="view-setting" class="view">
+  <div class="page-wrap">
+    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div>
+    <div class="card">
+      <h4>🗂️ Menu</h4>
+      <div class="menu-list">
+        <div class="menu-item" id="menu-profil" onclick="openView('view-profil')">
+          <div class="menu-left"><div class="menu-icon" style="background:#e3f2fd;">👤</div><div><div class="menu-title">Profil</div><div class="menu-sub">Informasi akun & data pribadi</div></div></div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
+          <div class="menu-left"><div class="menu-icon" style="background:#e8f5e9;">👥</div><div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & jabatan</div></div></div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" id="menu-area" onclick="openView('view-area')">
+          <div class="menu-left"><div class="menu-icon" style="background:#e3f2fd;">📍</div><div><div class="menu-title">Area Kantor</div><div class="menu-sub">Kelola lokasi absensi</div></div></div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" id="menu-libur" onclick="openView('view-libur')">
+          <div class="menu-left"><div class="menu-icon" style="background:#fce4ec;">📅</div><div><div class="menu-title">Hari Libur & Cuti</div><div class="menu-sub">Jadwal libur & cuti</div></div></div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" id="menu-aktivitas" onclick="openView('view-aktivitas')">
+          <div class="menu-left"><div class="menu-icon" style="background:#f3e5f5;">📌</div><div><div class="menu-title">Aktivitas</div><div class="menu-sub">Log aktivitas terkini</div></div></div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" id="menu-rekap" onclick="openView('view-rekap')">
+          <div class="menu-left"><div class="menu-icon" style="background:#fff3e0;">📋</div><div><div class="menu-title">Rekap</div><div class="menu-sub">Ringkasan absensi & riwayat</div></div></div><span class="menu-arrow">›</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h4>👤 Akun</h4>
+      <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;">🚪 Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: REKAP (dipanggil dari setting) -->
+<div id="view-rekap" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📋 Rekap Absensi</h3></div>
+    <div style="margin-top:46px;">
+      <div class="card">
+        <div class="stat-row"><div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
+        <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
+        <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div></div>
+      </div>
+      <div class="card"><h4>📅 Riwayat</h4><div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: ANGGOTA -->
+<div id="view-anggota" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>👥 Anggota</h3></div>
+    <div style="margin-top:46px;">
+      <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
+        <button id="tab-daftar" onclick="switchAnggotaTab('daftar')" style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;">👤 Daftar Anggota</button>
+        <button id="tab-group" onclick="switchAnggotaTab('group')" style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;">🏷️ Group</button>
+      </div>
+      <div id="panel-daftar"><div class="card" style="margin-top:0;"><h4>Daftar Karyawan</h4><div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div></div>
+      <div id="panel-group" class="hidden"><div class="card" style="margin-top:0;"><h4>Pengaturan Group & Akses Menu</h4><p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.</p><div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: AREA -->
+<div id="view-area" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📍 Area Kantor</h3></div>
+    <div style="margin-top:46px;">
+      <div class="card"><h4>Tambah Area Baru</h4>
+        <div class="form-group"><label>Nama Area</label><input type="text" id="area-name" placeholder="contoh: Kantor Pusat"></div>
+        <div class="form-group"><label>Latitude</label><input type="number" id="area-lat" step="0.0000001"></div>
+        <div class="form-group"><label>Longitude</label><input type="number" id="area-lng" step="0.0000001"></div>
+        <div class="form-group"><label>Radius (meter)</label><input type="number" id="area-radius" value="100"></div>
+        <div class="btn-row"><button onclick="getMyLoc()" class="btn-gray">📍 Lokasi Saya</button><button onclick="saveArea()" class="btn-green">➕ Tambah Area</button></div>
+      </div>
+      <div class="card"><h4>Daftar Area</h4><div id="area-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: HARI LIBUR & CUTI -->
+<div id="view-libur" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📅 Hari Libur & Cuti</h3></div>
+    <div style="margin-top:46px;">
+      <div class="card"><h4>Tambah Libur / Cuti</h4>
+        <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div>
+        <div class="form-group"><label>Nama</label><input type="text" id="libur-name" placeholder="contoh: Lebaran"></div>
+        <div class="form-group"><label>Jenis</label><select id="libur-type"><option value="nasional">🔴 Hari Libur Nasional</option><option value="cuti">🟢 Cuti</option></select></div>
+        <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;">➕ Tambah</button>
+      </div>
+      <div class="card"><h4>Daftar Libur & Cuti</h4><div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: AKTIVITAS -->
+<div id="view-aktivitas" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📌 Aktivitas</h3></div>
+    <div style="margin-top:46px;"><div class="card"><h4>Log Aktivitas Terkini</h4><div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div></div>
+  </div>
+</div>
+
+<!-- VIEW: PROFIL LENGKAP -->
+<div id="view-profil" class="view">
+  <div class="page-wrap">
+    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>👤 Profil Saya</h3></div>
+    <div style="margin-top:46px;">
+      <div class="card">
+        <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:20px;">
+          <img id="foto-profil-img" src="" alt="Foto Profil" style="width:100px; height:100px; border-radius:50%; object-fit:cover; background:#ddd;">
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button onclick="ambilFotoProfil()" class="btn-blue" style="padding:6px 12px;">📷 Kamera</button>
+            <button onclick="uploadFotoProfil()" class="btn-blue" style="padding:6px 12px;">🖼 Gallery</button>
+            <button onclick="simpanFotoProfil()" class="btn-green" style="padding:6px 12px;">💾 Simpan</button>
+          </div>
+        </div>
+        <div class="form-group"><label>Nama Lengkap</label><input type="text" id="fullName" placeholder="Nama lengkap"></div>
+        <div class="form-group"><label>Agama</label><select id="agama"><option value="">Pilih Agama</option><option>Islam</option><option>Kristen</option><option>Katolik</option><option>Hindu</option><option>Buddha</option><option>Konghucu</option></select></div>
+        <div class="form-group"><label>Jabatan</label><input type="text" id="jabatan" readonly disabled></div>
+        <div class="form-group"><label>Peran</label><input type="text" id="peran" readonly disabled></div>
+        <div class="form-group"><label>Group</label><input type="text" id="groupProfil" readonly disabled></div>
+        <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="lingkupKerja" placeholder="Lingkup kerja (diisi Owner)"></div>
+        <div id="div-gaji" class="form-group hidden"><label>Nominal Gaji</label><input type="number" id="nominalGaji" placeholder="0"></div>
+        <button onclick="simpanProfil()" class="btn-green" style="width:100%; padding:12px;">💾 Simpan Perubahan</button>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h4>🔐 Login & Keamanan</h4>
+        <div class="form-group"><label>Username</label><input type="text" id="profilUsername" readonly disabled></div>
+        <div class="form-group"><label>Password Baru</label><input type="password" id="new-password" placeholder="Isi password baru"></div>
+        <button onclick="gantiPassword()" class="btn-blue" style="width:100%; margin-bottom:10px;">🔑 Ganti Password</button>
+        <div class="form-group"><label>Photo Wajah (Face Recognition)</label></div>
+        <button onclick="perbaruiWajah()" class="btn-blue" style="width:100%;">📸 Perbarui Data Wajah</button>
+        <hr style="margin:20px 0;">
+        <button id="hapusAkunBtn" onclick="hapusAkun()" class="btn-red" style="width:100%; background:#c0392b; color:white;">⚠️ Hapus Akun (Permanen)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAVIGATION -->
+<nav id="main-nav" class="bottom-nav hidden">
+  <button onclick="navTo('home')" class="nav-btn active" id="nav-home"><span class="ni">🏠</span>Beranda</button>
+  <button onclick="navTo('timesheet')" class="nav-btn" id="nav-timesheet"><span class="ni">🕐</span>Timesheet</button>
+  <button onclick="navTo('cuti')" class="nav-btn" id="nav-cuti"><span class="ni">📅</span>Cuti</button>
+  <button onclick="navTo('setting')" class="nav-btn" id="nav-setting"><span class="ni">⚙️</span>Setting</button>
+</nav>
+
 <canvas id="canvas" style="display:none;"></canvas>
-
-<script src="script.js"></script></body> </html>
+<script src="script.js"></script>
+</body>
+</html>
