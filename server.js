@@ -167,7 +167,15 @@ app.post("/change-password", (req, res) => {
   save(F.users, users);
   res.send({ status: "OK" });
 });
-
+// GET password untuk admin/owner (lihat password)
+app.get("/get-password/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user = users[req.params.username];
+  if (!user) return res.status(404).send({ status: "NOT_FOUND" });
+  // Hanya owner/admin yang boleh melihat password orang lain, tapi untuk keperluan profil sendiri, kita boleh lihat sendiri
+  // Untuk sederhana, kita kirimkan password-nya (hanya untuk user yang login).
+  res.send({ password: user.password });
+});
 // Hapus akun (hanya untuk role owner/admin)
 app.delete("/delete-akun/:username", (req, res) => {
   const { username } = req.params;

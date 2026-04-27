@@ -853,7 +853,7 @@ async function hapusCuti(id) {
 }
 
 // ============================================================
-// PROFIL LENGKAP
+// LOAD PROFIL LENGKAP
 // ============================================================
 async function loadProfil() {
   const user = localStorage.getItem("user");
@@ -861,13 +861,43 @@ async function loadProfil() {
   try {
     const res = await fetch(`/profil/${user}`);
     const data = await res.json();
-    document.getElementById("fullName").value = data.fullName || "";
-    document.getElementById("agama").value = data.agama || "";
-    document.getElementById("jabatan").value = data.jabatan || "";
-    document.getElementById("peran").value = data.peran || "";
-    document.getElementById("groupProfil").value = data.groupName || "";
-    document.getElementById("lingkupKerja").value = data.lingkupKerja || "";
-    document.getElementById("profilUsername").value = data.username;
+    
+    // Isi field profil
+    const fullNameField = document.getElementById("fullName");
+    const agamaField = document.getElementById("agama");
+    const jabatanField = document.getElementById("jabatan");
+    const peranField = document.getElementById("peran");
+    const groupField = document.getElementById("groupProfil");
+    const lingkupField = document.getElementById("lingkupKerja");
+    const usernameField = document.getElementById("profilUsername");
+    
+    if (fullNameField) fullNameField.value = data.fullName || "";
+    if (agamaField) agamaField.value = data.agama || "";
+    if (jabatanField) jabatanField.value = data.jabatan || "";
+    if (peranField) peranField.value = data.peran || "";
+    if (groupField) groupField.value = data.groupName || "";
+    if (lingkupField) lingkupField.value = data.lingkupKerja || "";
+    if (usernameField) usernameField.value = data.username;
+    
+    // Password: ambil dari server jika owner/admin
+    const inputPass = document.getElementById("lihatPassword");
+    if (inputPass) {
+      if (userGroup === "owner" || userGroup === "admin") {
+        try {
+          const pRes = await fetch(`/get-password/${user}`);
+          const pData = await pRes.json();
+          inputPass.value = pData.password || "********";
+        } catch {
+          inputPass.value = "********";
+        }
+        inputPass.disabled = false;
+      } else {
+        inputPass.value = "********";
+        inputPass.disabled = true;
+      }
+    }
+    
+    // Nominal Gaji (hanya owner/admin)
     const gajiField = document.getElementById("nominalGaji");
     const gajiDiv = document.getElementById("div-gaji");
     if (userGroup === "owner" || userGroup === "admin") {
@@ -876,15 +906,18 @@ async function loadProfil() {
     } else {
       if (gajiDiv) gajiDiv.classList.add("hidden");
     }
+    
+    // Foto Profil
+    const fotoImg = document.getElementById("foto-profil-img");
     if (data.photoProfil) {
-      document.getElementById("foto-profil-img").src = data.photoProfil;
+      fotoImg.src = data.photoProfil;
       fotoProfilBase64 = data.photoProfil;
     } else {
-      document.getElementById("foto-profil-img").src = "https://via.placeholder.com/100?text=No+Photo";
+      fotoImg.src = "https://via.placeholder.com/100?text=No+Photo";
       fotoProfilBase64 = "";
     }
   } catch (err) {
-    console.error(err);
+    console.error("Load profil error:", err);
   }
 }
 
@@ -938,6 +971,9 @@ function simpanFotoProfil() {
   simpanProfil();
 }
 
+// ============================================================
+// PERBARUI DATA WAJAH
+// ============================================================
 async function perbaruiWajah() {
   const user = localStorage.getItem("user");
   if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
@@ -959,25 +995,16 @@ async function perbaruiWajah() {
   } catch { showToast("❌ Error", "error"); }
 }
 
-async function gantiPassword() {
-  const newPass = document.getElementById("new-password").value.trim();
-  if (!newPass) return showToast("⚠️ Masukkan password baru", "warning");
-  const user = localStorage.getItem("user");
-  try {
-    const r = await fetch("/change-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: user, newPassword: newPass })
-    });
-    const d = await r.json();
-    if (d.status === "OK") {
-      showToast("✅ Password berhasil diubah");
-      document.getElementById("new-password").value = "";
-    } else {
-      showToast("❌ Gagal mengubah password", "error");
-    }
-  } catch {
-    showToast("❌ Gagal terhubung", "error");
+// ============================================================
+// TOGGLE LIHAT PASSWORD (icon mata)
+// ============================================================
+function toggleLihatPassword() {
+  const input = document.getElementById("lihatPassword");
+  if (!input) return;
+  if (input.type === "password") {
+    input.type = "text";
+  } else {
+    input.type = "password";
   }
 }
 
@@ -1004,6 +1031,93 @@ async function hapusAkun() {
 // ============================================================
 // INIT
 // ============================================================
+// ============================================================
+// PROFIL TAB SWITCH
+// ============================================================
+function switchProfilTab(tab) {
+  const isData = tab === "data";
+  const panelData = document.getElementById("panel-profil-data");
+  const panelKeamanan = document.getElementById("panel-keamanan");
+  const tabData = document.getElementById("tab-profil-data");
+  const tabKeamanan = document.getElementById("tab-keamanan");
+  
+  if (!panelData || !panelKeamanan) return;
+  
+  if (isData) {
+    panelData.classList.remove("hidden");
+    panelKeamanan.classList.add("hidden");
+    if (tabData) {
+      tabData.style.background = "var(--primary)";
+      tabData.style.color = "white";
+    }
+    if (tabKeamanan) {
+      tabKeamanan.style.background = "white";
+      tabKeamanan.style.color = "var(--muted)";
+    }
+  } else {
+    panelData.classList.add("hidden");
+    panelKeamanan.classList.remove("hidden");
+    if (tabData) {
+      tabData.style.background = "white";
+      tabData.style.color = "var(--muted)";
+    }
+    if (tabKeamanan) {
+      tabKeamanan.style.background = "var(--primary)";
+      tabKeamanan.style.color = "white";
+    }
+  }
+}
+
+// ============================================================
+// EDIT PHOTO PROFIL (popup pilih kamera/gallery)
+// ============================================================
+function editPhotoProfil() {
+  // Buat popup sederhana dengan confirm-style
+  const pilih = confirm("Pilih sumber foto:\nOK = Kamera\nCancel = Gallery");
+  if (pilih) {
+    ambilFotoProfil();
+  } else {
+    uploadFotoProfil();
+  }
+}
+
+// ============================================================
+// PERBARUI WAJAH (popup kamera)
+// ============================================================
+async function perbaruiWajah() {
+  const user = localStorage.getItem("user");
+  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
+  
+  // Tampilkan modal kamera (tanpa verifikasi, hanya mengambil descriptor)
+  showCamModal("Perbarui Data Wajah", false);
+  await new Promise(r => setTimeout(r, 1500));
+  const video = document.getElementById("video-modal");
+  const desc = await getFaceDescriptor(video);
+  hideCamModal();
+  if (!desc) return showToast("❌ Wajah tidak terdeteksi", "error");
+  try {
+    const res = await fetch("/update-wajah", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, faceDescriptor: Array.from(desc) })
+    });
+    const d = await res.json();
+    if (d.status === "OK") showToast("✅ Data wajah diperbarui");
+    else showToast("❌ Gagal update", "error");
+  } catch { showToast("❌ Error", "error"); }
+}
+
+// ============================================================
+// TOGGLE LIHAT PASSWORD
+// ============================================================
+function toggleLihatPassword() {
+  const input = document.getElementById("lihatPassword");
+  if (input.type === "password") {
+    input.type = "text";
+  } else {
+    input.type = "password";
+  }
+}
 window.onload = async function () {
   await loadFaceModels();
   checkLoginStatus();

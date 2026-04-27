@@ -266,12 +266,12 @@
       </div>
       <div id="faceStatus">⏳ Memuat model wajah...</div>
     </div>
-    <input type="text" id="username" placeholder="Username">
-    <input type="password" id="password" placeholder="Password">
-    <!-- Tambahan field untuk sign up (nama lengkap, agama) -->
-    <div id="signup-fields" class="hidden">
-      <input type="text" id="fullNameSignup" placeholder="Nama Lengkap">
-      <select id="agamaSignup">
+    <input type="text" id="username" placeholder="Username" style="width:100%; margin-bottom:8px;">
+    <input type="password" id="password" placeholder="Password" style="width:100%; margin-bottom:8px;">
+    <!-- Sign up additional fields (tata letak diperbaiki) -->
+    <div id="signup-fields" class="hidden" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+      <input type="text" id="fullNameSignup" placeholder="Nama Lengkap" style="width:100%;">
+      <select id="agamaSignup" style="width:100%; padding:11px 12px; border:2px solid #e8ecf0; border-radius:10px; font-size:14px;">
         <option value="">Agama</option>
         <option>Islam</option><option>Kristen</option><option>Katolik</option>
         <option>Hindu</option><option>Buddha</option><option>Konghucu</option>
@@ -456,38 +456,55 @@
   </div>
 </div>
 
-<!-- VIEW: PROFIL LENGKAP -->
+<!-- VIEW: PROFIL LENGKAP dengan TAB (Profil | Login & Keamanan) -->
 <div id="view-profil" class="view">
   <div class="page-wrap">
-    <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>👤 Profil Saya</h3></div>
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>👤 Profil Saya</h3>
+    </div>
     <div style="margin-top:46px;">
-      <div class="card">
-        <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:20px;">
-          <img id="foto-profil-img" src="" alt="Foto Profil" style="width:100px; height:100px; border-radius:50%; object-fit:cover; background:#ddd;">
-          <div style="display:flex; gap:8px; margin-top:10px;">
-            <button onclick="ambilFotoProfil()" class="btn-blue" style="padding:6px 12px;">📷 Kamera</button>
-            <button onclick="uploadFotoProfil()" class="btn-blue" style="padding:6px 12px;">🖼 Gallery</button>
-            <button onclick="simpanFotoProfil()" class="btn-green" style="padding:6px 12px;">💾 Simpan</button>
-          </div>
-        </div>
-        <div class="form-group"><label>Nama Lengkap</label><input type="text" id="fullName" placeholder="Nama lengkap"></div>
-        <div class="form-group"><label>Agama</label><select id="agama"><option value="">Pilih Agama</option><option>Islam</option><option>Kristen</option><option>Katolik</option><option>Hindu</option><option>Buddha</option><option>Konghucu</option></select></div>
-        <div class="form-group"><label>Jabatan</label><input type="text" id="jabatan" readonly disabled></div>
-        <div class="form-group"><label>Peran</label><input type="text" id="peran" readonly disabled></div>
-        <div class="form-group"><label>Group</label><input type="text" id="groupProfil" readonly disabled></div>
-        <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="lingkupKerja" placeholder="Lingkup kerja (diisi Owner)"></div>
-        <div id="div-gaji" class="form-group hidden"><label>Nominal Gaji</label><input type="number" id="nominalGaji" placeholder="0"></div>
-        <button onclick="simpanProfil()" class="btn-green" style="width:100%; padding:12px;">💾 Simpan Perubahan</button>
+      <!-- Tab Navigation -->
+      <div style="display:flex; gap:0; background:white; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:16px;">
+        <button id="tab-profil-data" onclick="switchProfilTab('data')" style="flex:1; padding:13px; border:none; background:var(--primary); color:white; font-weight:700;">👤 Profil</button>
+        <button id="tab-keamanan" onclick="switchProfilTab('keamanan')" style="flex:1; padding:13px; border:none; background:white; color:var(--muted); font-weight:700;">🔐 Login & Keamanan</button>
       </div>
-      <div class="card" style="margin-top:16px;">
-        <h4>🔐 Login & Keamanan</h4>
-        <div class="form-group"><label>Username</label><input type="text" id="profilUsername" readonly disabled></div>
-        <div class="form-group"><label>Password Baru</label><input type="password" id="new-password" placeholder="Isi password baru"></div>
-        <button onclick="gantiPassword()" class="btn-blue" style="width:100%; margin-bottom:10px;">🔑 Ganti Password</button>
-        <div class="form-group"><label>Photo Wajah (Face Recognition)</label></div>
-        <button onclick="perbaruiWajah()" class="btn-blue" style="width:100%;">📸 Perbarui Data Wajah</button>
-        <hr style="margin:20px 0;">
-        <button id="hapusAkunBtn" onclick="hapusAkun()" class="btn-red" style="width:100%; background:#c0392b; color:white;">⚠️ Hapus Akun (Permanen)</button>
+
+      <!-- Tab Panel: Profil Data -->
+      <div id="panel-profil-data">
+        <div class="card">
+          <!-- Photo Profil dengan satu tombol Edit -->
+          <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:20px;">
+            <img id="foto-profil-img" src="" alt="Foto Profil" style="width:100px; height:100px; border-radius:50%; object-fit:cover; background:#ddd;">
+            <button onclick="editPhotoProfil()" class="btn-gray" style="margin-top:10px; padding:6px 16px; border-radius:20px;">✏️ Edit Photo</button>
+          </div>
+          <div class="form-group"><label>Nama Lengkap</label><input type="text" id="fullName" placeholder="Nama lengkap"></div>
+          <div class="form-group"><label>Agama</label><input type="text" id="agama" readonly disabled style="background:#f5f5f5;"></div>
+          <div class="form-group"><label>Jabatan</label><input type="text" id="jabatan" readonly disabled style="background:#f5f5f5;"></div>
+          <div class="form-group"><label>Peran</label><input type="text" id="peran" readonly disabled style="background:#f5f5f5;"></div>
+          <div class="form-group"><label>Group</label><input type="text" id="groupProfil" readonly disabled style="background:#f5f5f5;"></div>
+          <div class="form-group"><label>Lingkup Kerja</label><input type="text" id="lingkupKerja" readonly disabled style="background:#f5f5f5;"></div>
+          <div id="div-gaji" class="form-group hidden"><label>Nominal Gaji</label><input type="number" id="nominalGaji" readonly disabled style="background:#f5f5f5;"></div>
+          <button onclick="simpanProfil()" class="btn-green" style="width:100%; padding:12px;">💾 Simpan Perubahan</button>
+        </div>
+      </div>
+
+      <!-- Tab Panel: Login & Keamanan -->
+      <div id="panel-keamanan" class="hidden">
+        <div class="card">
+          <div class="form-group"><label>Username</label><input type="text" id="profilUsername" readonly disabled style="background:#f5f5f5;"></div>
+          <div class="form-group">
+            <label>Password</label>
+            <div style="position:relative;">
+              <input type="password" id="lihatPassword" value="" placeholder="••••••••" readonly disabled style="background:#f5f5f5; padding-right:40px;">
+              <span onclick="toggleLihatPassword()" style="position:absolute; right:12px; top:12px; cursor:pointer; font-size:18px;">👁️</span>
+            </div>
+          </div>
+          <div class="form-group"><label>Photo Wajah (Face Recognition)</label></div>
+          <button onclick="perbaruiWajah()" class="btn-blue" style="padding:8px 16px; width:auto; border-radius:20px;">📸 Perbarui Data Wajah</button>
+          <hr style="margin:20px 0;">
+          <button id="hapusAkunBtn" onclick="hapusAkun()" class="btn-red" style="padding:8px 16px; width:auto; background:#c0392b; color:white; border-radius:20px;">⚠️ Hapus Akun</button>
+        </div>
       </div>
     </div>
   </div>
@@ -503,5 +520,15 @@
 
 <canvas id="canvas" style="display:none;"></canvas>
 <script src="script.js"></script>
+<script>
+  function toggleLihatPassword() {
+    const input = document.getElementById("lihatPassword");
+    if (input.type === "password") {
+      input.type = "text";
+    } else {
+      input.type = "password";
+    }
+  }
+</script>
 </body>
 </html>
