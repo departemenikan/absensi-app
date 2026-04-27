@@ -500,8 +500,13 @@
               <span onclick="toggleLihatPassword()" style="position:absolute; right:12px; top:12px; cursor:pointer; font-size:18px;">👁️</span>
             </div>
           </div>
-          <div class="form-group"><label>Photo Wajah (Face Recognition)</label></div>
-          <button onclick="perbaruiWajah()" class="btn-blue" style="padding:8px 16px; width:auto; border-radius:20px;">📸 Perbarui Data Wajah</button>
+          <div class="form-group">
+  <label>Photo Wajah (Face Recognition)</label>
+  <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+    <img id="face-photo-img" src="" alt="Foto Wajah" style="width:60px; height:60px; border-radius:50%; object-fit:cover; background:#ddd;">
+    <button onclick="perbaruiWajah()" class="btn-blue" style="padding:8px 16px; border-radius:20px;">📸 Perbarui Data Wajah</button>
+  </div>
+</div>
           <hr style="margin:20px 0;">
           <button id="hapusAkunBtn" onclick="hapusAkun()" class="btn-red" style="padding:8px 16px; width:auto; background:#c0392b; color:white; border-radius:20px;">⚠️ Hapus Akun</button>
         </div>

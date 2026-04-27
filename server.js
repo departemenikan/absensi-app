@@ -64,7 +64,7 @@ initGroups();
 // AUTH & PROFIL (LENGKAP)
 // ========================
 app.post("/signup", (req, res) => {
-  const { username, password, faceDescriptor, fullName, agama } = req.body;
+  const { username, password, faceDescriptor, fullName, agama, facePhoto } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
@@ -72,6 +72,7 @@ app.post("/signup", (req, res) => {
   users[username] = {
     password,
     faceDescriptor: faceDescriptor || [],
+    facePhoto: facePhoto || "",
     group: isFirst ? "owner" : "anggota",
     createdAt: new Date().toISOString(),
     fullName: fullName || username,
@@ -147,26 +148,17 @@ app.put("/profil/:username", (req, res) => {
   res.send({ status: "OK" });
 });
 
-// Update wajah (face descriptor)
 app.post("/update-wajah", (req, res) => {
-  const { username, faceDescriptor } = req.body;
+  const { username, faceDescriptor, facePhoto } = req.body;
   if (!username || !faceDescriptor) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (!users[username]) return res.send({ status: "NOT_FOUND" });
   users[username].faceDescriptor = faceDescriptor;
+  if (facePhoto) users[username].facePhoto = facePhoto;
   save(F.users, users);
   res.send({ status: "OK" });
 });
 
-// Ganti password
-app.post("/change-password", (req, res) => {
-  const { username, newPassword } = req.body;
-  const users = load(F.users, {});
-  if (!users[username]) return res.send({ status: "NOT_FOUND" });
-  users[username].password = newPassword;
-  save(F.users, users);
-  res.send({ status: "OK" });
-});
 // GET password untuk admin/owner (lihat password)
 app.get("/get-password/:username", (req, res) => {
   const users = load(F.users, {});
@@ -175,6 +167,18 @@ app.get("/get-password/:username", (req, res) => {
   // Hanya owner/admin yang boleh melihat password orang lain, tapi untuk keperluan profil sendiri, kita boleh lihat sendiri
   // Untuk sederhana, kita kirimkan password-nya (hanya untuk user yang login).
   res.send({ password: user.password });
+});
+// GET foto wajah (face descriptor) untuk ditampilkan sebagai gambar? 
+// Face descriptor adalah array angka, tidak bisa ditampilkan sebagai gambar.
+// Tapi kita bisa menyimpan screenshot wajah saat sign up.
+// Modifikasi: saat sign up, simpan juga foto wajah (screenshot) sebagai string base64.
+
+// Tambahkan field facePhoto saat sign up (di users.json)
+// Dan endpoint untuk mengambil facePhoto
+app.get("/face-photo/:username", (req, res) => {
+  const users = load(F.users, {});
+  const user = users[req.params.username];
+  res.send({ facePhoto: user?.facePhoto || null });
 });
 // Hapus akun (hanya untuk role owner/admin)
 app.delete("/delete-akun/:username", (req, res) => {

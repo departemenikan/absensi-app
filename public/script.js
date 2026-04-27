@@ -136,12 +136,31 @@ async function doSignUp(u, p, fullName, agama) {
   btn.innerText = "⏳ Scanning..."; btn.disabled = true;
   try {
     const videoEl    = document.getElementById("video-signup");
+    // Ambil descriptor
     const descriptor = await getFaceDescriptor(videoEl);
     if (!descriptor) {
       showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup", "error");
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
-    const r = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, faceDescriptor:Array.from(descriptor), fullName, agama}) });
+    // Ambil screenshot wajah (foto)
+    const canvas = document.getElementById("canvas");
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    canvas.getContext("2d").drawImage(videoEl, 0, 0);
+    const facePhoto = canvas.toDataURL("image/jpeg", 0.7);
+    
+    const r = await fetch("/signup", { 
+      method:"POST", 
+      headers:{"Content-Type":"application/json"}, 
+      body: JSON.stringify({
+        username: u, 
+        password: p, 
+        faceDescriptor: Array.from(descriptor),
+        facePhoto: facePhoto,
+        fullName, 
+        agama
+      }) 
+    });
     const d = await r.json();
     if (d.status === "OK") {
       stopCam("video-signup");
@@ -312,7 +331,12 @@ async function verifyFace(label) {
     try {
       const r = await fetch("/face-descriptor/" + user);
       const d = await r.json();
-      if (!d.descriptor || !d.descriptor.length) { hideCamModal(); resolve(true); return; }
+      if (!d.descriptor || !d.descriptor.length) { 
+        hideCamModal(); 
+        showToast("⚠️ Data wajah tidak ditemukan. Perbarui data wajah di Profil.", "warning");
+        resolve(true); // Biarkan tetap bisa absen jika tidak ada data wajah?
+        return; 
+      }
       savedDesc = new Float32Array(d.descriptor);
     } catch { hideCamModal(); resolve(true); return; }
 
@@ -326,8 +350,13 @@ async function verifyFace(label) {
         const d = faceapi.euclideanDistance(savedDesc, cur);
         hideCamModal();
         verifyResolve = null;
-        if (d <= 0.55) { resolve(true); }
-        else { showToast("❌ Wajah tidak dikenali! Coba lagi.", "error"); resolve(false); }
+        // Toleransi jarak Euclidean: 0.55 cukup ketat, bisa dinaikkan jadi 0.6 untuk toleransi lebih
+        if (d <= 0.6) { 
+          resolve(true); 
+        } else { 
+          showToast("❌ Wajah tidak dikenali! Coba lagi atau perbarui data wajah.", "error"); 
+          resolve(false); 
+        }
       } else if (attempts < 10) {
         setTimeout(tryDetect, 800);
       } else {
@@ -858,9 +887,22 @@ async function hapusCuti(id) {
 async function loadProfil() {
   const user = localStorage.getItem("user");
   if (!user) return;
-  try {
-    const res = await fetch(`/profil/${user}`);
-    const data = await res.json();
+  // Di dalam loadProfil(), setelah mengambil data profil, tambahkan:
+// Load foto wajah
+try {
+  const faceRes = await fetch(`/face-photo/${user}`);
+  const faceData = await faceRes.json();
+  const faceImg = document.getElementById("face-photo-img");
+  if (faceImg) {
+    if (faceData.facePhoto) {
+      faceImg.src = faceData.facePhoto;
+    } else {
+      faceImg.src = "https://via.placeholder.com/60?text=No+Face";
+    }
+  }
+} catch (err) {
+  console.error("Error loading face photo:", err);
+}
     
     // Isi field profil
     const fullNameField = document.getElementById("fullName");
@@ -977,21 +1019,40 @@ function simpanFotoProfil() {
 async function perbaruiWajah() {
   const user = localStorage.getItem("user");
   if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
+  
   showCamModal("Perbarui Data Wajah", false);
   await new Promise(r => setTimeout(r, 1500));
   const video = document.getElementById("video-modal");
   const desc = await getFaceDescriptor(video);
+  
+  // Ambil screenshot
+  const canvas = document.getElementById("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const facePhoto = canvas.toDataURL("image/jpeg", 0.7);
+  
   hideCamModal();
   if (!desc) return showToast("❌ Wajah tidak terdeteksi", "error");
   try {
     const res = await fetch("/update-wajah", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: user, faceDescriptor: Array.from(desc) })
+      body: JSON.stringify({ 
+        username: user, 
+        faceDescriptor: Array.from(desc),
+        facePhoto: facePhoto 
+      })
     });
     const d = await res.json();
-    if (d.status === "OK") showToast("✅ Data wajah diperbarui");
-    else showToast("❌ Gagal update", "error");
+    if (d.status === "OK") {
+      showToast("✅ Data wajah diperbarui");
+      // Update tampilan foto wajah
+      const faceImg = document.getElementById("face-photo-img");
+      if (faceImg) faceImg.src = facePhoto;
+    } else {
+      showToast("❌ Gagal update", "error");
+    }
   } catch { showToast("❌ Error", "error"); }
 }
 
