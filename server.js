@@ -17,6 +17,7 @@ const F = {
   libur:     path.join(DATA_DIR, "libur.json"),
   aktivitas: path.join(DATA_DIR, "aktivitas.json"),
   groups:    path.join(DATA_DIR, "groups.json"),
+  divisi:    path.join(DATA_DIR, "divisi.json"),
 };
 
 function load(file, def) {
@@ -45,11 +46,11 @@ function initGroups() {
     const defaults = [
       {
         id: "owner", name: "Owner", level: 1, color: "#8e44ad",
-        menus: ["home","rekap","admin","setting","anggota","group","area","libur","aktivitas","timesheet"]
+        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet"]
       },
       {
         id: "admin", name: "Admin", level: 2, color: "#2980b9",
-        menus: ["home","rekap","admin","setting","anggota","area","libur","aktivitas","timesheet"]
+        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet"]
       },
       {
         id: "manager", name: "Manager", level: 3, color: "#27ae60",
@@ -283,7 +284,7 @@ app.get("/anggota", (req, res) => {
   const groups = load(F.groups, []);
   const list   = Object.keys(users).map(u => {
     const g = groups.find(g => g.id === (users[u].group || "anggota"));
-    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", createdAt: users[u].createdAt || "" };
+    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", divisi: users[u].divisi || "", createdAt: users[u].createdAt || "" };
   });
   res.send(list);
 });
@@ -316,6 +317,55 @@ app.put("/groups/:id/menus", (req, res) => {
   if (group.id === "owner") return res.send({ status: "PROTECTED" }); // owner tidak bisa diubah
   group.menus = req.body.menus;
   save(F.groups, groups);
+  res.send({ status: "OK" });
+});
+
+// ========================
+// DIVISI
+// ========================
+app.get("/divisi", (req, res) => res.send(load(F.divisi, [])));
+
+app.post("/divisi", (req, res) => {
+  const { nama, deskripsi } = req.body;
+  if (!nama || !nama.trim()) return res.send({ status: "ERROR", msg: "Nama divisi wajib diisi" });
+  const list = load(F.divisi, []);
+  if (list.find(d => d.nama.toLowerCase() === nama.trim().toLowerCase()))
+    return res.send({ status: "EXIST", msg: "Divisi sudah ada" });
+  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), createdAt: new Date().toISOString() });
+  save(F.divisi, list);
+  res.send({ status: "OK" });
+});
+
+app.put("/divisi/:id", (req, res) => {
+  const list = load(F.divisi, []);
+  const item = list.find(d => d.id === req.params.id);
+  if (!item) return res.send({ status: "NOT_FOUND" });
+  if (req.body.nama) item.nama = req.body.nama.trim();
+  if (req.body.deskripsi !== undefined) item.deskripsi = req.body.deskripsi.trim();
+  save(F.divisi, list);
+  res.send({ status: "OK" });
+});
+
+app.delete("/divisi/:id", (req, res) => {
+  const list = load(F.divisi, []);
+  const idx  = list.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  // Kosongkan field divisi user yang memakai divisi ini
+  const divisiNama = list[idx].nama;
+  const users = load(F.users, {});
+  Object.values(users).forEach(u => { if (u.divisi === divisiNama) u.divisi = ""; });
+  save(F.users, users);
+  list.splice(idx, 1);
+  save(F.divisi, list);
+  res.send({ status: "OK" });
+});
+
+// Assign anggota ke divisi
+app.put("/anggota/:username/divisi", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  users[req.params.username].divisi = req.body.divisi || "";
+  save(F.users, users);
   res.send({ status: "OK" });
 });
 

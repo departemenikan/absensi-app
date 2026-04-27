@@ -31,9 +31,10 @@ function openView(viewId) {
   // Scroll ke atas
   window.scrollTo(0, 0);
   // Load data jika perlu
-  if (viewId === "view-rekap")      loadRekap();
-  if (viewId === "view-admin")      loadAdmin();
-  if (viewId === "view-aktivitas")  loadAktivitas();
+  if (viewId === "view-rekap")          loadRekap();
+  if (viewId === "view-admin")          loadAdmin();
+  if (viewId === "view-aktivitas")      loadAktivitas();
+  if (viewId === "view-aksesibilitas")  loadGroups();
   if (viewId === "view-area") {
     loadAreas();
     setTimeout(() => {
@@ -54,7 +55,7 @@ function openView(viewId) {
     }, 200);
   }
   if (viewId === "view-libur")      loadLibur();
-  if (viewId === "view-anggota")    { loadAnggota(); loadGroups(); }
+  if (viewId === "view-anggota")    { loadAnggota(); }
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-timesheet")  {
     const m = document.getElementById("ts-month");
@@ -223,11 +224,12 @@ function enterApp(menus, group, level) {
 
 function applyMenuAccess() {
   const map = {
-    "menu-anggota":   "anggota",
-    "menu-area":      "area",
-    "menu-libur":     "libur",
-    "menu-aktivitas": "aktivitas",
-    "menu-rekap":     "rekap",
+    "menu-anggota":       "anggota",
+    "menu-area":          "area",
+    "menu-libur":         "libur",
+    "menu-aktivitas":     "aktivitas",
+    "menu-rekap":         "rekap",
+    "menu-aksesibilitas": "aksesibilitas",
   };
   Object.entries(map).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
@@ -591,34 +593,47 @@ async function loadAdmin() {
 function switchAnggotaTab(tab) {
   const isDaftar = tab === "daftar";
   document.getElementById("panel-daftar").classList.toggle("hidden", !isDaftar);
-  document.getElementById("panel-group").classList.toggle("hidden", isDaftar);
+  document.getElementById("panel-divisi").classList.toggle("hidden", isDaftar);
   document.getElementById("tab-daftar").style.background = isDaftar ? "var(--primary)" : "white";
   document.getElementById("tab-daftar").style.color      = isDaftar ? "white" : "var(--muted)";
-  document.getElementById("tab-group").style.background  = isDaftar ? "white" : "var(--primary)";
-  document.getElementById("tab-group").style.color       = isDaftar ? "var(--muted)" : "white";
+  document.getElementById("tab-divisi").style.background = isDaftar ? "white" : "var(--primary)";
+  document.getElementById("tab-divisi").style.color      = isDaftar ? "var(--muted)" : "white";
+  if (!isDaftar) loadDivisi();
 }
 
 async function loadAnggota() {
   try {
     const r = await fetch("/anggota");
     const d = await r.json();
-    const groups = await (await fetch("/groups")).json();
-    const list   = document.getElementById("member-list");
+    const [groups, divisiAll] = await Promise.all([
+      (await fetch("/groups")).json(),
+      (await fetch("/divisi")).json(),
+    ]);
+    const list = document.getElementById("member-list");
     if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
     list.innerHTML = d.map(m => {
       const gOpts = groups.map(g =>
         `<option value="${g.id}" ${g.id===m.group?'selected':''}>${g.name}</option>`
       ).join("");
+      const dOpts = `<option value="">— Divisi —</option>` + divisiAll.map(dv =>
+        `<option value="${dv.nama}" ${dv.nama===m.divisi?'selected':''}>${dv.nama}</option>`
+      ).join("");
       return `<div class="member-item">
         <div style="display:flex;align-items:center;">
           <div class="avatar" style="background:${m.groupColor||'#7f8c8d'};">${m.username[0].toUpperCase()}</div>
-          <div><div class="m-name">${m.username}</div>
-          <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}</div></div>
+          <div>
+            <div class="m-name">${m.username}</div>
+            <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}${m.divisi ? ' · ' + m.divisi : ''}</div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
           <select onchange="changeGroup('${m.username}',this.value)"
             style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;">
             ${gOpts}
+          </select>
+          <select onchange="assignDivisi('${m.username}',this.value)"
+            style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;max-width:90px;">
+            ${dOpts}
           </select>
           ${m.username !== localStorage.getItem("user") && userLevel <= 2
             ? `<button onclick="deleteAnggota('${m.username}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>`
@@ -654,18 +669,135 @@ async function deleteAnggota(username) {
 }
 
 // ============================================================
+// DIVISI
+// ============================================================
+async function loadDivisi() {
+  try {
+    const [divisiRes, usersRes] = await Promise.all([fetch("/divisi"), fetch("/anggota")]);
+    const divisiList = await divisiRes.json();
+    const anggotaList = await usersRes.json();
+    const el = document.getElementById("divisi-list");
+    if (!divisiList.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada divisi</p>';
+      return;
+    }
+    el.innerHTML = divisiList.map(d => {
+      const count = anggotaList.filter(a => {
+        // match berdasarkan nama divisi (disimpan di profil sebagai string)
+        return true; // akan di-count via server nanti, sementara tampilkan saja
+      }).length;
+      // Hitung anggota via nama divisi
+      const anggotaDivisi = anggotaList.filter(a => a.divisi === d.nama);
+      return `<div style="padding:14px 0;border-bottom:1px solid #f0f2f5;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:14px;font-weight:700;">🏢 ${d.nama}</div>
+            ${d.deskripsi ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${d.deskripsi}</div>` : ''}
+            <div style="font-size:11px;color:var(--primary);margin-top:4px;">👤 ${anggotaDivisi.length} anggota</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="editDivisi('${d.id}','${d.nama}','${d.deskripsi||''}')"
+              style="padding:6px 12px;border:none;border-radius:8px;background:#e3f2fd;color:#1565c0;font-weight:700;font-size:12px;cursor:pointer;">✏️ Edit</button>
+            <button onclick="deleteDivisi('${d.id}','${d.nama}')"
+              style="padding:6px 12px;border:none;border-radius:8px;background:#fce4ec;color:var(--danger);font-weight:700;font-size:12px;cursor:pointer;">🗑</button>
+          </div>
+        </div>
+        ${anggotaDivisi.length ? `
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+            ${anggotaDivisi.map(a =>
+              `<span style="font-size:11px;padding:3px 10px;border-radius:50px;background:#e8f5e9;color:#2e7d32;font-weight:600;">👤 ${a.username}</span>`
+            ).join('')}
+          </div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById("divisi-list").innerHTML = '<p style="color:var(--muted);text-align:center;">Gagal memuat</p>';
+  }
+}
+
+async function saveDivisi() {
+  const nama      = document.getElementById("divisi-nama").value.trim();
+  const deskripsi = document.getElementById("divisi-deskripsi").value.trim();
+  if (!nama) { showToast("⚠️ Nama divisi wajib diisi", "warning"); return; }
+  try {
+    const r = await fetch("/divisi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nama, deskripsi })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Divisi berhasil ditambahkan");
+      document.getElementById("divisi-nama").value = "";
+      document.getElementById("divisi-deskripsi").value = "";
+      loadDivisi();
+    } else if (d.status === "EXIST") {
+      showToast("⚠️ Divisi sudah ada", "warning");
+    } else {
+      showToast("❌ Gagal menambahkan divisi", "error");
+    }
+  } catch { showToast("❌ Gagal", "error"); }
+}
+
+function editDivisi(id, nama, deskripsi) {
+  const namaBaru  = prompt("Nama Divisi:", nama);
+  if (namaBaru === null) return;
+  if (!namaBaru.trim()) { showToast("⚠️ Nama tidak boleh kosong", "warning"); return; }
+  const deskrBaru = prompt("Deskripsi (opsional):", deskripsi || "");
+  fetch(`/divisi/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nama: namaBaru.trim(), deskripsi: (deskrBaru||"").trim() })
+  }).then(r => r.json()).then(d => {
+    if (d.status === "OK") { showToast("✅ Divisi diperbarui"); loadDivisi(); }
+    else showToast("❌ Gagal memperbarui", "error");
+  }).catch(() => showToast("❌ Gagal", "error"));
+}
+
+function deleteDivisi(id, nama) {
+  uConfirm({
+    icon: "🏢",
+    title: "Hapus Divisi",
+    msg: `Hapus divisi <b>${nama}</b>?<br>Anggota yang ada di divisi ini akan dilepas dari divisi.`,
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/divisi/${id}`, { method: "DELETE" });
+        const d = await r.json();
+        if (d.status === "OK") { showToast("🗑 Divisi dihapus"); loadDivisi(); }
+        else showToast("❌ Gagal menghapus", "error");
+      } catch { showToast("❌ Gagal", "error"); }
+    }
+  });
+}
+
+async function assignDivisi(username, divisiNama) {
+  try {
+    const r = await fetch(`/anggota/${username}/divisi`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ divisi: divisiNama })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("✅ Divisi berhasil diubah"); loadAnggota(); }
+    else showToast("❌ Gagal mengubah divisi", "error");
+  } catch { showToast("❌ Gagal", "error"); }
+}
+
+// ============================================================
 // GROUP & AKSES MENU
 // ============================================================
 const ALL_MENUS = [
-  { key:"home",       label:"🏠 Beranda" },
-  { key:"rekap",      label:"📋 Rekap" },
-  { key:"admin",      label:"👑 Admin Panel" },
-  { key:"setting",    label:"⚙️ Pengaturan" },
-  { key:"anggota",    label:"👥 Anggota" },
-  { key:"area",       label:"📍 Area Kantor" },
-  { key:"libur",      label:"📅 Hari Libur & Cuti" },
-  { key:"aktivitas",  label:"📌 Aktivitas" },
-  { key:"timesheet",  label:"🕐 Timesheet" },
+  { key:"home",           label:"🏠 Beranda" },
+  { key:"rekap",          label:"📋 Rekap" },
+  { key:"admin",          label:"👑 Admin Panel" },
+  { key:"setting",        label:"⚙️ Pengaturan" },
+  { key:"anggota",        label:"👥 Anggota" },
+  { key:"aksesibilitas",  label:"🔐 Aksesibilitas" },
+  { key:"area",           label:"📍 Area Kantor" },
+  { key:"libur",          label:"📅 Hari Libur & Cuti" },
+  { key:"aktivitas",      label:"📌 Aktivitas" },
+  { key:"timesheet",      label:"🕐 Timesheet" },
 ];
 
 async function loadGroups() {

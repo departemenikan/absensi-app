@@ -493,6 +493,12 @@
             <div><div class="menu-title">Rekap</div><div class="menu-sub">Rekap absensi karyawan</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
+        <div class="menu-item" id="menu-aksesibilitas" onclick="openView('view-aksesibilitas')">
+          <div class="menu-left">
+            <div class="menu-icon" style="background:#ede7f6;">🔐</div>
+            <div><div class="menu-title">Aksesibilitas</div><div class="menu-sub">Atur akses menu per jabatan</div></div>
+          </div><span class="menu-arrow">›</span>
+        </div>
         <div class="menu-item" onclick="openView('view-profil')">
           <div class="menu-left">
             <div class="menu-icon" style="background:#e8eaf6;">👤</div>
@@ -527,9 +533,9 @@
           style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">
           👤 Daftar Anggota
         </button>
-        <button id="tab-group" onclick="switchAnggotaTab('group')"
+        <button id="tab-divisi" onclick="switchAnggotaTab('divisi')"
           style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
-          🏷️ Group
+          🏢 Divisi
         </button>
       </div>
 
@@ -541,15 +547,50 @@
         </div>
       </div>
 
-      <!-- Tab: Group -->
-      <div id="panel-group" class="hidden">
+      <!-- Tab: Divisi -->
+      <div id="panel-divisi" class="hidden">
+        <!-- Form tambah divisi -->
         <div class="card" style="margin-top:0;">
-          <h4>Pengaturan Group & Akses Menu</h4>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-            Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.
-          </p>
-          <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+          <h4>➕ Tambah Divisi</h4>
+          <div class="form-group">
+            <label>Nama Divisi</label>
+            <input type="text" id="divisi-nama" placeholder="contoh: HRD, IT, Finance">
+          </div>
+          <div class="form-group">
+            <label>Deskripsi (opsional)</label>
+            <input type="text" id="divisi-deskripsi" placeholder="contoh: Bagian Sumber Daya Manusia">
+          </div>
+          <button onclick="saveDivisi()" style="width:100%;padding:12px;border:none;border-radius:10px;
+            background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:14px;cursor:pointer;">
+            ➕ Tambah Divisi
+          </button>
         </div>
+        <!-- Daftar divisi -->
+        <div class="card" style="margin-top:16px;">
+          <h4>🏢 Daftar Divisi</h4>
+          <div id="divisi-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW: AKSESIBILITAS (pindahan dari tab Group di Anggota)     -->
+<!-- ============================================================ -->
+<div id="view-aksesibilitas" class="view">
+  <div class="page-wrap">
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>🔐 Aksesibilitas</h3>
+    </div>
+    <div style="margin-top:46px;">
+      <div class="card" style="margin-top:0;">
+        <h4>Pengaturan Akses Menu per Jabatan</h4>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+          Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.
+        </p>
+        <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
       </div>
     </div>
   </div>
