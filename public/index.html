@@ -262,7 +262,10 @@
 
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+    @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
     .scanning{animation:pulse 1s infinite;}
+    .profil-edit-icon{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:#f0f4ff;color:var(--primary);border:none;cursor:pointer;flex-shrink:0;margin-left:8px;transition:background .15s;}
+    .profil-edit-icon:hover{background:#dce8ff;}
   </style>
 </head>
 <body>
@@ -621,19 +624,37 @@
         <!-- Foto Profil -->
         <div class="card" style="margin-top:0;">
           <div class="profil-avatar-wrap">
-            <div id="profil-photo-display" class="profil-avatar-placeholder">👤</div>
+            <div style="position:relative;display:inline-block;">
+              <div id="profil-photo-display" class="profil-avatar-placeholder">👤</div>
+              <button onclick="profilShowPhotoMenu()" style="position:absolute;bottom:2px;right:2px;width:30px;height:30px;border-radius:50%;background:var(--primary);border:2px solid white;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);" title="Ubah Foto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+            </div>
             <p style="font-size:12px;color:var(--muted);margin-top:8px;" id="profil-username-label"></p>
           </div>
-          <div style="display:flex;gap:8px;margin-top:4px;">
-            <button onclick="profilOpenCamera()" class="btn-absen btn-blue" style="flex:1;padding:10px;font-size:13px;">
-              📷 Kamera
-            </button>
-            <label style="flex:1;" class="btn-absen btn-gray" style="padding:10px;font-size:13px;cursor:pointer;text-align:center;display:flex;align-items:center;justify-content:center;gap:4px;">
-              🖼 Galeri<input type="file" accept="image/*" id="profil-file-input" style="display:none;" onchange="profilLoadFile(this)">
-            </label>
-            <button onclick="profilSavePhoto()" class="btn-absen btn-green" style="flex:1;padding:10px;font-size:13px;">
-              💾 Simpan
-            </button>
+
+          <!-- Popup pilihan kamera/galeri -->
+          <div id="profil-photo-menu" class="hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:flex-end;justify-content:center;">
+            <div style="background:white;width:100%;max-width:420px;border-radius:20px 20px 0 0;padding:20px 20px 32px;animation:slideUp .3s ease;">
+              <div style="width:40px;height:4px;background:#e0e0e0;border-radius:4px;margin:0 auto 18px;"></div>
+              <p style="font-size:13px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:16px;">UBAH FOTO PROFIL</p>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <button onclick="profilPhotoMenuCamera()" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:none;border-radius:12px;background:#f0f4ff;cursor:pointer;font-size:14px;font-weight:700;color:#2c3e50;">
+                  <span style="width:40px;height:40px;border-radius:10px;background:var(--primary);display:flex;align-items:center;justify-content:center;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  </span>
+                  Ambil dari Kamera
+                </button>
+                <label style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:none;border-radius:12px;background:#f0fff4;cursor:pointer;font-size:14px;font-weight:700;color:#2c3e50;">
+                  <span style="width:40px;height:40px;border-radius:10px;background:var(--success);display:flex;align-items:center;justify-content:center;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  </span>
+                  Pilih dari Galeri
+                  <input type="file" accept="image/*" id="profil-file-input" style="display:none;" onchange="profilLoadFile(this);profilHidePhotoMenu();">
+                </label>
+                <button onclick="profilHidePhotoMenu()" style="padding:13px;border:none;border-radius:12px;background:#f0f2f5;cursor:pointer;font-size:14px;font-weight:600;color:var(--muted);">Batal</button>
+              </div>
+            </div>
           </div>
           <!-- Kamera untuk foto profil -->
           <div id="profil-cam-wrap" class="hidden" style="margin-top:12px;text-align:center;">
@@ -648,7 +669,14 @@
           <!-- Preview foto baru -->
           <div id="profil-preview-wrap" class="hidden" style="margin-top:12px;text-align:center;">
             <img id="profil-preview-img" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);">
-            <p style="font-size:12px;color:var(--muted);margin-top:6px;">Preview — klik Simpan untuk menyimpan</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:6px;">Preview foto baru</p>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+              <button onclick="profilSavePhoto()" style="padding:10px 24px;border:none;border-radius:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Simpan Foto
+              </button>
+              <button onclick="document.getElementById('profil-preview-wrap').classList.add('hidden')" style="padding:10px 16px;border:none;border-radius:10px;background:#f0f2f5;color:var(--text);font-weight:600;font-size:13px;cursor:pointer;">Batal</button>
+            </div>
           </div>
         </div>
 
@@ -659,13 +687,17 @@
           <div class="profil-field-row">
             <span class="profil-field-label">Nama Lengkap</span>
             <span class="profil-field-value" id="pf-nama">—</span>
-            <button class="profil-edit-btn" onclick="profilEditField('namaLengkap','Nama Lengkap')">Ubah</button>
+            <button class="profil-edit-btn profil-edit-icon" onclick="profilEditField('namaLengkap','Nama Lengkap')" title="Ubah Nama Lengkap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
           </div>
 
           <div class="profil-field-row">
             <span class="profil-field-label">Agama</span>
             <span class="profil-field-value" id="pf-agama">—</span>
-            <button class="profil-edit-btn" onclick="profilEditAgama()">Ubah</button>
+            <button class="profil-edit-btn profil-edit-icon" onclick="profilEditAgama()" title="Ubah Agama">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
           </div>
 
           <div class="profil-field-row">
@@ -691,7 +723,9 @@
           <div class="profil-field-row" id="row-gaji" style="display:none;">
             <span class="profil-field-label">Nominal Gaji</span>
             <span class="profil-field-value secret" id="pf-gaji" onclick="this.classList.toggle('revealed')" title="Klik untuk lihat">Rp ••••••</span>
-            <button class="profil-edit-btn" onclick="profilEditField('nominalGaji','Nominal Gaji')">Ubah</button>
+            <button class="profil-edit-btn profil-edit-icon" onclick="profilEditField('nominalGaji','Nominal Gaji')" title="Ubah Nominal Gaji">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
           </div>
 
         </div>
@@ -711,7 +745,9 @@
           <div class="profil-field-row">
             <span class="profil-field-label">Password</span>
             <span class="profil-field-value secret" id="pk-password" onclick="this.classList.toggle('revealed')" title="Klik untuk lihat">••••••••</span>
-            <button class="profil-edit-btn" onclick="profilChangePassword()">Ubah</button>
+            <button class="profil-edit-btn profil-edit-icon" onclick="profilChangePassword()" title="Ubah Password">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
           </div>
         </div>
 
@@ -727,31 +763,34 @@
             </div>
             <div id="face-update-status" style="font-size:13px;color:var(--muted);margin-bottom:10px;">Hadapkan wajah ke kamera</div>
           </div>
-          <div style="display:flex;gap:8px;">
-            <button onclick="profilStartFaceUpdate()" class="btn-absen btn-blue" style="flex:1;padding:10px;font-size:13px;" id="btn-start-face">
-              📷 Perbarui Data Wajah
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="profilStartFaceUpdate()" style="padding:10px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" id="btn-start-face">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Perbarui Data Wajah
             </button>
-            <button onclick="profilSaveFace()" class="btn-absen btn-green" style="flex:1;padding:10px;font-size:13px;" id="btn-save-face">
-              💾 Simpan
+            <button onclick="profilSaveFace()" style="padding:10px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" id="btn-save-face" class="hidden">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Simpan
             </button>
           </div>
         </div>
 
         <!-- Hapus Akun -->
-        <div class="danger-zone" id="danger-zone-hapus" style="display:none;">
-          <h5>⚠️ Zona Bahaya</h5>
+        <div id="danger-zone-hapus" style="display:none;margin-top:16px;">
           <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
             Menghapus akun akan menghapus data pengguna secara permanen. Data absensi tetap tersimpan.
           </p>
-          <div id="hapus-target-wrap">
-            <select id="hapus-target-select" style="width:100%;padding:10px;border:2px solid #fce4ec;border-radius:8px;font-size:13px;margin-bottom:8px;outline:none;">
+          <div id="hapus-target-wrap" style="margin-bottom:8px;">
+            <select id="hapus-target-select" style="padding:10px 14px;border:2px solid #fce4ec;border-radius:8px;font-size:13px;outline:none;display:inline-block;">
               <option value="">— Pilih akun yang akan dihapus —</option>
             </select>
           </div>
-          <button onclick="profilHapusAkun()" style="width:100%;padding:12px;border:none;border-radius:10px;
-            background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-            🗑 Hapus Akun
-          </button>
+          <div>
+            <button onclick="profilHapusAkun()" style="padding:11px 20px;border:none;border-radius:10px;
+              background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+              🗑 Hapus Akun
+            </button>
+          </div>
         </div>
 
       </div>

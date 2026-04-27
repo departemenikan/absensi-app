@@ -857,9 +857,24 @@ function switchProfilTab(tab) {
 
 // ── FOTO PROFIL ──────────────────────────────────────────────
 function profilOpenCamera() {
+  profilHidePhotoMenu();
   document.getElementById("profil-cam-wrap").classList.remove("hidden");
   document.getElementById("profil-preview-wrap").classList.add("hidden");
   startCam("video-profil");
+}
+
+// ── POPUP MENU FOTO PROFIL ──────────────────────────────────
+function profilShowPhotoMenu() {
+  const menu = document.getElementById("profil-photo-menu");
+  if (menu) menu.classList.remove("hidden");
+}
+function profilHidePhotoMenu() {
+  const menu = document.getElementById("profil-photo-menu");
+  if (menu) menu.classList.add("hidden");
+}
+function profilPhotoMenuCamera() {
+  profilHidePhotoMenu();
+  profilOpenCamera();
 }
 
 function profilStopCamera() {
@@ -976,7 +991,8 @@ function profilStartFaceUpdate() {
 async function profilScanFace(attempt) {
   if (attempt >= 15) {
     document.getElementById("face-update-status").innerText = "❌ Wajah tidak terdeteksi. Coba lagi.";
-    document.getElementById("btn-start-face").innerText = "📷 Perbarui Data Wajah";
+    document.getElementById("btn-start-face").innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Perbarui Data Wajah`;
+    document.getElementById("btn-save-face").classList.add("hidden");
     return;
   }
   const v = document.getElementById("video-face-update");
@@ -990,7 +1006,8 @@ async function profilScanFace(attempt) {
   if (desc) {
     _profilNewFaceDesc = desc;
     document.getElementById("face-update-status").innerText = "✅ Wajah terdeteksi! Klik Simpan.";
-    document.getElementById("btn-start-face").innerText = "📷 Perbarui Data Wajah";
+    document.getElementById("btn-start-face").innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Perbarui Data Wajah`;
+    document.getElementById("btn-save-face").classList.remove("hidden");
     stopCam("video-face-update");
   } else {
     setTimeout(() => profilScanFace(attempt + 1), 700);
@@ -1007,6 +1024,7 @@ async function profilSaveFace() {
       _profilNewFaceDesc = null;
       document.getElementById("profil-face-cam-wrap").classList.add("hidden");
       document.getElementById("face-update-status").innerText = "Hadapkan wajah ke kamera";
+      document.getElementById("btn-save-face").classList.add("hidden");
     } else showToast("❌ Gagal menyimpan data wajah", "error");
   } catch { showToast("❌ Gagal terhubung ke server", "error"); }
 }
