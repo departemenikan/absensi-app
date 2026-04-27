@@ -37,6 +37,7 @@ function openView(viewId) {
   if (viewId === "view-area")       loadAreas();
   if (viewId === "view-libur")      loadLibur();
   if (viewId === "view-anggota")    { loadAnggota(); loadGroups(); }
+  if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-timesheet")  {
     const m = document.getElementById("ts-month");
     if (!m.value) m.value = new Date().toISOString().slice(0, 7);
@@ -90,6 +91,8 @@ function toggleAuthMode() {
     : 'Sudah punya akun? <a href="#" onclick="toggleAuthMode()" style="color:#4f8ef7;font-weight:600;">Login</a>';
   const fs = document.getElementById("face-signup-section");
   fs.classList.toggle("hidden", isLoginMode);
+  const ex = document.getElementById("signup-extra-fields");
+  if (ex) ex.classList.toggle("hidden", isLoginMode);
   if (!isLoginMode) startCam("video-signup");
   else stopCam("video-signup");
 }
@@ -128,7 +131,9 @@ async function doSignUp(u, p) {
       showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup", "error");
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
-    const r = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, faceDescriptor:Array.from(descriptor)}) });
+    const namaLengkap = (document.getElementById("signup-nama")?.value || "").trim();
+    const agama       = document.getElementById("signup-agama")?.value || "";
+    const r = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, faceDescriptor:Array.from(descriptor), namaLengkap, agama}) });
     const d = await r.json();
     if (d.status === "OK") {
       stopCam("video-signup");
@@ -736,6 +741,288 @@ async function loadTimesheet() {
       </tbody>
     </table>`;
   } catch {}
+}
+
+// ============================================================
+// PROFIL
+// ============================================================
+let _profilData      = null;
+let _profilNewPhoto  = null; // base64 foto baru
+let _profilNewFaceDesc = null; // Float32Array descriptor baru
+
+async function loadProfil() {
+  const me = localStorage.getItem("user");
+  switchProfilTab("profil"); // reset ke tab profil
+  try {
+    const r = await fetch("/profile/" + me);
+    _profilData = await r.json();
+    renderProfil();
+  } catch { showToast("❌ Gagal memuat profil", "error"); }
+}
+
+function renderProfil() {
+  const d = _profilData;
+  if (!d) return;
+  const me = localStorage.getItem("user");
+  document.getElementById("profil-username-label").innerText = "@" + me;
+
+  // Foto profil
+  const photoEl = document.getElementById("profil-photo-display");
+  if (d.photo) {
+    photoEl.outerHTML = `<img id="profil-photo-display" class="profil-avatar" src="${d.photo}">`;
+  } else {
+    if (photoEl.tagName !== "DIV") {
+      const div = document.createElement("div");
+      div.id = "profil-photo-display";
+      div.className = "profil-avatar-placeholder";
+      div.innerText = "👤";
+      photoEl.replaceWith(div);
+    }
+  }
+
+  // Data diri
+  document.getElementById("pf-nama").innerText    = d.namaLengkap  || "—";
+  document.getElementById("pf-agama").innerText   = d.agama        || "—";
+  document.getElementById("pf-jabatan").innerText = d.jabatan      || "—";
+  document.getElementById("pf-peran").innerText   = d.peran        || "—";
+  document.getElementById("pf-group").innerText   = d.groupName    || "—";
+  document.getElementById("pf-lingkup").innerText = d.lingkupKerja || "—";
+
+  // Gaji — hanya terlihat oleh owner
+  const rowGaji = document.getElementById("row-gaji");
+  if (userLevel <= 1) {
+    rowGaji.style.display = "flex";
+    const gajiEl = document.getElementById("pf-gaji");
+    gajiEl.setAttribute("data-val", "Rp " + (Number(d.nominalGaji)||0).toLocaleString("id-ID"));
+    gajiEl.innerText = "Rp ••••••";
+    gajiEl.classList.remove("revealed");
+    gajiEl.onclick = function() {
+      this.classList.toggle("revealed");
+      this.innerText = this.classList.contains("revealed") ? this.getAttribute("data-val") : "Rp ••••••";
+    };
+  } else {
+    rowGaji.style.display = "none";
+  }
+
+  // Username & password (keamanan)
+  document.getElementById("pk-username").innerText = me;
+  const pwEl = document.getElementById("pk-password");
+  // Untuk keamanan, password hanya bisa dilihat oleh pemilik sendiri — kita simpan dummy
+  pwEl.setAttribute("data-val", "••••••••");
+  pwEl.innerText = "••••••••";
+
+  // Hapus Akun — hanya Owner (level 1) atau Admin (level 2)
+  const dz = document.getElementById("danger-zone-hapus");
+  if (userLevel <= 2) {
+    dz.style.display = "block";
+    populateHapusSelect();
+  } else {
+    dz.style.display = "none";
+  }
+}
+
+async function populateHapusSelect() {
+  try {
+    const me  = localStorage.getItem("user");
+    const r   = await fetch("/anggota");
+    const all = await r.json();
+    const sel = document.getElementById("hapus-target-select");
+    sel.innerHTML = '<option value="">— Pilih akun yang akan dihapus —</option>';
+    all.forEach(m => {
+      if (m.username === me) return; // tidak bisa hapus diri sendiri dari sini
+      const opt = document.createElement("option");
+      opt.value = m.username;
+      opt.textContent = m.username + " (" + m.groupName + ")";
+      sel.appendChild(opt);
+    });
+    // Owner level 1 juga bisa hapus akun diri sendiri melalui pilihan lain
+  } catch {}
+}
+
+function switchProfilTab(tab) {
+  const isProfil = tab === "profil";
+  document.getElementById("ppanel-profil").classList.toggle("hidden", !isProfil);
+  document.getElementById("ppanel-keamanan").classList.toggle("hidden", isProfil);
+  document.getElementById("ptab-profil").style.background   = isProfil ? "var(--primary)" : "white";
+  document.getElementById("ptab-profil").style.color        = isProfil ? "white" : "var(--muted)";
+  document.getElementById("ptab-keamanan").style.background = isProfil ? "white" : "var(--primary)";
+  document.getElementById("ptab-keamanan").style.color      = isProfil ? "var(--muted)" : "white";
+  // Hentikan kamera wajah saat pindah tab
+  if (isProfil) {
+    stopCam("video-face-update");
+    document.getElementById("profil-face-cam-wrap").classList.add("hidden");
+    _profilNewFaceDesc = null;
+  }
+}
+
+// ── FOTO PROFIL ──────────────────────────────────────────────
+function profilOpenCamera() {
+  document.getElementById("profil-cam-wrap").classList.remove("hidden");
+  document.getElementById("profil-preview-wrap").classList.add("hidden");
+  startCam("video-profil");
+}
+
+function profilStopCamera() {
+  stopCam("video-profil");
+  document.getElementById("profil-cam-wrap").classList.add("hidden");
+}
+
+function profilTakePhoto() {
+  const v = document.getElementById("video-profil");
+  const c = document.getElementById("canvas-profil");
+  if (!v || !v.videoWidth) return showToast("⚠️ Kamera belum siap", "warning");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  _profilNewPhoto = c.toDataURL("image/jpeg", 0.7);
+  profilStopCamera();
+  const img = document.getElementById("profil-preview-img");
+  img.src = _profilNewPhoto;
+  document.getElementById("profil-preview-wrap").classList.remove("hidden");
+  showToast("📸 Foto diambil, klik Simpan untuk menyimpan");
+}
+
+function profilLoadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    _profilNewPhoto = e.target.result;
+    const img = document.getElementById("profil-preview-img");
+    img.src = _profilNewPhoto;
+    document.getElementById("profil-preview-wrap").classList.remove("hidden");
+    document.getElementById("profil-cam-wrap").classList.add("hidden");
+    showToast("🖼 Foto dipilih, klik Simpan untuk menyimpan");
+  };
+  reader.readAsDataURL(file);
+}
+
+async function profilSavePhoto() {
+  if (!_profilNewPhoto) return showToast("⚠️ Belum ada foto baru", "warning");
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profile/${me}/photo`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({photo:_profilNewPhoto}) });
+    if ((await r.json()).status === "OK") {
+      showToast("✅ Foto profil berhasil disimpan!");
+      _profilNewPhoto = null;
+      document.getElementById("profil-preview-wrap").classList.add("hidden");
+      loadProfil();
+    } else showToast("❌ Gagal menyimpan foto", "error");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// ── EDIT FIELD ───────────────────────────────────────────────
+function profilEditField(field, label) {
+  const cur = _profilData ? (_profilData[field] || "") : "";
+  const val = prompt(`Ubah ${label}:`, cur);
+  if (val === null) return; // batal
+  profilSaveField(field, val.trim());
+}
+
+async function profilEditAgama() {
+  const agamas = ["Islam","Kristen","Katolik","Hindu","Buddha","Konghucu"];
+  const cur    = _profilData?.agama || "";
+  const idx    = agamas.indexOf(cur);
+  const pilih  = prompt(
+    "Pilih Agama:\n" + agamas.map((a,i)=>`${i+1}. ${a}`).join("\n") +
+    "\n\nKetik angka pilihan:",
+    idx >= 0 ? idx + 1 : ""
+  );
+  if (!pilih) return;
+  const chosen = agamas[parseInt(pilih) - 1];
+  if (!chosen) return showToast("⚠️ Pilihan tidak valid", "warning");
+  profilSaveField("agama", chosen);
+}
+
+async function profilSaveField(field, value) {
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profile/${me}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({[field]:value}) });
+    if ((await r.json()).status === "OK") {
+      showToast("✅ Berhasil disimpan!");
+      loadProfil();
+    } else showToast("❌ Gagal menyimpan", "error");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// ── GANTI PASSWORD ───────────────────────────────────────────
+async function profilChangePassword() {
+  const oldPw = prompt("Masukkan password lama:");
+  if (!oldPw) return;
+  const newPw = prompt("Masukkan password baru (min. 6 karakter):");
+  if (!newPw || newPw.length < 6) return showToast("⚠️ Password minimal 6 karakter", "warning");
+  const konfirm = prompt("Konfirmasi password baru:");
+  if (konfirm !== newPw) return showToast("⚠️ Konfirmasi password tidak cocok!", "warning");
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profile/${me}/password`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({oldPassword:oldPw, newPassword:newPw}) });
+    const d = await r.json();
+    if (d.status === "OK") showToast("✅ Password berhasil diubah!");
+    else if (d.status === "WRONG_PASSWORD") showToast("❌ Password lama salah!", "error");
+    else showToast("❌ Gagal mengubah password", "error");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// ── PERBARUI DATA WAJAH ──────────────────────────────────────
+function profilStartFaceUpdate() {
+  document.getElementById("profil-face-cam-wrap").classList.remove("hidden");
+  document.getElementById("face-update-status").innerText = "Hadapkan wajah ke kamera...";
+  _profilNewFaceDesc = null;
+  startCam("video-face-update");
+  document.getElementById("btn-start-face").innerText = "🔄 Scanning...";
+  // Mulai deteksi otomatis
+  profilScanFace(0);
+}
+
+async function profilScanFace(attempt) {
+  if (attempt >= 15) {
+    document.getElementById("face-update-status").innerText = "❌ Wajah tidak terdeteksi. Coba lagi.";
+    document.getElementById("btn-start-face").innerText = "📷 Perbarui Data Wajah";
+    return;
+  }
+  const v = document.getElementById("video-face-update");
+  if (!v || !v.srcObject) return;
+  document.getElementById("face-update-status").innerText = `Mendeteksi wajah... (${attempt+1}/15)`;
+  if (!faceModelsLoaded) {
+    document.getElementById("face-update-status").innerText = "⚠️ Model wajah belum dimuat";
+    return;
+  }
+  const desc = await getFaceDescriptor(v);
+  if (desc) {
+    _profilNewFaceDesc = desc;
+    document.getElementById("face-update-status").innerText = "✅ Wajah terdeteksi! Klik Simpan.";
+    document.getElementById("btn-start-face").innerText = "📷 Perbarui Data Wajah";
+    stopCam("video-face-update");
+  } else {
+    setTimeout(() => profilScanFace(attempt + 1), 700);
+  }
+}
+
+async function profilSaveFace() {
+  if (!_profilNewFaceDesc) return showToast("⚠️ Belum ada data wajah baru. Klik 'Perbarui Data Wajah' dulu.", "warning");
+  const me = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/profile/${me}/face`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({faceDescriptor:Array.from(_profilNewFaceDesc)}) });
+    if ((await r.json()).status === "OK") {
+      showToast("✅ Data wajah berhasil diperbarui!");
+      _profilNewFaceDesc = null;
+      document.getElementById("profil-face-cam-wrap").classList.add("hidden");
+      document.getElementById("face-update-status").innerText = "Hadapkan wajah ke kamera";
+    } else showToast("❌ Gagal menyimpan data wajah", "error");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// ── HAPUS AKUN (Owner/Admin) ─────────────────────────────────
+async function profilHapusAkun() {
+  const target = document.getElementById("hapus-target-select")?.value;
+  if (!target) return showToast("⚠️ Pilih akun yang akan dihapus!", "warning");
+  if (!confirm(`Hapus akun "${target}"? Tindakan ini tidak bisa dibatalkan.\nData absensi tetap tersimpan.`)) return;
+  try {
+    const r = await fetch(`/anggota/${target}`, {method:"DELETE"});
+    if ((await r.json()).status === "OK") {
+      showToast(`🗑 Akun "${target}" berhasil dihapus`);
+      populateHapusSelect();
+    } else showToast("❌ Gagal menghapus", "error");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
 }
 
 // ============================================================

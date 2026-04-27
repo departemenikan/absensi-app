@@ -236,6 +236,30 @@
     .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;
       border-radius:8px;font-size:13px;outline:none;}
 
+    /* PROFIL */
+    .profil-avatar-wrap{text-align:center;padding:20px 0 12px;}
+    .profil-avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;
+      border:3px solid var(--primary);margin:0 auto;display:block;background:#e8ecf0;}
+    .profil-avatar-placeholder{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+      display:flex;align-items:center;justify-content:center;font-size:36px;color:white;margin:0 auto;}
+    .profil-tab-bar{display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;}
+    .profil-tab-bar button{flex:1;padding:13px;border:none;font-weight:700;font-size:13px;cursor:pointer;}
+    .profil-field-row{display:flex;align-items:center;justify-content:space-between;
+      padding:13px 0;border-bottom:1px solid #f0f2f5;}
+    .profil-field-row:last-child{border-bottom:none;}
+    .profil-field-label{font-size:12px;color:var(--muted);font-weight:600;min-width:110px;}
+    .profil-field-value{font-size:14px;font-weight:600;color:var(--text);flex:1;text-align:right;}
+    .profil-field-value.secret{filter:blur(4px);cursor:pointer;transition:.2s;}
+    .profil-field-value.secret.revealed{filter:none;}
+    .profil-edit-btn{font-size:12px;padding:5px 12px;border:none;border-radius:8px;
+      background:#f0f2f5;color:var(--text);cursor:pointer;font-weight:600;margin-left:8px;flex-shrink:0;}
+    .profil-face-wrap{width:100px;height:100px;border-radius:50%;overflow:hidden;
+      border:3px solid var(--primary);margin:0 auto 12px;background:#1a1a2e;}
+    .profil-face-wrap video{width:100%;height:100%;object-fit:cover;}
+    .danger-zone{border:2px solid #fce4ec;border-radius:12px;padding:16px;margin-top:16px;}
+    .danger-zone h5{color:var(--danger);font-size:13px;margin-bottom:10px;}
+
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
     .scanning{animation:pulse 1s infinite;}
@@ -269,6 +293,18 @@
     </div>
     <input type="text"     id="username" placeholder="Username">
     <input type="password" id="password" placeholder="Password">
+    <div id="signup-extra-fields" class="hidden">
+      <input type="text" id="signup-nama" placeholder="Nama Lengkap" style="width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;">
+      <select id="signup-agama" style="width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;background:white;">
+        <option value="">-- Pilih Agama --</option>
+        <option value="Islam">Islam</option>
+        <option value="Kristen">Kristen</option>
+        <option value="Katolik">Katolik</option>
+        <option value="Hindu">Hindu</option>
+        <option value="Buddha">Buddha</option>
+        <option value="Konghucu">Konghucu</option>
+      </select>
+    </div>
     <button onclick="handleAuth()" id="btn-auth-main"
       style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;
       background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;">
@@ -397,6 +433,12 @@
           <div class="menu-left">
             <div class="menu-icon" style="background:#fff3e0;">🕐</div>
             <div><div class="menu-title">Timesheet</div><div class="menu-sub">Laporan jam kerja</div></div>
+          </div><span class="menu-arrow">›</span>
+        </div>
+        <div class="menu-item" onclick="openView('view-profil')">
+          <div class="menu-left">
+            <div class="menu-icon" style="background:#e8eaf6;">👤</div>
+            <div><div class="menu-title">Profil</div><div class="menu-sub">Data diri & keamanan akun</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
       </div>
@@ -554,6 +596,170 @@
   </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- VIEW: PROFIL -->
+<!-- ============================================================ -->
+<div id="view-profil" class="view">
+  <div class="page-wrap">
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>👤 Profil Saya</h3>
+    </div>
+    <div style="margin-top:46px;">
+
+      <!-- TAB BAR -->
+      <div class="profil-tab-bar">
+        <button id="ptab-profil" onclick="switchProfilTab('profil')"
+          style="background:var(--primary);color:white;">👤 Profil</button>
+        <button id="ptab-keamanan" onclick="switchProfilTab('keamanan')"
+          style="background:white;color:var(--muted);">🔒 Login & Keamanan</button>
+      </div>
+
+      <!-- PANEL: PROFIL -->
+      <div id="ppanel-profil">
+
+        <!-- Foto Profil -->
+        <div class="card" style="margin-top:0;">
+          <div class="profil-avatar-wrap">
+            <div id="profil-photo-display" class="profil-avatar-placeholder">👤</div>
+            <p style="font-size:12px;color:var(--muted);margin-top:8px;" id="profil-username-label"></p>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button onclick="profilOpenCamera()" class="btn-absen btn-blue" style="flex:1;padding:10px;font-size:13px;">
+              📷 Kamera
+            </button>
+            <label style="flex:1;" class="btn-absen btn-gray" style="padding:10px;font-size:13px;cursor:pointer;text-align:center;display:flex;align-items:center;justify-content:center;gap:4px;">
+              🖼 Galeri<input type="file" accept="image/*" id="profil-file-input" style="display:none;" onchange="profilLoadFile(this)">
+            </label>
+            <button onclick="profilSavePhoto()" class="btn-absen btn-green" style="flex:1;padding:10px;font-size:13px;">
+              💾 Simpan
+            </button>
+          </div>
+          <!-- Kamera untuk foto profil -->
+          <div id="profil-cam-wrap" class="hidden" style="margin-top:12px;text-align:center;">
+            <div style="width:140px;height:140px;border-radius:50%;overflow:hidden;border:3px solid var(--primary);margin:0 auto 10px;background:#1a1a2e;">
+              <video id="video-profil" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;">
+              <button onclick="profilTakePhoto()" class="btn-absen btn-in" style="padding:9px 18px;font-size:13px;">📸 Ambil</button>
+              <button onclick="profilStopCamera()" class="btn-absen btn-gray" style="padding:9px 18px;font-size:13px;">✖ Tutup</button>
+            </div>
+          </div>
+          <!-- Preview foto baru -->
+          <div id="profil-preview-wrap" class="hidden" style="margin-top:12px;text-align:center;">
+            <img id="profil-preview-img" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);">
+            <p style="font-size:12px;color:var(--muted);margin-top:6px;">Preview — klik Simpan untuk menyimpan</p>
+          </div>
+        </div>
+
+        <!-- Data Diri -->
+        <div class="card" style="margin-top:16px;">
+          <h4>📋 Data Diri</h4>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Nama Lengkap</span>
+            <span class="profil-field-value" id="pf-nama">—</span>
+            <button class="profil-edit-btn" onclick="profilEditField('namaLengkap','Nama Lengkap')">Ubah</button>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Agama</span>
+            <span class="profil-field-value" id="pf-agama">—</span>
+            <button class="profil-edit-btn" onclick="profilEditAgama()">Ubah</button>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Jabatan</span>
+            <span class="profil-field-value" id="pf-jabatan">—</span>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Peran</span>
+            <span class="profil-field-value" id="pf-peran">—</span>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Group</span>
+            <span class="profil-field-value" id="pf-group">—</span>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Lingkup Kerja</span>
+            <span class="profil-field-value" id="pf-lingkup">—</span>
+          </div>
+
+          <div class="profil-field-row" id="row-gaji" style="display:none;">
+            <span class="profil-field-label">Nominal Gaji</span>
+            <span class="profil-field-value secret" id="pf-gaji" onclick="this.classList.toggle('revealed')" title="Klik untuk lihat">Rp ••••••</span>
+            <button class="profil-edit-btn" onclick="profilEditField('nominalGaji','Nominal Gaji')">Ubah</button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PANEL: LOGIN & KEAMANAN -->
+      <div id="ppanel-keamanan" class="hidden">
+
+        <div class="card" style="margin-top:0;">
+          <h4>🔑 Informasi Akun</h4>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Username</span>
+            <span class="profil-field-value" id="pk-username">—</span>
+          </div>
+
+          <div class="profil-field-row">
+            <span class="profil-field-label">Password</span>
+            <span class="profil-field-value secret" id="pk-password" onclick="this.classList.toggle('revealed')" title="Klik untuk lihat">••••••••</span>
+            <button class="profil-edit-btn" onclick="profilChangePassword()">Ubah</button>
+          </div>
+        </div>
+
+        <!-- Perbarui Data Wajah -->
+        <div class="card" style="margin-top:16px;">
+          <h4>😊 Data Wajah</h4>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+            Perbarui data wajah kamu agar sistem pengenalan wajah lebih akurat.
+          </p>
+          <div id="profil-face-cam-wrap" class="hidden" style="text-align:center;margin-bottom:12px;">
+            <div class="profil-face-wrap">
+              <video id="video-face-update" autoplay playsinline muted></video>
+            </div>
+            <div id="face-update-status" style="font-size:13px;color:var(--muted);margin-bottom:10px;">Hadapkan wajah ke kamera</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="profilStartFaceUpdate()" class="btn-absen btn-blue" style="flex:1;padding:10px;font-size:13px;" id="btn-start-face">
+              📷 Perbarui Data Wajah
+            </button>
+            <button onclick="profilSaveFace()" class="btn-absen btn-green" style="flex:1;padding:10px;font-size:13px;" id="btn-save-face">
+              💾 Simpan
+            </button>
+          </div>
+        </div>
+
+        <!-- Hapus Akun -->
+        <div class="danger-zone" id="danger-zone-hapus" style="display:none;">
+          <h5>⚠️ Zona Bahaya</h5>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+            Menghapus akun akan menghapus data pengguna secara permanen. Data absensi tetap tersimpan.
+          </p>
+          <div id="hapus-target-wrap">
+            <select id="hapus-target-select" style="width:100%;padding:10px;border:2px solid #fce4ec;border-radius:8px;font-size:13px;margin-bottom:8px;outline:none;">
+              <option value="">— Pilih akun yang akan dihapus —</option>
+            </select>
+          </div>
+          <button onclick="profilHapusAkun()" style="width:100%;padding:12px;border:none;border-radius:10px;
+            background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">
+            🗑 Hapus Akun
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- BOTTOM NAV -->
 <nav id="main-nav" class="bottom-nav hidden">
   <button onclick="navTo('home')"    class="nav-btn active" id="nav-home">   <span class="ni">🏠</span>Beranda</button>
@@ -563,6 +769,7 @@
 </nav>
 
 <canvas id="canvas" style="display:none;"></canvas>
+<canvas id="canvas-profil" style="display:none;"></canvas>
 <script src="script.js"></script>
 </body>
 </html>

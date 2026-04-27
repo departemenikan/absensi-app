@@ -73,7 +73,7 @@ initGroups();
 // AUTH
 // ========================
 app.post("/signup", (req, res) => {
-  const { username, password, faceDescriptor } = req.body;
+  const { username, password, faceDescriptor, namaLengkap, agama } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
@@ -82,6 +82,13 @@ app.post("/signup", (req, res) => {
     password,
     faceDescriptor: faceDescriptor || [],
     group: isFirst ? "owner" : "anggota",
+    namaLengkap: namaLengkap || "",
+    agama: agama || "",
+    jabatan: "",
+    peran: "",
+    lingkupKerja: "",
+    nominalGaji: "",
+    photo: "",
     createdAt: new Date().toISOString()
   };
   save(F.users, users);
@@ -204,6 +211,66 @@ app.get("/admin/today", (req, res) => {
     return { user: username, jamMasuk: rec?.jamMasuk||null, jamKeluar: rec?.jamKeluar||null, status };
   });
   res.send({ totalUsers: Object.keys(users).length, records });
+});
+
+// ========================
+// PROFIL
+// ========================
+app.get("/profile/:username", (req, res) => {
+  const users  = load(F.users, {});
+  const groups = load(F.groups, []);
+  const user   = users[req.params.username];
+  if (!user) return res.send({ status: "NOT_FOUND" });
+  const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
+  res.send({
+    username:    req.params.username,
+    namaLengkap: user.namaLengkap  || "",
+    agama:       user.agama        || "",
+    jabatan:     user.jabatan      || "",
+    peran:       user.peran        || "",
+    group:       user.group        || "anggota",
+    groupName:   group?.name       || "Anggota",
+    groupColor:  group?.color      || "#7f8c8d",
+    lingkupKerja:user.lingkupKerja || "",
+    nominalGaji: user.nominalGaji  || "",
+    photo:       user.photo        || "",
+    faceDescriptor: user.faceDescriptor || [],
+  });
+});
+
+app.put("/profile/:username", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  const allowed = ["namaLengkap","agama","jabatan","peran","lingkupKerja","nominalGaji"];
+  allowed.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+app.put("/profile/:username/photo", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  users[req.params.username].photo = req.body.photo || "";
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+app.put("/profile/:username/face", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  users[req.params.username].faceDescriptor = req.body.faceDescriptor || [];
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+app.put("/profile/:username/password", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  const { oldPassword, newPassword } = req.body;
+  if (users[req.params.username].password !== oldPassword) return res.send({ status: "WRONG_PASSWORD" });
+  users[req.params.username].password = newPassword;
+  save(F.users, users);
+  res.send({ status: "OK" });
 });
 
 // ========================
