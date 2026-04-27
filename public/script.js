@@ -181,9 +181,10 @@ function enterApp(menus, group, level) {
   stopCam("video-signup");
 
   // Tampilkan/sembunyikan nav berdasarkan akses
-  document.getElementById("nav-timesheet").classList.toggle("hidden", !userMenus.includes("timesheet"));
-  document.getElementById("nav-cuti").classList.toggle("hidden",     !userMenus.includes("cuti"));
-  document.getElementById("nav-setting").classList.toggle("hidden",  !userMenus.includes("setting"));
+  // Timesheet & Cuti selalu tampil (seperti Beranda), Setting dikontrol hak akses
+  document.getElementById("nav-timesheet").classList.remove("hidden");
+  document.getElementById("nav-cuti").classList.remove("hidden");
+  document.getElementById("nav-setting").classList.toggle("hidden", !userMenus.includes("setting"));
 
   // Tampilkan/sembunyikan menu di setting
   applyMenuAccess();
