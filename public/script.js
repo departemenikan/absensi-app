@@ -1141,6 +1141,10 @@ function toggleLihatPassword() {
   }
 }
 window.onload = async function () {
-  await loadFaceModels();
+  try {
+    await loadFaceModels();
+  } catch(e) {
+    console.warn("Face model gagal load:", e);
+  }
   checkLoginStatus();
 };
