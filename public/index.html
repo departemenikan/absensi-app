@@ -360,17 +360,23 @@
 <!-- ============================================================ -->
 <div id="view-rekap" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>📋 Rekap Absensi</h3><p id="rekap-user-label"></p></div>
-    <div class="card">
-      <div class="stat-row">
-        <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
-        <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
-        <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
-      </div>
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>📋 Rekap Absensi</h3>
     </div>
-    <div class="card" style="margin-top:16px;">
-      <h4>📅 Riwayat</h4>
-      <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+    <div style="margin-top:46px;">
+      <p id="rekap-user-label" style="font-size:13px;color:var(--muted);padding:0 4px 12px;"></p>
+      <div class="card" style="margin-top:0;">
+        <div class="stat-row">
+          <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
+          <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
+          <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h4>📅 Riwayat</h4>
+        <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+      </div>
     </div>
   </div>
 </div>
@@ -432,10 +438,10 @@
             <div><div class="menu-title">Aktivitas</div><div class="menu-sub">Log aktivitas terkini</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
-        <div class="menu-item" id="menu-timesheet" onclick="openView('view-timesheet')">
+        <div class="menu-item" id="menu-rekap" onclick="openView('view-rekap')">
           <div class="menu-left">
-            <div class="menu-icon" style="background:#fff3e0;">🕐</div>
-            <div><div class="menu-title">Timesheet</div><div class="menu-sub">Laporan jam kerja</div></div>
+            <div class="menu-icon" style="background:#fff3e0;">📋</div>
+            <div><div class="menu-title">Rekap</div><div class="menu-sub">Rekap absensi karyawan</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
         <div class="menu-item" onclick="openView('view-profil')">
@@ -583,18 +589,25 @@
 <!-- ============================================================ -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>🕐 Timesheet</h3>
-    </div>
-    <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <div class="filter-row">
-          <input type="month" id="ts-month" onchange="loadTimesheet()">
-          <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
-        </div>
-        <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
+    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja</p></div>
+    <div class="card">
+      <div class="filter-row">
+        <input type="month" id="ts-month" onchange="loadTimesheet()">
+        <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
       </div>
+      <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW: CUTI -->
+<!-- ============================================================ -->
+<div id="view-cuti" class="view">
+  <div class="page-wrap">
+    <div class="top-header"><h3>🌴 Cuti</h3><p>Pengajuan & status cuti</p></div>
+    <div class="card">
+      <p style="color:var(--muted);text-align:center;padding:20px;font-size:14px;">Fitur cuti akan segera hadir.</p>
     </div>
   </div>
 </div>
@@ -801,10 +814,10 @@
 
 <!-- BOTTOM NAV -->
 <nav id="main-nav" class="bottom-nav hidden">
-  <button onclick="navTo('home')"    class="nav-btn active" id="nav-home">   <span class="ni">🏠</span>Beranda</button>
-  <button onclick="navTo('rekap')"   class="nav-btn"        id="nav-rekap">  <span class="ni">📋</span>Rekap</button>
-  <button onclick="navTo('admin')"   class="nav-btn hidden" id="nav-admin">  <span class="ni">👑</span>Admin</button>
-  <button onclick="navTo('setting')" class="nav-btn"        id="nav-setting"><span class="ni">⚙️</span>Seting</button>
+  <button onclick="navTo('home')"      class="nav-btn active" id="nav-home">     <span class="ni">🏠</span>Beranda</button>
+  <button onclick="navTo('timesheet')" class="nav-btn"        id="nav-timesheet"><span class="ni">🕐</span>Timesheet</button>
+  <button onclick="navTo('cuti')"      class="nav-btn"        id="nav-cuti">     <span class="ni">🌴</span>Cuti</button>
+  <button onclick="navTo('setting')"   class="nav-btn"        id="nav-setting">  <span class="ni">⚙️</span>Seting</button>
 </nav>
 
 <canvas id="canvas" style="display:none;"></canvas>

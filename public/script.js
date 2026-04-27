@@ -181,8 +181,9 @@ function enterApp(menus, group, level) {
   stopCam("video-signup");
 
   // Tampilkan/sembunyikan nav berdasarkan akses
-  document.getElementById("nav-admin").classList.toggle("hidden",   !userMenus.includes("admin"));
-  document.getElementById("nav-setting").classList.toggle("hidden", !userMenus.includes("setting"));
+  document.getElementById("nav-timesheet").classList.toggle("hidden", !userMenus.includes("timesheet"));
+  document.getElementById("nav-cuti").classList.toggle("hidden",     !userMenus.includes("cuti"));
+  document.getElementById("nav-setting").classList.toggle("hidden",  !userMenus.includes("setting"));
 
   // Tampilkan/sembunyikan menu di setting
   applyMenuAccess();
@@ -207,7 +208,7 @@ function applyMenuAccess() {
     "menu-area":      "area",
     "menu-libur":     "libur",
     "menu-aktivitas": "aktivitas",
-    "menu-timesheet": "timesheet",
+    "menu-rekap":     "rekap",
   };
   Object.entries(map).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
