@@ -34,7 +34,25 @@ function openView(viewId) {
   if (viewId === "view-rekap")      loadRekap();
   if (viewId === "view-admin")      loadAdmin();
   if (viewId === "view-aktivitas")  loadAktivitas();
-  if (viewId === "view-area")       loadAreas();
+  if (viewId === "view-area") {
+    loadAreas();
+    setTimeout(() => {
+      if (!_areaMap) {
+        const defLat = -8.6500000, defLng = 115.2200000;
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            p => initAreaMap(p.coords.latitude, p.coords.longitude),
+            () => initAreaMap(defLat, defLng),
+            { enableHighAccuracy: true, timeout: 5000 }
+          );
+        } else {
+          initAreaMap(defLat, defLng);
+        }
+      } else {
+        _areaMap.invalidateSize();
+      }
+    }, 200);
+  }
   if (viewId === "view-libur")      loadLibur();
   if (viewId === "view-anggota")    { loadAnggota(); loadGroups(); }
   if (viewId === "view-profil")     loadProfil();
@@ -612,10 +630,75 @@ async function loadAreas() {
   } catch {}
 }
 
+// ---- MAP AREA KANTOR ----
+let _areaMap = null;
+let _areaMarker = null;
+let _areaCircle = null;
+
+function initAreaMap(lat, lng) {
+  if (_areaMap) {
+    _areaMap.setView([lat, lng], 16);
+    _setAreaMarker(lat, lng);
+    return;
+  }
+  _areaMap = L.map("area-map").setView([lat, lng], 16);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors", maxZoom: 19
+  }).addTo(_areaMap);
+
+  // Klik peta = pindah marker
+  _areaMap.on("click", function(e) {
+    _setAreaMarker(e.latlng.lat, e.latlng.lng);
+  });
+
+  _setAreaMarker(lat, lng);
+}
+
+function _setAreaMarker(lat, lng) {
+  const radius = parseInt(document.getElementById("area-radius").value) || 100;
+  if (_areaMarker) {
+    _areaMarker.setLatLng([lat, lng]);
+  } else {
+    _areaMarker = L.marker([lat, lng], { draggable: true })
+      .addTo(_areaMap)
+      .bindPopup("📍 Titik Kantor<br><small>Seret untuk pindah</small>")
+      .openPopup();
+    _areaMarker.on("dragend", function(e) {
+      const pos = e.target.getLatLng();
+      _updateAreaCoords(pos.lat, pos.lng);
+    });
+  }
+  if (_areaCircle) {
+    _areaCircle.setLatLng([lat, lng]).setRadius(radius);
+  } else {
+    _areaCircle = L.circle([lat, lng], { radius, color:"#4f8ef7", fillColor:"#4f8ef7", fillOpacity:0.15 }).addTo(_areaMap);
+  }
+  _updateAreaCoords(lat, lng);
+}
+
+function _updateAreaCoords(lat, lng) {
+  document.getElementById("area-lat").value = lat.toFixed(7);
+  document.getElementById("area-lng").value = lng.toFixed(7);
+  document.getElementById("area-coords-display").textContent =
+    `📌 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+}
+
+function updateAreaCircle() {
+  if (!_areaCircle || !_areaMarker) return;
+  const radius = parseInt(document.getElementById("area-radius").value) || 100;
+  _areaCircle.setRadius(radius);
+}
+
 function getMyLoc() {
   navigator.geolocation.getCurrentPosition(p => {
-    document.getElementById("area-lat").value = p.coords.latitude.toFixed(7);
-    document.getElementById("area-lng").value = p.coords.longitude.toFixed(7);
+    const lat = p.coords.latitude;
+    const lng = p.coords.longitude;
+    if (_areaMap) {
+      _areaMap.setView([lat, lng], 17);
+      _setAreaMarker(lat, lng);
+    } else {
+      initAreaMap(lat, lng);
+    }
     showToast("📍 Lokasi berhasil diambil!");
   }, null, {enableHighAccuracy:true});
 }
@@ -625,7 +708,7 @@ async function saveArea() {
   const lat    = document.getElementById("area-lat").value;
   const lng    = document.getElementById("area-lng").value;
   const radius = document.getElementById("area-radius").value;
-  if (!name || !lat || !lng) return showToast("⚠️ Isi semua field!", "warning");
+  if (!name || !lat || !lng) return showToast("⚠️ Isi nama area dan tentukan titik di peta!", "warning");
   try {
     const r = await fetch("/areas", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name,lat,lng,radius}) });
     if ((await r.json()).status === "OK") {
@@ -633,6 +716,10 @@ async function saveArea() {
       document.getElementById("area-name").value = "";
       document.getElementById("area-lat").value  = "";
       document.getElementById("area-lng").value  = "";
+      document.getElementById("area-coords-display").textContent = "— Belum ada titik dipilih —";
+      // Reset marker & circle
+      if (_areaMarker) { _areaMap.removeLayer(_areaMarker); _areaMarker = null; }
+      if (_areaCircle) { _areaMap.removeLayer(_areaCircle); _areaCircle = null; }
       loadAreas();
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
