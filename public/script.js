@@ -20,17 +20,15 @@ function showToast(msg, type = "success", ms = 3000) {
 }
 
 // ============================================================
-// NAVIGASI — satu sistem terpusat, tidak ada konflik
+// NAVIGASI — satu sistem terpusat
 // ============================================================
 function openView(viewId) {
-  // Sembunyikan semua view
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  // Tampilkan view yang diminta
   const el = document.getElementById(viewId);
   if (el) el.classList.add("active");
-  // Scroll ke atas
   window.scrollTo(0, 0);
-  // Load data jika perlu
+  
+  // Load data sesuai view
   if (viewId === "view-rekap")      loadRekap();
   if (viewId === "view-admin")      loadAdmin();
   if (viewId === "view-aktivitas")  loadAktivitas();
@@ -42,10 +40,18 @@ function openView(viewId) {
     if (!m.value) m.value = new Date().toISOString().slice(0, 7);
     loadTimesheet();
   }
+  if (viewId === "view-cuti") {
+    document.getElementById("cuti-user-label").innerText = localStorage.getItem("user") || "";
+    loadCuti();
+  }
+  if (viewId === "view-profil") {
+    document.getElementById("profil-username").innerText = localStorage.getItem("user") || "";
+    const g = localStorage.getItem("group") || "anggota";
+    document.getElementById("profil-group").innerText = g.charAt(0).toUpperCase() + g.slice(1);
+  }
 }
 
 function navTo(page) {
-  // Update nav aktif
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
   const navBtn = document.getElementById("nav-" + page);
   if (navBtn) navBtn.classList.add("active");
@@ -176,33 +182,37 @@ function enterApp(menus, group, level) {
   stopCam("video-signup");
 
   // Tampilkan/sembunyikan nav berdasarkan akses
-  document.getElementById("nav-admin").classList.toggle("hidden",   !userMenus.includes("admin"));
-  document.getElementById("nav-setting").classList.toggle("hidden", !userMenus.includes("setting"));
+  const navTimesheet = document.getElementById("nav-timesheet");
+  const navCuti = document.getElementById("nav-cuti");
+  const navSetting = document.getElementById("nav-setting");
+  if (navTimesheet) navTimesheet.classList.toggle("hidden", !userMenus.includes("timesheet"));
+  if (navCuti) navCuti.classList.toggle("hidden", !userMenus.includes("cuti"));
+  if (navSetting) navSetting.classList.toggle("hidden", !userMenus.includes("setting"));
 
-  // Tampilkan/sembunyikan menu di setting
+  // Terapkan akses menu di halaman setting
   applyMenuAccess();
 
   // Update header
   document.getElementById("hdr-user").innerText = localStorage.getItem("user") || "";
   document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  document.getElementById("rekap-user-label").innerText = localStorage.getItem("user") || "";
+  
+  // set default date admin jika ada (tidak dipakai karena admin tidak ada di nav, tapi tetap)
+  const ad = document.getElementById("adm-date");
+  if (ad) ad.value = new Date().toISOString().split("T")[0];
 
   navTo("home");
   loadStatus();
   loadTodayDetail();
-
-  // Set tanggal default admin
-  const ad = document.getElementById("adm-date");
-  if (ad) ad.value = new Date().toISOString().split("T")[0];
 }
 
 function applyMenuAccess() {
   const map = {
-    "menu-anggota":   "anggota",
-    "menu-area":      "area",
-    "menu-libur":     "libur",
-    "menu-aktivitas": "aktivitas",
-    "menu-timesheet": "timesheet",
+    "menu-profil":     "profil",
+    "menu-anggota":    "anggota",
+    "menu-area":       "area",
+    "menu-libur":      "libur",
+    "menu-aktivitas":  "aktivitas",
+    "menu-rekap":      "rekap",
   };
   Object.entries(map).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
@@ -394,7 +404,7 @@ function fmt(iso) {
 }
 
 // ============================================================
-// REKAP
+// REKAP (dipanggil dari setting)
 // ============================================================
 async function loadRekap() {
   const user = localStorage.getItem("user");
@@ -420,7 +430,7 @@ async function loadRekap() {
 }
 
 // ============================================================
-// ADMIN
+// ADMIN (tidak digunakan di navigasi, namun endpoint tetap ada)
 // ============================================================
 async function loadAdmin() {
   const date   = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
@@ -475,8 +485,7 @@ async function loadAnggota() {
           <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <select onchange="changeGroup('${m.username}',this.value)"
-            style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;">
+          <select onchange="changeGroup('${m.username}',this.value)" style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;">
             ${gOpts}
           </select>
           ${m.username !== localStorage.getItem("user") && userLevel <= 2
@@ -510,14 +519,15 @@ async function deleteAnggota(username) {
 // ============================================================
 const ALL_MENUS = [
   { key:"home",       label:"🏠 Beranda" },
-  { key:"rekap",      label:"📋 Rekap" },
-  { key:"admin",      label:"👑 Admin Panel" },
+  { key:"timesheet",  label:"🕐 Timesheet" },
+  { key:"cuti",       label:"📅 Cuti" },
   { key:"setting",    label:"⚙️ Pengaturan" },
+  { key:"profil",     label:"👤 Profil" },
   { key:"anggota",    label:"👥 Anggota" },
   { key:"area",       label:"📍 Area Kantor" },
   { key:"libur",      label:"📅 Hari Libur & Cuti" },
   { key:"aktivitas",  label:"📌 Aktivitas" },
-  { key:"timesheet",  label:"🕐 Timesheet" },
+  { key:"rekap",      label:"📋 Rekap" },
 ];
 
 async function loadGroups() {
@@ -529,7 +539,7 @@ async function loadGroups() {
       const isOwner   = g.id === "owner";
       const menuRows  = ALL_MENUS.map(m => {
         const checked = g.menus.includes(m.key);
-        const disabled = isOwner || m.key === "home"; // home selalu aktif
+        const disabled = isOwner || (m.key === "home"); // home selalu aktif
         return `<div class="menu-toggle-row">
           <span class="menu-toggle-label">${m.label}</span>
           <label class="toggle-switch">
@@ -563,14 +573,12 @@ function toggleGroupBody(id) {
 
 async function toggleGroupMenu(groupId, menuKey, enabled) {
   try {
-    // Ambil group terbaru, ubah menu, simpan
     const r = await fetch("/groups");
     const groups = await r.json();
     const group  = groups.find(g => g.id === groupId);
     if (!group) return;
     if (enabled && !group.menus.includes(menuKey)) group.menus.push(menuKey);
     if (!enabled) group.menus = group.menus.filter(m => m !== menuKey);
-    // Pastikan home selalu ada
     if (!group.menus.includes("home")) group.menus.push("home");
     const rr = await fetch(`/groups/${groupId}/menus`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({menus:group.menus}) });
     const dd = await rr.json();
@@ -712,7 +720,7 @@ async function loadAktivitas() {
 }
 
 // ============================================================
-// TIMESHEET
+// TIMESHEET (dashboard)
 // ============================================================
 async function loadTimesheet() {
   const month  = document.getElementById("ts-month").value;
@@ -736,6 +744,110 @@ async function loadTimesheet() {
       </tbody>
     </table>`;
   } catch {}
+}
+
+// ============================================================
+// CUTI KARYAWAN
+// ============================================================
+async function loadCuti() {
+  const user = localStorage.getItem("user");
+  if (!user) return;
+  try {
+    const res = await fetch(`/cuti?user=${user}`);
+    const data = await res.json();
+    const container = document.getElementById("cuti-list");
+    if (!data.length) {
+      container.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada pengajuan cuti</p>';
+      return;
+    }
+    container.innerHTML = data.map(c => {
+      const statusText = { pending:"⏳ Menunggu", approved:"✅ Disetujui", rejected:"❌ Ditolak" }[c.status] || c.status;
+      const statusColor = { pending:"#f39c12", approved:"#27ae60", rejected:"#e74c3c" }[c.status] || "#7f8c8d";
+      return `
+        <div class="history-item">
+          <div>
+            <div class="h-date">${c.startDate} ${c.endDate !== c.startDate ? 's/d ' + c.endDate : ''}</div>
+            <div class="h-time">${c.reason}</div>
+          </div>
+          <div style="text-align:right;">
+            <span style="background:${statusColor};color:white;padding:4px 10px;border-radius:50px;font-size:11px;">${statusText}</span>
+            ${c.status === 'pending' ? `<button onclick="hapusCuti('${c.id}')" style="background:none;border:none;color:var(--danger);font-size:14px;margin-left:8px;">🗑</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    console.error(e);
+    document.getElementById("cuti-list").innerHTML = '<p style="color:red;">Gagal memuat cuti</p>';
+  }
+}
+
+async function ajukanCuti() {
+  const user = localStorage.getItem("user");
+  const start = document.getElementById("cuti-start").value;
+  const end = document.getElementById("cuti-end").value || start;
+  const reason = document.getElementById("cuti-reason").value.trim();
+  if (!start || !reason) return showToast("⚠️ Isi tanggal dan alasan", "warning");
+  try {
+    const res = await fetch("/cuti", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, startDate: start, endDate: end, reason })
+    });
+    const d = await res.json();
+    if (d.status === "OK") {
+      showToast("✅ Pengajuan cuti terkirim");
+      document.getElementById("cuti-start").value = "";
+      document.getElementById("cuti-end").value = "";
+      document.getElementById("cuti-reason").value = "";
+      loadCuti();
+    } else {
+      showToast("❌ Gagal mengajukan cuti", "error");
+    }
+  } catch {
+    showToast("❌ Terjadi kesalahan", "error");
+  }
+}
+
+async function hapusCuti(id) {
+  if (!confirm("Batalkan pengajuan cuti ini?")) return;
+  try {
+    const res = await fetch(`/cuti/${id}`, { method: "DELETE" });
+    const d = await res.json();
+    if (d.status === "OK") {
+      showToast("🗑 Pengajuan dibatalkan");
+      loadCuti();
+    } else {
+      showToast("❌ Gagal membatalkan", "error");
+    }
+  } catch {
+    showToast("❌ Error", "error");
+  }
+}
+
+// ============================================================
+// PROFIL & GANTI PASSWORD (sederhana)
+// ============================================================
+async function gantiPassword() {
+  const newPass = document.getElementById("new-password").value.trim();
+  if (!newPass) return showToast("⚠️ Masukkan password baru", "warning");
+  const user = localStorage.getItem("user");
+  try {
+    const r = await fetch(`/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, newPassword: newPass })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Password berhasil diubah");
+      document.getElementById("new-password").value = "";
+    } else {
+      showToast("❌ Gagal mengubah password", "error");
+    }
+  } catch {
+    showToast("❌ Gagal terhubung", "error");
+  }
 }
 
 // ============================================================
