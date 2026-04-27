@@ -6,10 +6,7 @@
   <title>Absensi Smart</title>
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
   <style>
-    :root {
-      --primary:#4f8ef7; --success:#27ae60; --danger:#e74c3c;
-      --warning:#f39c12; --bg:#f0f2f5; --card:#fff; --text:#2c3e50; --muted:#95a5a6;
-    }
+    :root{--primary:#4f8ef7;--success:#27ae60;--danger:#e74c3c;--warning:#f39c12;--bg:#f0f2f5;--card:#fff;--text:#2c3e50;--muted:#95a5a6;}
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
 
@@ -27,48 +24,56 @@
       background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;
       display:flex;align-items:center;justify-content:center;overflow-y:auto;}
     .auth-card{background:white;padding:32px 28px;border-radius:20px;
-      box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
+      box-shadow:0 20px 60px rgba(0,0,0,.3);width:330px;text-align:center;margin:20px auto;}
     .auth-logo{font-size:40px;margin-bottom:4px;}
-    .auth-card h2{font-size:20px;margin-bottom:20px;}
-    .auth-card input{width:100%;padding:12px 14px;margin:6px 0;border:2px solid #e8ecf0;
+    .auth-card h2{font-size:20px;margin-bottom:16px;}
+    .auth-input{width:100%;padding:11px 14px;margin:5px 0;border:2px solid #e8ecf0;
       border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-    .auth-card input:focus{border-color:var(--primary);}
-    .signup-camera-wrap{margin:12px 0 6px;}
+    .auth-input:focus{border-color:var(--primary);}
+    .signup-camera-wrap{margin:10px 0 6px;}
     .signup-camera-wrap p{font-size:12px;color:var(--muted);margin-bottom:8px;}
-    .signup-camera{width:140px;height:140px;margin:0 auto;border-radius:50%;overflow:hidden;
+    .signup-camera{width:130px;height:130px;margin:0 auto;border-radius:50%;overflow:hidden;
       background:#1a1a2e;border:3px solid var(--primary);}
     .signup-camera video{width:100%;height:100%;object-fit:cover;}
-    #faceStatus{font-size:12px;margin:8px 0 4px;color:var(--muted);}
+    #faceStatus{font-size:12px;margin:6px 0 4px;color:var(--muted);}
 
     /* CAMERA MODAL */
     #camera-modal{position:fixed;top:0;left:0;width:100%;height:100%;
       background:rgba(0,0,0,.88);z-index:800;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;}
-    .camera-ring{width:220px;height:220px;border-radius:50%;overflow:hidden;
-      border:4px solid var(--primary);margin:0 auto 20px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
+    .camera-ring{width:210px;height:210px;border-radius:50%;overflow:hidden;
+      border:4px solid var(--primary);margin:0 auto 16px;
       box-shadow:0 0 0 8px rgba(79,142,247,.2);}
     .camera-ring video{width:100%;height:100%;object-fit:cover;}
     #camera-status{color:#a0cfff;font-size:13px;margin-bottom:16px;text-align:center;}
-    .camera-modal-title{color:white;font-size:15px;margin-bottom:16px;font-weight:600;}
-    .camera-cancel-btn{padding:12px 30px;border:none;border-radius:50px;
-      font-weight:700;font-size:15px;cursor:pointer;background:rgba(255,255,255,.15);color:white;}
+    .cam-title{color:white;font-size:15px;margin-bottom:14px;font-weight:600;text-align:center;}
+    .cam-cancel{padding:11px 28px;border:none;border-radius:50px;cursor:pointer;
+      background:rgba(255,255,255,.15);color:white;font-weight:700;}
 
-    /* LAYOUT */
-    /* Semua "view" (page utama, sub-page) disembunyikan secara default */
+    /* VIEWS */
     .view{display:none;}
     .view.active{display:block;}
+    .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
+    /* HEADER */
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
       color:white;padding:20px 16px 50px;margin:-16px -16px 0;}
     .top-header h3{font-size:18px;}
     .top-header p{font-size:13px;opacity:.8;margin-top:2px;}
-    .header-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
+    .top-header .hdr-user{font-size:13px;opacity:.9;margin-top:4px;font-weight:700;}
 
-    .page-wrap{padding:16px;animation:fadeIn .3s ease;}
+    /* SUB HEADER */
+    .sub-header{display:flex;align-items:center;gap:12px;
+      background:linear-gradient(135deg,#1a237e,#4f8ef7);
+      color:white;padding:16px;margin:-16px -16px 0;}
+    .sub-header h3{font-size:16px;}
+    .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
+      border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
 
+    /* CARDS */
     .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
-    .card+.card{margin-top:16px;}
+    .card+.card,.card-gap{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
 
     /* STATUS */
@@ -89,9 +94,10 @@
     .btn-red  {background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;}
     .btn-green{background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;}
     .btn-gray {background:#f0f2f5;color:var(--text);}
+    .btn-purple{background:linear-gradient(135deg,#8e44ad,#9b59b6);color:white;}
     .hidden{display:none!important;}
 
-    /* STAT */
+    /* STATS */
     .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
     .stat-box{background:#f8f9ff;border-radius:12px;padding:12px 8px;text-align:center;}
     .stat-box .val{font-size:20px;font-weight:800;color:var(--primary);}
@@ -109,12 +115,13 @@
 
     /* ADMIN */
     .adm-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
-    .adm-stat-box{border-radius:12px;padding:16px;text-align:center;color:white;}
-    .adm-stat-box .val{font-size:28px;font-weight:800;}
-    .adm-stat-box .lbl{font-size:12px;opacity:.8;}
-    .emp-item{display:flex;justify-content:space-between;align-items:center;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .adm-box{border-radius:12px;padding:16px;text-align:center;color:white;}
+    .adm-box .val{font-size:28px;font-weight:800;}
+    .adm-box .lbl{font-size:12px;opacity:.8;}
+    .emp-item{display:flex;align-items:center;justify-content:space-between;
+      padding:12px 0;border-bottom:1px solid #f0f2f5;cursor:pointer;}
     .emp-item:last-child{border-bottom:none;}
+    .emp-item:active{background:#f8f9ff;border-radius:10px;}
     .emp-name{font-size:14px;font-weight:700;}
     .emp-time{font-size:12px;color:var(--muted);}
     .emp-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:50px;}
@@ -123,76 +130,89 @@
     .emp-badge.out  {background:#fce4ec;color:var(--danger);}
 
     /* MENU LIST */
-    .menu-list{margin-top:4px;}
-    .menu-item{display:flex;align-items:center;justify-content:space-between;
+    .menu-list .menu-item{display:flex;align-items:center;justify-content:space-between;
       padding:14px 4px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:.15s;}
-    .menu-item:last-child{border-bottom:none;}
+    .menu-list .menu-item:last-child{border-bottom:none;}
     .menu-item:active{background:#f8f9ff;border-radius:10px;}
     .menu-left{display:flex;align-items:center;gap:12px;}
     .menu-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
     .menu-title{font-size:14px;font-weight:700;}
     .menu-sub{font-size:11px;color:var(--muted);margin-top:1px;}
-    .menu-arrow{color:#ccc;font-size:20px;font-weight:300;}
+    .menu-arrow{color:#ccc;font-size:20px;}
 
-    /* SUB-HEADER (untuk halaman dalam) */
-    .sub-header{display:flex;align-items:center;gap:12px;
-      background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px;margin:-16px -16px 0;}
-    .sub-header h3{font-size:16px;}
-    .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
-      border-radius:8px;padding:6px 12px;font-size:20px;cursor:pointer;}
+    /* PROFIL */
+    .profil-avatar-wrap{text-align:center;margin-bottom:20px;}
+    .profil-avatar{width:90px;height:90px;border-radius:50%;object-fit:cover;
+      border:3px solid var(--primary);background:#eee;display:block;margin:0 auto 10px;}
+    .profil-avatar-placeholder{width:90px;height:90px;border-radius:50%;
+      background:linear-gradient(135deg,#4f8ef7,#1a237e);
+      display:flex;align-items:center;justify-content:center;
+      font-size:32px;color:white;margin:0 auto 10px;}
+    .profil-name{font-size:18px;font-weight:700;}
+    .profil-role{font-size:13px;margin-top:4px;font-weight:600;}
 
-    /* ANGGOTA */
-    .member-item{display:flex;align-items:center;justify-content:space-between;
+    .profil-row{display:flex;align-items:center;justify-content:space-between;
       padding:12px 0;border-bottom:1px solid #f0f2f5;}
-    .member-item:last-child{border-bottom:none;}
-    .avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
-      justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;margin-right:10px;}
-    .m-name{font-size:14px;font-weight:700;}
-    .m-role{font-size:11px;margin-top:1px;}
-    .role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
+    .profil-row:last-child{border-bottom:none;}
+    .profil-label{font-size:12px;color:var(--muted);margin-bottom:2px;}
+    .profil-value{font-size:14px;font-weight:600;}
+    .profil-value.secret{font-family:monospace;letter-spacing:2px;color:var(--muted);cursor:pointer;}
+    .profil-value.secret.revealed{letter-spacing:normal;color:var(--text);}
+
+    /* ANGGOTA MODAL */
+    #anggota-modal{position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:flex-end;justify-content:center;}
+    .anggota-sheet{background:white;border-radius:20px 20px 0 0;width:100%;max-width:480px;
+      max-height:90vh;overflow-y:auto;padding:20px;}
+    .sheet-handle{width:40px;height:4px;background:#e0e0e0;border-radius:2px;margin:0 auto 16px;}
+
+    /* FORM */
+    .form-group{margin-bottom:14px;}
+    .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
+    .form-group input,.form-group select,.form-group textarea{width:100%;padding:11px 12px;
+      border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;
+      background:white;font-family:inherit;}
+    .form-group input:focus,.form-group select:focus{border-color:var(--primary);}
+    .form-group textarea{resize:vertical;min-height:80px;}
+    .btn-row{display:flex;gap:10px;margin-top:8px;}
+    .btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
+
+    /* TOGGLE */
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f5;}
+    .toggle-row:last-child{border-bottom:none;}
+    .toggle-label{font-size:13px;color:var(--text);}
+    .toggle-sw{position:relative;width:44px;height:24px;flex-shrink:0;}
+    .toggle-sw input{opacity:0;width:0;height:0;}
+    .toggle-sl{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.3s;}
+    .toggle-sl:before{content:"";position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
+    input:checked+.toggle-sl{background:var(--primary);}
+    input:checked+.toggle-sl:before{transform:translateX(20px);}
 
     /* GROUP */
-    .group-item{border-radius:12px;margin-bottom:10px;overflow:hidden;
-      box-shadow:0 2px 8px rgba(0,0,0,.06);}
-    .group-header{display:flex;align-items:center;justify-content:space-between;
-      padding:14px 16px;cursor:pointer;}
-    .group-title{font-size:14px;font-weight:700;color:white;}
-    .group-level{font-size:11px;color:rgba(255,255,255,.7);}
-    .group-body{background:#f8f9ff;padding:12px 16px;display:none;}
-    .group-body.open{display:block;}
-    .menu-toggle-row{display:flex;align-items:center;justify-content:space-between;
-      padding:8px 0;border-bottom:1px solid #eee;}
-    .menu-toggle-row:last-child{border-bottom:none;}
-    .menu-toggle-label{font-size:13px;color:var(--text);}
-    .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0;}
-    .toggle-switch input{opacity:0;width:0;height:0;}
-    .toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#ccc;
-      border-radius:24px;cursor:pointer;transition:.3s;}
-    .toggle-slider:before{content:"";position:absolute;width:18px;height:18px;
-      left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;}
-    input:checked+.toggle-slider{background:var(--primary);}
-    input:checked+.toggle-slider:before{transform:translateX(20px);}
+    .group-card{background:#f8f9ff;border-radius:12px;margin-bottom:10px;overflow:hidden;border:1px solid #e8ecf0;}
+    .group-card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;}
+    .group-card-title{font-size:14px;font-weight:700;}
+    .group-card-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+    .group-card-body{padding:12px 16px;border-top:1px solid #e8ecf0;display:none;}
+    .group-card-body.open{display:block;}
 
     /* AREA */
-    .area-item{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .area-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;}
     .area-item:last-child{border-bottom:none;}
     .area-name{font-size:14px;font-weight:700;}
     .area-detail{font-size:11px;color:var(--muted);margin-top:2px;}
-    .area-active{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;}
-    .area-active.on {background:#e8f5e9;color:var(--success);}
-    .area-active.off{background:#fce4ec;color:var(--danger);}
+    .area-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;cursor:pointer;}
+    .area-badge.on {background:#e8f5e9;color:var(--success);}
+    .area-badge.off{background:#fce4ec;color:var(--danger);}
 
     /* HOLIDAY */
-    .holiday-item{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 0;border-bottom:1px solid #f0f2f5;}
+    .holiday-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f2f5;}
     .holiday-item:last-child{border-bottom:none;}
     .h-date-text{font-size:12px;color:var(--primary);font-weight:700;}
-    .h-name{font-size:14px;font-weight:600;margin-top:1px;}
-    .h-type{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
-    .h-type.nasional{background:#fce4ec;color:#c62828;}
-    .h-type.cuti    {background:#e8f5e9;color:#2e7d32;}
+    .h-name-text{font-size:14px;font-weight:600;margin-top:1px;}
+    .h-type-badge{font-size:10px;padding:3px 8px;border-radius:50px;font-weight:700;}
+    .h-type-badge.nasional{background:#fce4ec;color:#c62828;}
+    .h-type-badge.cuti    {background:#e8f5e9;color:#2e7d32;}
 
     /* AKTIVITAS */
     .act-item{padding:12px 0;border-bottom:1px solid #f0f2f5;}
@@ -207,14 +227,20 @@
     .ts-table td{padding:10px 6px;border-bottom:1px solid #f0f2f5;}
     .ts-table tr:last-child td{border-bottom:none;}
 
-    /* FORM */
-    .form-group{margin-bottom:12px;}
-    .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600;}
-    .form-group input,.form-group select{width:100%;padding:11px 12px;
-      border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;transition:.2s;}
-    .form-group input:focus,.form-group select:focus{border-color:var(--primary);}
-    .btn-row{display:flex;gap:10px;margin-top:4px;}
-    .btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
+    /* FILTER */
+    .filter-row{display:flex;gap:8px;margin-bottom:12px;}
+    .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;border-radius:8px;font-size:13px;outline:none;}
+
+    /* TABS */
+    .tab-bar{display:flex;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;}
+    .tab-bar button{flex:1;padding:13px;border:none;font-weight:700;font-size:13px;cursor:pointer;transition:.2s;}
+    .tab-bar button.active{background:var(--primary);color:white;}
+    .tab-bar button:not(.active){background:white;color:var(--muted);}
+
+    /* COPYRIGHT */
+    .copyright{text-align:center;padding:24px 0 8px;}
+    .copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
+    .copyright p:last-child{font-size:11px;color:#b2bec3;margin-top:2px;}
 
     /* NAV */
     .bottom-nav{position:fixed;bottom:0;width:100%;background:white;
@@ -226,15 +252,9 @@
     .nav-btn .ni{font-size:20px;}
     .nav-btn.active{color:var(--primary);}
 
-    /* COPYRIGHT */
-    .copyright{text-align:center;padding:24px 0 8px;}
-    .copyright p:first-child{font-size:12px;color:var(--muted);font-weight:600;}
-    .copyright p:last-child {font-size:11px;color:#b2bec3;margin-top:2px;}
-
-    /* FILTER ROW */
-    .filter-row{display:flex;gap:8px;margin-bottom:12px;}
-    .filter-row input,.filter-row select{flex:1;padding:8px 12px;border:2px solid #e8ecf0;
-      border-radius:8px;font-size:13px;outline:none;}
+    /* DIVIDER */
+    .section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+      letter-spacing:.5px;margin:20px 0 8px;padding:0 4px;}
 
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
@@ -247,12 +267,18 @@
 
 <!-- CAMERA MODAL -->
 <div id="camera-modal" class="hidden">
-  <p class="camera-modal-title" id="cam-modal-title">Verifikasi Wajah</p>
-  <div class="camera-ring">
-    <video id="video-modal" autoplay playsinline muted></video>
-  </div>
+  <p class="cam-title" id="cam-title">Verifikasi Wajah</p>
+  <div class="camera-ring"><video id="video-modal" autoplay playsinline muted></video></div>
   <div id="camera-status" class="scanning">Mendeteksi wajah...</div>
-  <button class="camera-cancel-btn" onclick="cancelVerify()">Batal</button>
+  <button class="cam-cancel" onclick="cancelVerify()">Batal</button>
+</div>
+
+<!-- ANGGOTA DETAIL MODAL (bottom sheet) -->
+<div id="anggota-modal" class="hidden" onclick="closeAnggotaModal(event)">
+  <div class="anggota-sheet" id="anggota-sheet">
+    <div class="sheet-handle"></div>
+    <div id="anggota-detail-content"></div>
+  </div>
 </div>
 
 <!-- AUTH -->
@@ -267,8 +293,16 @@
       </div>
       <div id="faceStatus">⏳ Memuat model wajah...</div>
     </div>
-    <input type="text"     id="username" placeholder="Username">
-    <input type="password" id="password" placeholder="Password">
+    <input class="auth-input" type="text"     id="username"    placeholder="Username">
+    <input class="auth-input" type="password" id="password"    placeholder="Password">
+    <div id="signup-extra" class="hidden">
+      <input class="auth-input" type="text"   id="namaLengkap" placeholder="Nama Lengkap">
+      <select class="auth-input" id="agama">
+        <option value="">-- Pilih Agama --</option>
+        <option>Islam</option><option>Kristen</option><option>Katolik</option>
+        <option>Hindu</option><option>Buddha</option><option>Konghucu</option>
+      </select>
+    </div>
     <button onclick="handleAuth()" id="btn-auth-main"
       style="width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;
       background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;cursor:pointer;">
@@ -280,278 +314,393 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: HOME -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ HOME ═══════════════════════ -->
 <div id="view-home" class="view">
-  <div class="page-wrap">
-    <div class="top-header">
-      <h3>👋 Selamat Datang</h3>
-      <div class="header-user" id="hdr-user"></div>
-      <p id="hdr-date"></p>
+<div class="page-wrap">
+  <div class="top-header">
+    <h3>👋 Selamat Datang</h3>
+    <div class="hdr-user" id="hdr-user"></div>
+    <p id="hdr-date"></p>
+  </div>
+  <div class="card">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
     </div>
-    <div class="card">
-      <div style="text-align:center;margin-bottom:16px;">
-        <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
-      </div>
-      <div class="btn-grid">
-        <button id="btn-in"    class="btn-absen btn-in    btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
-        <button id="btn-bs"    class="btn-absen btn-break hidden"   onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
-        <button id="btn-be"    class="btn-absen btn-in    hidden"   onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button>
-        <button id="btn-out"   class="btn-absen btn-out   hidden"   onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px;">
-      <h4>📊 Hari Ini</h4>
-      <div class="stat-row">
-        <div class="stat-box"><div class="val" id="t-in">--:--</div><div class="lbl">Masuk</div></div>
-        <div class="stat-box"><div class="val" id="t-out">--:--</div><div class="lbl">Keluar</div></div>
-        <div class="stat-box"><div class="val" id="t-dur">0j</div><div class="lbl">Durasi</div></div>
-      </div>
-    </div>
-    <div class="copyright">
-      <p>Copyright &copy; 2026 Sukodo</p>
-      <p>All Rights Reserved.</p>
+    <div class="btn-grid">
+      <button id="btn-in"  class="btn-absen btn-in  btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
+      <button id="btn-bs"  class="btn-absen btn-break hidden" onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
+      <button id="btn-be"  class="btn-absen btn-in   hidden" onclick="breakEnd()"><span style="font-size:22px;">💪</span>Lanjut Kerja</button>
+      <button id="btn-out" class="btn-absen btn-out   hidden" onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
     </div>
   </div>
+  <div class="card card-gap">
+    <h4>📊 Hari Ini</h4>
+    <div class="stat-row">
+      <div class="stat-box"><div class="val" id="t-in">--:--</div><div class="lbl">Masuk</div></div>
+      <div class="stat-box"><div class="val" id="t-out">--:--</div><div class="lbl">Keluar</div></div>
+      <div class="stat-box"><div class="val" id="t-dur">0j</div><div class="lbl">Durasi</div></div>
+    </div>
+  </div>
+  <div class="copyright"><p>Copyright &copy; 2026 Sukodo</p><p>All Rights Reserved.</p></div>
+</div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: REKAP -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ REKAP ═══════════════════════ -->
 <div id="view-rekap" class="view">
-  <div class="page-wrap">
-    <div class="top-header"><h3>📋 Rekap Absensi</h3><p id="rekap-user-label"></p></div>
-    <div class="card">
-      <div class="stat-row">
-        <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
-        <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
-        <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px;">
-      <h4>📅 Riwayat</h4>
-      <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+<div class="page-wrap">
+  <div class="top-header"><h3>📋 Rekap Absensi</h3><p id="rekap-lbl"></p></div>
+  <div class="card">
+    <div class="stat-row">
+      <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
+      <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
+      <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
     </div>
   </div>
+  <div class="card card-gap"><h4>📅 Riwayat</h4><div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div>
+</div>
 </div>
 
-<!-- ============================================================ -->
-<!-- VIEW: ADMIN -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ ADMIN ═══════════════════════ -->
 <div id="view-admin" class="view">
-  <div class="page-wrap">
-    <div class="top-header"><h3>👑 Admin Panel</h3><p>Monitor semua karyawan</p></div>
-    <div class="card">
-      <div class="adm-stat">
-        <div class="adm-stat-box" style="background:linear-gradient(135deg,#4f8ef7,#1a237e);">
-          <div class="val" id="adm-total">0</div><div class="lbl">Total Karyawan</div>
-        </div>
-        <div class="adm-stat-box" style="background:linear-gradient(135deg,#27ae60,#2ecc71);">
-          <div class="val" id="adm-hadir">0</div><div class="lbl">Hadir Hari Ini</div>
-        </div>
-      </div>
-      <div class="filter-row">
-        <input type="date" id="adm-date" onchange="loadAdmin()">
-        <input type="text" id="adm-search" placeholder="Cari nama..." oninput="loadAdmin()">
-      </div>
-      <div id="admin-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+<div class="page-wrap">
+  <div class="top-header"><h3>👑 Admin Panel</h3><p>Monitor semua karyawan</p></div>
+  <div class="card">
+    <div class="adm-stat">
+      <div class="adm-box" style="background:linear-gradient(135deg,#4f8ef7,#1a237e);">
+        <div class="val" id="adm-total">0</div><div class="lbl">Total Karyawan</div></div>
+      <div class="adm-box" style="background:linear-gradient(135deg,#27ae60,#2ecc71);">
+        <div class="val" id="adm-hadir">0</div><div class="lbl">Hadir Hari Ini</div></div>
     </div>
+    <div class="filter-row">
+      <input type="date" id="adm-date" onchange="loadAdmin()">
+      <input type="text" id="adm-search" placeholder="Cari nama..." oninput="loadAdmin()">
+    </div>
+    <div id="admin-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: SETTING (daftar menu) -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ SETTING ═══════════════════════ -->
 <div id="view-setting" class="view">
-  <div class="page-wrap">
-    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div>
-    <div class="card">
-      <h4>🗂️ Menu</h4>
-      <div class="menu-list">
-        <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
-          <div class="menu-left">
-            <div class="menu-icon" style="background:#e3f2fd;">👥</div>
-            <div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & jabatan</div></div>
-          </div><span class="menu-arrow">›</span>
+<div class="page-wrap">
+  <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div>
+  <div class="card">
+    <h4>🗂️ Menu</h4>
+    <div class="menu-list">
+      <div class="menu-item" id="smenu-profil"     onclick="openView('view-profil')">
+        <div class="menu-left"><div class="menu-icon" style="background:#e8eaf6;">👤</div>
+        <div><div class="menu-title">Profil</div><div class="menu-sub">Data diri & keamanan akun</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-anggota"    onclick="openView('view-anggota')">
+        <div class="menu-left"><div class="menu-icon" style="background:#e3f2fd;">👥</div>
+        <div><div class="menu-title">Anggota</div><div class="menu-sub">Kelola karyawan & jabatan</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-area"       onclick="openView('view-area')">
+        <div class="menu-left"><div class="menu-icon" style="background:#e8f5e9;">📍</div>
+        <div><div class="menu-title">Area Kantor</div><div class="menu-sub">Kelola lokasi absensi</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-libur"      onclick="openView('view-libur')">
+        <div class="menu-left"><div class="menu-icon" style="background:#fce4ec;">📅</div>
+        <div><div class="menu-title">Hari Libur & Cuti</div><div class="menu-sub">Jadwal libur & cuti</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-aktivitas"  onclick="openView('view-aktivitas')">
+        <div class="menu-left"><div class="menu-icon" style="background:#f3e5f5;">📌</div>
+        <div><div class="menu-title">Aktivitas</div><div class="menu-sub">Log aktivitas terkini</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-timesheet"  onclick="openView('view-timesheet')">
+        <div class="menu-left"><div class="menu-icon" style="background:#fff3e0;">🕐</div>
+        <div><div class="menu-title">Timesheet</div><div class="menu-sub">Laporan jam kerja</div></div></div>
+        <span class="menu-arrow">›</span></div>
+      <div class="menu-item" id="smenu-rules"      onclick="openView('view-rules')">
+        <div class="menu-left"><div class="menu-icon" style="background:#fbe9e7;">🔐</div>
+        <div><div class="menu-title">Rules</div><div class="menu-sub">Filter akses menu per peran</div></div></div>
+        <span class="menu-arrow">›</span></div>
+    </div>
+  </div>
+  <div class="card card-gap">
+    <h4>👤 Akun</h4>
+    <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;
+      background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">
+      🚪 Logout</button>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════ PROFIL ═══════════════════════ -->
+<div id="view-profil" class="view">
+<div class="page-wrap">
+  <div class="sub-header">
+    <button class="back-btn" onclick="openView('view-setting')">‹</button>
+    <h3>👤 Profil Saya</h3>
+  </div>
+  <div style="margin-top:46px;">
+
+    <!-- TAB BAR -->
+    <div class="tab-bar">
+      <button id="ptab-profil" class="active" onclick="switchProfilTab('profil')">📋 Profil</button>
+      <button id="ptab-keamanan"              onclick="switchProfilTab('keamanan')">🔐 Login & Keamanan</button>
+    </div>
+
+    <!-- PANEL PROFIL -->
+    <div id="ppanel-profil">
+      <div class="card" style="margin-top:0;">
+        <!-- Avatar -->
+        <div class="profil-avatar-wrap">
+          <div id="profil-photo-wrap">
+            <div class="profil-avatar-placeholder" id="profil-avatar-placeholder">👤</div>
+          </div>
+          <div id="profil-photo-name" class="profil-name"></div>
+          <div id="profil-photo-role" class="profil-role"></div>
+          <!-- Tombol ubah foto -->
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+            <button onclick="startPhotoUpdate()" style="padding:8px 16px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:600;font-size:13px;cursor:pointer;">📷 Ubah Foto</button>
+            <button id="btn-simpan-foto" onclick="savePhoto()" class="hidden" style="padding:8px 16px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:600;font-size:13px;cursor:pointer;">💾 Simpan</button>
+          </div>
+          <!-- Kamera foto profil -->
+          <div id="foto-cam-wrap" class="hidden" style="margin-top:12px;">
+            <div style="width:120px;height:120px;border-radius:50%;overflow:hidden;margin:0 auto;border:3px solid var(--primary);">
+              <video id="video-foto" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;">
+              <button onclick="capturePhoto()" style="padding:7px 14px;border:none;border-radius:8px;background:var(--success);color:white;font-weight:600;font-size:12px;cursor:pointer;">📸 Ambil</button>
+              <button onclick="cancelPhoto()" style="padding:7px 14px;border:none;border-radius:8px;background:#f0f2f5;color:var(--text);font-weight:600;font-size:12px;cursor:pointer;">Batal</button>
+            </div>
+          </div>
         </div>
-        <div class="menu-item" id="menu-area" onclick="openView('view-area')">
-          <div class="menu-left">
-            <div class="menu-icon" style="background:#e8f5e9;">📍</div>
-            <div><div class="menu-title">Area Kantor</div><div class="menu-sub">Kelola lokasi absensi</div></div>
-          </div><span class="menu-arrow">›</span>
+
+        <div class="section-title">Informasi Pribadi</div>
+
+        <!-- Nama Lengkap -->
+        <div class="profil-row">
+          <div><div class="profil-label">Nama Lengkap</div><div class="profil-value" id="profil-nama">-</div></div>
+          <button onclick="editNama()" style="padding:6px 12px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;">Ubah</button>
         </div>
-        <div class="menu-item" id="menu-libur" onclick="openView('view-libur')">
-          <div class="menu-left">
-            <div class="menu-icon" style="background:#fce4ec;">📅</div>
-            <div><div class="menu-title">Hari Libur & Cuti</div><div class="menu-sub">Jadwal libur & cuti</div></div>
-          </div><span class="menu-arrow">›</span>
+        <div id="edit-nama-form" class="hidden" style="padding:10px 0;">
+          <div class="form-group"><label>Nama Lengkap Baru</label><input type="text" id="input-nama-baru" placeholder="Nama lengkap"></div>
+          <div class="btn-row">
+            <button onclick="cancelEditNama()" class="btn-gray">Batal</button>
+            <button onclick="saveNama()" class="btn-green">Simpan</button>
+          </div>
         </div>
-        <div class="menu-item" id="menu-aktivitas" onclick="openView('view-aktivitas')">
-          <div class="menu-left">
-            <div class="menu-icon" style="background:#f3e5f5;">📌</div>
-            <div><div class="menu-title">Aktivitas</div><div class="menu-sub">Log aktivitas terkini</div></div>
-          </div><span class="menu-arrow">›</span>
+
+        <div class="profil-row">
+          <div><div class="profil-label">Agama</div><div class="profil-value" id="profil-agama">-</div></div>
         </div>
-        <div class="menu-item" id="menu-timesheet" onclick="openView('view-timesheet')">
-          <div class="menu-left">
-            <div class="menu-icon" style="background:#fff3e0;">🕐</div>
-            <div><div class="menu-title">Timesheet</div><div class="menu-sub">Laporan jam kerja</div></div>
-          </div><span class="menu-arrow">›</span>
+        <div class="profil-row">
+          <div><div class="profil-label">Jabatan</div><div class="profil-value" id="profil-jabatan">-</div></div>
+        </div>
+        <div class="profil-row">
+          <div><div class="profil-label">Peran</div><div class="profil-value" id="profil-role">-</div></div>
+        </div>
+        <div class="profil-row">
+          <div><div class="profil-label">Group</div><div class="profil-value" id="profil-group">-</div></div>
+        </div>
+        <div class="profil-row">
+          <div><div class="profil-label">Lingkup Kerja</div>
+            <div class="profil-value" id="profil-lingkup">-</div>
+          </div>
+        </div>
+        <div class="profil-row" id="profil-gaji-row" style="display:none;">
+          <div><div class="profil-label">Nominal Gaji</div><div class="profil-value" id="profil-gaji">-</div></div>
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:16px;">
-      <h4>👤 Akun</h4>
-      <button onclick="logout()" style="width:100%;padding:13px;border:none;border-radius:10px;
-        background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-        🚪 Logout
-      </button>
+
+    <!-- PANEL KEAMANAN -->
+    <div id="ppanel-keamanan" class="hidden">
+      <div class="card" style="margin-top:0;">
+        <div class="section-title">Kredensial Login</div>
+
+        <!-- Username -->
+        <div class="profil-row">
+          <div>
+            <div class="profil-label">Username</div>
+            <div class="profil-value" id="sec-username">-</div>
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="profil-row">
+          <div>
+            <div class="profil-label">Password</div>
+            <div class="profil-value secret" id="sec-password" onclick="togglePasswordReveal(this)">••••••••</div>
+          </div>
+          <button onclick="editPassword()" style="padding:6px 12px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;">Ubah</button>
+        </div>
+        <div id="edit-pw-form" class="hidden" style="padding:10px 0;">
+          <div class="form-group"><label>Password Lama</label><input type="password" id="pw-old" placeholder="Password saat ini"></div>
+          <div class="form-group"><label>Password Baru</label><input type="password" id="pw-new" placeholder="Password baru"></div>
+          <div class="form-group"><label>Konfirmasi Password Baru</label><input type="password" id="pw-confirm" placeholder="Ulangi password baru"></div>
+          <div class="btn-row">
+            <button onclick="cancelEditPw()" class="btn-gray">Batal</button>
+            <button onclick="savePassword()" class="btn-green">Simpan</button>
+          </div>
+        </div>
+
+        <div class="section-title">Data Wajah</div>
+        <div class="profil-row">
+          <div><div class="profil-label">Face Recognition</div><div class="profil-value" id="sec-face-status">-</div></div>
+          <button onclick="startFaceUpdate()" style="padding:6px 12px;border:none;border-radius:8px;background:#e8f5e9;color:var(--success);font-size:12px;font-weight:600;cursor:pointer;">Perbarui</button>
+        </div>
+        <!-- Kamera untuk update wajah -->
+        <div id="face-update-wrap" class="hidden" style="text-align:center;padding:12px 0;">
+          <div style="width:130px;height:130px;border-radius:50%;overflow:hidden;margin:0 auto;border:3px solid var(--primary);">
+            <video id="video-face-update" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin:8px 0;" id="face-update-status">Hadapkan wajah ke kamera</div>
+          <div class="btn-row" style="justify-content:center;">
+            <button onclick="captureFaceUpdate()" class="btn-green" style="flex:none;padding:8px 20px;">📸 Ambil & Simpan</button>
+            <button onclick="cancelFaceUpdate()"  class="btn-gray"  style="flex:none;padding:8px 20px;">Batal</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hapus Akun (owner/admin only) -->
+      <div class="card card-gap" id="hapus-akun-card" style="display:none;">
+        <h4 style="color:var(--danger);">⚠️ Zona Berbahaya</h4>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Hapus akun ini secara permanen. Tindakan tidak bisa dibatalkan.</p>
+        <button onclick="hapusAkunSendiri()" style="width:100%;padding:12px;border:none;border-radius:10px;
+          background:var(--danger);color:white;font-weight:700;cursor:pointer;">🗑 Hapus Akun Ini</button>
+      </div>
     </div>
+
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: ANGGOTA (submenu: daftar + group) -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ ANGGOTA ═══════════════════════ -->
 <div id="view-anggota" class="view">
-  <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>👥 Anggota</h3>
+<div class="page-wrap">
+  <div class="sub-header">
+    <button class="back-btn" onclick="openView('view-setting')">‹</button>
+    <h3>👥 Anggota</h3>
+  </div>
+  <div style="margin-top:46px;">
+    <div class="tab-bar">
+      <button id="atab-daftar" class="active" onclick="switchAnggotaTab('daftar')">👤 Daftar</button>
+      <button id="atab-group"                 onclick="switchAnggotaTab('group')">🏷️ Group</button>
     </div>
-    <div style="margin-top:46px;">
-      <!-- Submenu tabs -->
-      <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
-        <button id="tab-daftar" onclick="switchAnggotaTab('daftar')"
-          style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-          👤 Daftar Anggota
-        </button>
-        <button id="tab-group" onclick="switchAnggotaTab('group')"
-          style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
-          🏷️ Group
-        </button>
-      </div>
 
-      <!-- Tab: Daftar Anggota -->
-      <div id="panel-daftar">
-        <div class="card" style="margin-top:0;">
-          <h4>Daftar Karyawan</h4>
-          <div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+    <!-- DAFTAR ANGGOTA -->
+    <div id="apanel-daftar">
+      <div class="card" style="margin-top:0;">
+        <div class="filter-row" style="margin-bottom:12px;">
+          <input type="text" id="anggota-search" placeholder="🔍 Cari nama..." oninput="loadAnggota()">
         </div>
+        <div id="member-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
       </div>
+    </div>
 
-      <!-- Tab: Group -->
-      <div id="panel-group" class="hidden">
-        <div class="card" style="margin-top:0;">
-          <h4>Pengaturan Group & Akses Menu</h4>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-            Atur menu yang bisa diakses tiap jabatan. Owner selalu punya akses penuh.
-          </p>
-          <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+    <!-- GROUP -->
+    <div id="apanel-group" class="hidden">
+      <div class="card" style="margin-top:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <h4 style="margin:0;">Daftar Group</h4>
+          <button onclick="showAddGroup()" style="padding:8px 14px;border:none;border-radius:8px;
+            background:var(--primary);color:white;font-weight:600;font-size:13px;cursor:pointer;">+ Tambah Group</button>
         </div>
+        <!-- Form tambah group -->
+        <div id="add-group-form" class="hidden" style="background:#f8f9ff;border-radius:12px;padding:14px;margin-bottom:14px;">
+          <div class="form-group"><label>Nama Group</label><input type="text" id="gform-nama" placeholder="contoh: Tim Marketing"></div>
+          <div class="form-group"><label>Manager Group</label>
+            <select id="gform-manager"><option value="">-- Pilih Manager --</option></select>
+          </div>
+          <div class="form-group"><label>Anggota Group (pilih lebih dari satu)</label>
+            <select id="gform-anggota" multiple style="min-height:100px;"></select>
+          </div>
+          <div class="btn-row">
+            <button onclick="cancelAddGroup()" class="btn-gray">Batal</button>
+            <button onclick="saveGroup()"       class="btn-green">Simpan</button>
+          </div>
+        </div>
+        <div id="group-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada group</p></div>
       </div>
     </div>
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: AREA -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ AREA ═══════════════════════ -->
 <div id="view-area" class="view">
-  <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>📍 Area Kantor</h3>
-    </div>
-    <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <h4>Tambah Area Baru</h4>
-        <div class="form-group"><label>Nama Area</label><input type="text" id="area-name" placeholder="contoh: Kantor Pusat, Cabang Bali"></div>
-        <div class="form-group"><label>Latitude</label><input type="number" id="area-lat" placeholder="-8.6500000" step="0.0000001"></div>
-        <div class="form-group"><label>Longitude</label><input type="number" id="area-lng" placeholder="115.2200000" step="0.0000001"></div>
-        <div class="form-group"><label>Radius (meter)</label><input type="number" id="area-radius" placeholder="100" value="100"></div>
-        <div class="btn-row">
-          <button onclick="getMyLoc()" class="btn-gray">📍 Lokasi Saya</button>
-          <button onclick="saveArea()" class="btn-green">➕ Tambah Area</button>
-        </div>
-      </div>
-      <div class="card" style="margin-top:16px;">
-        <h4>Daftar Area</h4>
-        <div id="area-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p></div>
+<div class="page-wrap">
+  <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📍 Area Kantor</h3></div>
+  <div style="margin-top:46px;">
+    <div class="card" style="margin-top:0;">
+      <h4>Tambah Area Baru</h4>
+      <div class="form-group"><label>Nama Area</label><input type="text" id="area-name" placeholder="contoh: Kantor Pusat, Cabang Bali"></div>
+      <div class="form-group"><label>Latitude</label><input type="number" id="area-lat" step="0.0000001" placeholder="-8.6500000"></div>
+      <div class="form-group"><label>Longitude</label><input type="number" id="area-lng" step="0.0000001" placeholder="115.2200000"></div>
+      <div class="form-group"><label>Radius (meter)</label><input type="number" id="area-radius" value="100"></div>
+      <div class="btn-row">
+        <button onclick="getMyLoc()" class="btn-gray">📍 Lokasi Saya</button>
+        <button onclick="saveArea()" class="btn-green">➕ Tambah</button>
       </div>
     </div>
+    <div class="card card-gap"><h4>Daftar Area</h4><div id="area-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p></div></div>
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: HARI LIBUR & CUTI -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ LIBUR ═══════════════════════ -->
 <div id="view-libur" class="view">
-  <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>📅 Hari Libur & Cuti</h3>
-    </div>
-    <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <h4>Tambah Libur / Cuti</h4>
-        <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div>
-        <div class="form-group"><label>Nama</label><input type="text" id="libur-name" placeholder="contoh: Lebaran, Cuti Bersama"></div>
-        <div class="form-group">
-          <label>Jenis</label>
-          <select id="libur-type">
-            <option value="nasional">🔴 Hari Libur Nasional</option>
-            <option value="cuti">🟢 Cuti</option>
-          </select>
-        </div>
-        <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah</button>
+<div class="page-wrap">
+  <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📅 Hari Libur & Cuti</h3></div>
+  <div style="margin-top:46px;">
+    <div class="card" style="margin-top:0;">
+      <h4>Tambah Libur / Cuti</h4>
+      <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div>
+      <div class="form-group"><label>Nama</label><input type="text" id="libur-name" placeholder="contoh: Lebaran, Cuti Bersama"></div>
+      <div class="form-group"><label>Jenis</label>
+        <select id="libur-type">
+          <option value="nasional">🔴 Hari Libur Nasional</option>
+          <option value="cuti">🟢 Cuti</option>
+        </select>
       </div>
-      <div class="card" style="margin-top:16px;">
-        <h4>Daftar Libur & Cuti</h4>
-        <div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div>
-      </div>
+      <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah</button>
     </div>
+    <div class="card card-gap"><h4>Daftar Libur & Cuti</h4><div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div></div>
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: AKTIVITAS -->
-<!-- ============================================================ -->
+<!-- ═══════════════════════ AKTIVITAS ═══════════════════════ -->
 <div id="view-aktivitas" class="view">
-  <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>📌 Aktivitas</h3>
-    </div>
-    <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <h4>Log Aktivitas Terkini</h4>
-        <div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+<div class="page-wrap">
+  <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>📌 Aktivitas</h3></div>
+  <div style="margin-top:46px;">
+    <div class="card" style="margin-top:0;"><h4>Log Aktivitas Terkini</h4><div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div></div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════ TIMESHEET ═══════════════════════ -->
+<div id="view-timesheet" class="view">
+<div class="page-wrap">
+  <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>🕐 Timesheet</h3></div>
+  <div style="margin-top:46px;">
+    <div class="card" style="margin-top:0;">
+      <div class="filter-row">
+        <input type="month" id="ts-month" onchange="loadTimesheet()">
+        <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
       </div>
+      <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
     </div>
   </div>
 </div>
+</div>
 
-<!-- ============================================================ -->
-<!-- VIEW: TIMESHEET -->
-<!-- ============================================================ -->
-<div id="view-timesheet" class="view">
-  <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>🕐 Timesheet</h3>
-    </div>
-    <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <div class="filter-row">
-          <input type="month" id="ts-month" onchange="loadTimesheet()">
-          <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
-        </div>
-        <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
-      </div>
+<!-- ═══════════════════════ RULES ═══════════════════════ -->
+<div id="view-rules" class="view">
+<div class="page-wrap">
+  <div class="sub-header"><button class="back-btn" onclick="openView('view-setting')">‹</button><h3>🔐 Rules</h3></div>
+  <div style="margin-top:46px;">
+    <div class="card" style="margin-top:0;">
+      <h4>Filter Akses Menu per Peran</h4>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Owner selalu punya akses penuh dan tidak bisa diubah.</p>
+      <div id="rules-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
     </div>
   </div>
+</div>
 </div>
 
 <!-- BOTTOM NAV -->
