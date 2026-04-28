@@ -369,12 +369,20 @@ app.put("/groups/:id/menus", (req, res) => {
 app.get("/divisi", (req, res) => res.send(load(F.divisi, [])));
 
 app.post("/divisi", (req, res) => {
-  const { nama, deskripsi, manager, koordinator } = req.body;
+  const { nama, deskripsi, owner, manager, koordinator } = req.body;
   if (!nama || !nama.trim()) return res.send({ status: "ERROR", msg: "Nama divisi wajib diisi" });
   const list = load(F.divisi, []);
   if (list.find(d => d.nama.toLowerCase() === nama.trim().toLowerCase()))
     return res.send({ status: "EXIST", msg: "Divisi sudah ada" });
-  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), manager: (manager||"").trim(), koordinator: (koordinator||"").trim(), createdAt: new Date().toISOString() });
+  list.push({
+    id: Date.now().toString(),
+    nama: nama.trim(),
+    deskripsi: (deskripsi||"").trim(),
+    owner: (owner||"").trim(),
+    manager: (manager||"").trim(),
+    koordinator: (koordinator||"").trim(),
+    createdAt: new Date().toISOString()
+  });
   save(F.divisi, list);
   res.send({ status: "OK" });
 });
@@ -384,9 +392,10 @@ app.put("/divisi/:id", (req, res) => {
   const item = list.find(d => d.id === req.params.id);
   if (!item) return res.send({ status: "NOT_FOUND" });
   const oldNama = item.nama;
-  if (req.body.nama) item.nama = req.body.nama.trim();
+  if (req.body.nama)        item.nama        = req.body.nama.trim();
   if (req.body.deskripsi !== undefined) item.deskripsi = req.body.deskripsi.trim();
-  if (req.body.manager !== undefined) item.manager = req.body.manager.trim();
+  if (req.body.owner       !== undefined) item.owner       = req.body.owner.trim();
+  if (req.body.manager     !== undefined) item.manager     = req.body.manager.trim();
   if (req.body.koordinator !== undefined) item.koordinator = req.body.koordinator.trim();
   save(F.divisi, list);
 
@@ -396,11 +405,12 @@ app.put("/divisi/:id", (req, res) => {
     const usr = users[u];
     // Jika nama divisi berubah, update field divisi user
     if (usr.divisi === oldNama) usr.divisi = item.nama;
-    // Update jabatan berdasarkan posisi
-    if (usr.divisi === item.nama && usr.group !== "owner") {
-      if (item.manager === u) usr.jabatan = "Manager";
+    // Update jabatan berdasarkan posisi di divisi (berlaku untuk semua, termasuk group owner)
+    if (usr.divisi === item.nama) {
+      if (item.owner === u)       usr.jabatan = "Owner";
+      else if (item.manager === u)     usr.jabatan = "Manager";
       else if (item.koordinator === u) usr.jabatan = "Koordinator";
-      else usr.jabatan = "Anggota";
+      else                             usr.jabatan = "Anggota";
     }
   });
   save(F.users, users);
@@ -429,22 +439,19 @@ app.put("/anggota/:username/divisi", (req, res) => {
   users[req.params.username].divisi = divisiNamaBaru;
 
   if (!divisiNamaBaru) {
-    // Keluar dari divisi — jabatan kembali ke Anggota (kecuali Owner)
-    if (users[req.params.username].group !== "owner") {
-      users[req.params.username].jabatan = "Anggota";
-    }
+    // Keluar dari divisi — jabatan kembali ke default berdasarkan group/peran
+    const grp = users[req.params.username].group;
+    users[req.params.username].jabatan = grp === "owner" ? "Owner" : "Anggota";
   } else {
     // Tentukan jabatan berdasarkan posisi di divisi
     const divisiList = load(F.divisi, []);
     const divisi = divisiList.find(d => d.nama === divisiNamaBaru);
     if (divisi) {
-      if (divisi.manager === req.params.username) {
-        users[req.params.username].jabatan = "Manager";
-      } else if (divisi.koordinator === req.params.username) {
-        users[req.params.username].jabatan = "Koordinator";
-      } else {
-        users[req.params.username].jabatan = "Anggota";
-      }
+      const u = req.params.username;
+      if (divisi.owner === u)           users[u].jabatan = "Owner";
+      else if (divisi.manager === u)    users[u].jabatan = "Manager";
+      else if (divisi.koordinator === u) users[u].jabatan = "Koordinator";
+      else                              users[u].jabatan = "Anggota";
     } else {
       users[req.params.username].jabatan = "Anggota";
     }
