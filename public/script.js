@@ -618,15 +618,12 @@ async function loadAnggota() {
       const dOpts = `<option value="">— Divisi —</option>` + divisiAll.map(dv =>
         `<option value="${dv.nama}" ${dv.nama===m.divisi?'selected':''}>${dv.nama}</option>`
       ).join("");
-      return `<div class="member-item" style="flex-wrap:wrap;gap:8px;">
-        <div style="display:flex;align-items:center;flex:1;min-width:0;">
+      return `<div class="member-item">
+        <div style="display:flex;align-items:center;">
           <div class="avatar" style="background:${m.groupColor||'#7f8c8d'};">${m.username[0].toUpperCase()}</div>
-          <div style="min-width:0;">
+          <div>
             <div class="m-name">${m.username}</div>
-            <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}</div>
-            ${m.jabatan ? `<div style="font-size:11px;color:var(--muted);margin-top:1px;">💼 ${m.jabatan}</div>` : ''}
-            ${m.peran && m.peran !== m.groupName ? `<div style="font-size:11px;color:var(--muted);margin-top:1px;">🏷️ ${m.peran}</div>` : ''}
-            ${m.divisi  ? `<div style="font-size:11px;color:var(--muted);margin-top:1px;">🏢 ${m.divisi}</div>`  : ''}
+            <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}${m.divisi ? ' · ' + m.divisi : ''}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
@@ -638,9 +635,6 @@ async function loadAnggota() {
             style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;max-width:90px;">
             ${dOpts}
           </select>
-          <button onclick="editJabatan('${m.username}','${(m.jabatan||'').replace(/'/g,"\\'")}','${(m.peran||'').replace(/'/g,"\\'")}' )"
-            style="padding:5px 10px;border:none;border-radius:8px;background:#e3f2fd;color:#1565c0;font-weight:700;font-size:12px;cursor:pointer;"
-            title="Edit Jabatan & Peran">✏️</button>
           ${m.username !== localStorage.getItem("user") && userLevel <= 2
             ? `<button onclick="deleteAnggota('${m.username}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>`
             : ""}
@@ -775,21 +769,6 @@ function deleteDivisi(id, nama) {
       } catch { showToast("❌ Gagal", "error"); }
     }
   });
-}
-
-function editJabatan(username, jabatanSaat, peranSaat) {
-  const jabatanBaru = prompt(`Jabatan untuk "${username}":`, jabatanSaat);
-  if (jabatanBaru === null) return;
-  const peranBaru = prompt(`Peran untuk "${username}":`, peranSaat);
-  if (peranBaru === null) return;
-  fetch(`/anggota/${username}/jabatan`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jabatan: jabatanBaru.trim(), peran: peranBaru.trim() })
-  }).then(r => r.json()).then(d => {
-    if (d.status === "OK") { showToast("✅ Jabatan & Peran diperbarui"); loadAnggota(); }
-    else showToast("❌ Gagal memperbarui", "error");
-  }).catch(() => showToast("❌ Gagal", "error"));
 }
 
 async function assignDivisi(username, divisiNama) {
