@@ -933,11 +933,21 @@
                 style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
                        font-size:14px;outline:none;box-sizing:border-box;background:white;appearance:auto;
                        transition:border .2s;cursor:pointer;"
-                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
+                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'"
+                onchange="document.getElementById('modal-cuti-hari-wrap').style.display=this.value==='kuota'?'block':'none'">
                 <option value="">-- Pilih Jenis Cuti --</option>
                 <option value="kuota">📊 Kuota</option>
                 <option value="non-kuota">🔓 Non-Kuota</option>
               </select>
+            </div>
+
+            <!-- Jumlah Hari (hanya tampil jika jenis = kuota) -->
+            <div id="modal-cuti-hari-wrap" style="display:none;">
+              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jumlah Hari per Tahun</label>
+              <input id="modal-cuti-hari" type="number" min="1" placeholder="contoh: 12"
+                style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
+                       font-size:14px;outline:none;box-sizing:border-box;transition:border .2s;"
+                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
             </div>
 
           </div>

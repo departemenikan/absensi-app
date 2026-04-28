@@ -2341,6 +2341,10 @@ function openKebijakanCutiModal() {
   overlay.style.display = "flex";
   document.getElementById("modal-cuti-nama").value  = "";
   document.getElementById("modal-cuti-jenis").value = "";
+  const hariInput = document.getElementById("modal-cuti-hari");
+  if (hariInput) hariInput.value = "";
+  const hariWrap = document.getElementById("modal-cuti-hari-wrap");
+  if (hariWrap) hariWrap.style.display = "none";
   setTimeout(() => document.getElementById("modal-cuti-nama").focus(), 100);
   // Tutup overlay jika klik di luar modal
   overlay.onclick = e => { if (e.target === overlay) closeKebijakanCutiModal(); };
@@ -2395,9 +2399,13 @@ async function saveKebijakanCuti() {
   if (!nama)  return showToast("⚠️ Isi nama cuti!", "warning");
   if (!jenis) return showToast("⚠️ Pilih jenis cuti!", "warning");
 
+  const hariInput = document.getElementById("modal-cuti-hari");
+  const hari = (jenis === "kuota" && hariInput) ? hariInput.value.trim() : "";
+
   const payload = {
     nama,
     jenis,          // "kuota" | "non-kuota"
+    hari: hari || null,
     berlaku: "semua",
   };
 

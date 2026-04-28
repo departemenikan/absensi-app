@@ -636,13 +636,14 @@ app.delete("/libur/:id", (req, res) => {
 app.get("/kebijakan-cuti", (req, res) => res.send(load(F.kebijakanCuti, [])));
 
 app.post("/kebijakan-cuti", (req, res) => {
-  const { nama, hari, periode, berlaku, keterangan } = req.body;
-  if (!nama || !hari) return res.send({ status: "ERROR" });
+  const { nama, jenis, hari, periode, berlaku, keterangan } = req.body;
+  if (!nama || !jenis) return res.send({ status: "ERROR" });
   const data = load(F.kebijakanCuti, []);
   data.push({
     id:          Date.now().toString(),
     nama,
-    hari:        parseInt(hari),
+    jenis:       jenis,                          // "kuota" | "non-kuota"
+    hari:        hari ? parseInt(hari) : null,    // jumlah hari kuota (opsional)
     periode:     periode || "tahunan",
     berlaku:     berlaku || "semua",
     keterangan:  keterangan || "",
