@@ -577,6 +577,54 @@ app.post("/libur", (req, res) => {
   res.send({ status: "OK" });
 });
 
+// ── Import bulk libur dari CSV/XLSX (data sudah diparse di frontend) ──
+app.post("/libur/import", (req, res) => {
+  const { rows, type, agama } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) return res.send({ status: "ERROR", msg: "Tidak ada data" });
+
+  const users   = load(F.users, {});
+  const data    = load(F.libur, []);
+  let imported  = 0;
+  const errors  = [];
+
+  rows.forEach((row, i) => {
+    const name      = (row.name || row.nama || row.Nama || row.Name || "").toString().trim();
+    const dateStart = (row.dateStart || row.date_start || row.tanggal_mulai || row.tanggal || row.Tanggal || row.Date || "").toString().trim();
+    const dateEnd   = (row.dateEnd   || row.date_end   || row.tanggal_akhir || "").toString().trim();
+
+    if (!name || !dateStart) { errors.push(`Baris ${i+2}: nama/tanggal kosong`); return; }
+
+    // Validasi format tanggal YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStart)) { errors.push(`Baris ${i+2}: format tanggal salah (${dateStart}), gunakan YYYY-MM-DD`); return; }
+
+    const end = (dateEnd && /^\d{4}-\d{2}-\d{2}$/.test(dateEnd)) ? dateEnd : dateStart;
+
+    const agamaArr = agama ? [agama] : [];
+    let anggota = [];
+    if (type === "agama" && agamaArr.length > 0) {
+      anggota = Object.keys(users).filter(u => agamaArr.includes(users[u].agama || ""));
+    } else if (type === "nasional") {
+      anggota = Object.keys(users);
+    }
+
+    data.push({
+      id:        Date.now().toString() + "_" + i,
+      name,
+      date:      dateStart,
+      dateStart,
+      dateEnd:   end,
+      type:      type || "nasional",
+      agama:     agamaArr,
+      anggota,
+      createdAt: new Date().toISOString()
+    });
+    imported++;
+  });
+
+  save(F.libur, data);
+  res.send({ status: "OK", imported, errors });
+});
+
 app.delete("/libur/:id", (req, res) => {
   const data = load(F.libur, []);
   const idx  = data.findIndex(d => d.id === req.params.id);

@@ -1886,11 +1886,18 @@ function _renderKalenderContent(key) {
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">${anggotaDesc}</div>
         </div>
-        <button onclick="openLiburModal('${key}')"
-          style="padding:9px 16px;background:${cfg.color};color:white;border:none;
-            border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
-          ➕ Tambah Hari Libur
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="openImportModal('${key}')"
+            style="padding:9px 14px;background:white;color:${cfg.color};border:2px solid ${cfg.color};
+              border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px;">
+            📥 Import
+          </button>
+          <button onclick="openLiburModal('${key}')"
+            style="padding:9px 16px;background:${cfg.color};color:white;border:none;
+              border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            ➕ Tambah Hari Libur
+          </button>
+        </div>
       </div>
       <div id="kal-list-${key}">
         ${_renderLiburItems(filtered)}
@@ -1997,6 +2004,315 @@ async function deleteLibur(id) {
 // Legacy compat — tidak dipakai lagi tapi jaga-jaga dipanggil dari tempat lain
 function toggleAgamaField() {}
 function saveLibur() { openLiburModal(_activeKalenderKey); }
+
+// ================================================================
+// IMPORT CSV / XLSX — Hari Libur
+// ================================================================
+
+let _importParsedRows = []; // hasil parse file, disimpan sementara
+
+function openImportModal(kalenderKey) {
+  const cfg = _KALENDER_CONFIG.find(k => k.key === kalenderKey) || {};
+  const isNasional = kalenderKey === "nasional";
+
+  document.getElementById("import-modal-title").textContent =
+    `📥 Import Libur ${isNasional ? "Nasional" : cfg.label || kalenderKey}`;
+  document.getElementById("import-modal-sub").innerHTML =
+    isNasional
+      ? "Akan berlaku untuk <b>semua anggota</b> otomatis."
+      : `Akan berlaku untuk anggota beragama <b>${kalenderKey}</b> otomatis.`;
+  document.getElementById("import-modal-type").value  = isNasional ? "nasional" : "agama";
+  document.getElementById("import-modal-agama").value = isNasional ? "" : kalenderKey;
+
+  // Reset state
+  _importParsedRows = [];
+  document.getElementById("import-file-input").value = "";
+  document.getElementById("import-preview-wrap").style.display  = "none";
+  document.getElementById("import-errors-wrap").style.display   = "none";
+  document.getElementById("import-progress-wrap").style.display = "none";
+  _setImportDropzoneDefault();
+  _setImportBtnState(false);
+
+  document.getElementById("libur-import-overlay").style.display = "flex";
+}
+
+function closeImportModal() {
+  document.getElementById("libur-import-overlay").style.display = "none";
+}
+
+function _setImportBtnState(enabled) {
+  const btn = document.getElementById("btn-do-import");
+  btn.disabled = !enabled;
+  btn.style.background = enabled ? "var(--success)" : "#ccc";
+  btn.style.cursor     = enabled ? "pointer" : "not-allowed";
+}
+
+function _setImportDropzoneDefault() {
+  const dz = document.getElementById("import-dropzone");
+  dz.style.borderColor = "#ddd";
+  dz.style.background  = "#fafafa";
+  dz.innerHTML = `
+    <div style="font-size:36px;margin-bottom:8px;">📂</div>
+    <div style="font-weight:700;font-size:14px;color:var(--text);">Klik atau seret file ke sini</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Format: <b>.csv</b> atau <b>.xlsx</b></div>`;
+}
+
+function handleImportDrop(event) {
+  event.preventDefault();
+  const dz = document.getElementById("import-dropzone");
+  dz.style.borderColor = "#ddd";
+  dz.style.background  = "#fafafa";
+  const file = event.dataTransfer.files[0];
+  if (file) _processImportFile(file);
+}
+
+function handleImportFileSelect(input) {
+  const file = input.files[0];
+  if (file) _processImportFile(file);
+}
+
+async function _processImportFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!["csv","xlsx","xls"].includes(ext)) {
+    showToast("⚠️ Format tidak didukung. Gunakan .csv atau .xlsx", "warning");
+    return;
+  }
+
+  // Update dropzone UI
+  const dz = document.getElementById("import-dropzone");
+  dz.innerHTML = `<div style="font-size:28px;margin-bottom:6px;">⏳</div>
+    <div style="font-weight:700;font-size:13px;color:var(--text);">Memproses ${file.name}...</div>`;
+
+  try {
+    let rows = [];
+    if (ext === "csv") {
+      rows = await _parseCSV(file);
+    } else {
+      rows = await _parseXLSX(file);
+    }
+
+    _importParsedRows = rows;
+    _renderImportPreview(rows, file.name);
+  } catch (e) {
+    dz.innerHTML = `<div style="font-size:28px;margin-bottom:6px;">❌</div>
+      <div style="font-weight:700;font-size:13px;color:var(--danger);">Gagal membaca file</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;">${e.message}</div>`;
+    showToast("❌ Gagal membaca file", "error");
+  }
+}
+
+// Parse CSV (pakai FileReader)
+function _parseCSV(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { reject(new Error("File kosong atau hanya header")); return; }
+
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+        const rows = [];
+        for (let i = 1; i < lines.length; i++) {
+          const vals = _splitCSVLine(lines[i]);
+          if (vals.every(v => !v.trim())) continue;
+          const obj = {};
+          headers.forEach((h, idx) => { obj[h] = (vals[idx] || "").trim().replace(/^"|"$/g, ""); });
+          rows.push(obj);
+        }
+        resolve(rows);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error("Gagal membaca file"));
+    reader.readAsText(file, "UTF-8");
+  });
+}
+
+// Fungsi split CSV yang handle tanda kutip
+function _splitCSVLine(line) {
+  const result = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === "," && !inQ) { result.push(cur); cur = ""; }
+    else { cur += c; }
+  }
+  result.push(cur);
+  return result;
+}
+
+// Parse XLSX — dinamis load SheetJS dari CDN jika belum tersedia
+function _parseXLSX(file) {
+  return new Promise((resolve, reject) => {
+    const doRead = () => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const wb   = XLSX.read(data, { type: "array" });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          // Normalize keys to lowercase
+          const rows = json.map(row => {
+            const obj = {};
+            Object.keys(row).forEach(k => { obj[k.toLowerCase().replace(/ /g,"_")] = row[k]; });
+            return obj;
+          });
+          resolve(rows);
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = () => reject(new Error("Gagal membaca XLSX"));
+      reader.readAsArrayBuffer(file);
+    };
+
+    if (typeof XLSX !== "undefined") { doRead(); return; }
+    // Lazy-load SheetJS
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload  = doRead;
+    s.onerror = () => reject(new Error("Gagal memuat library XLSX"));
+    document.head.appendChild(s);
+  });
+}
+
+// Validasi dan render preview
+function _renderImportPreview(rows, fileName) {
+  const validRows  = [];
+  const errorLines = [];
+
+  rows.forEach((row, i) => {
+    const name      = (row.name || row.nama || row["nama libur"] || row["nama_libur"] || "").toString().trim();
+    const dateStart = _normalizeDate(row.datestart || row.date_start || row.tanggal_mulai || row.tanggal || row.date || "");
+    const dateEnd   = _normalizeDate(row.dateend   || row.date_end   || row.tanggal_akhir || "");
+
+    let status = "✅ OK";
+    let ok = true;
+
+    if (!name) { status = "❌ Nama kosong"; ok = false; }
+    else if (!dateStart) { status = "❌ Tanggal kosong/salah"; ok = false; }
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStart)) { status = "❌ Format tgl salah"; ok = false; }
+
+    if (!ok) errorLines.push(`Baris ${i+2}: ${status}`);
+    else validRows.push({ name, dateStart, dateEnd: dateEnd || dateStart });
+
+    // Tambah ke preview (max 100 baris)
+    if (i < 100) {
+      const tr = document.createElement("tr");
+      tr.style.background = ok ? "white" : "#fff3f3";
+      tr.innerHTML = `
+        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--text);">${name || "<i style='color:#ccc'>—</i>"}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--muted);font-size:11px;">${dateStart || "—"}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--muted);font-size:11px;">${dateEnd || "—"}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;font-size:11px;">${status}</td>`;
+      document.getElementById("import-preview-body").appendChild(tr);
+    }
+  });
+
+  // Simpan hanya rows valid
+  _importParsedRows = validRows;
+
+  // Update dropzone
+  const dz = document.getElementById("import-dropzone");
+  dz.innerHTML = `<div style="font-size:28px;margin-bottom:6px;">${validRows.length > 0 ? "✅" : "⚠️"}</div>
+    <div style="font-weight:700;font-size:13px;color:var(--text);">${fileName}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px;">${rows.length} baris dibaca · <b style="color:var(--success);">${validRows.length} valid</b>${errorLines.length ? ` · <b style="color:var(--danger);">${errorLines.length} error</b>` : ""}</div>`;
+
+  // Preview
+  document.getElementById("import-preview-wrap").style.display = "block";
+  document.getElementById("import-row-count").textContent =
+    `${rows.length} baris (${validRows.length} siap diimport)`;
+
+  // Errors
+  if (errorLines.length) {
+    document.getElementById("import-errors-wrap").style.display = "block";
+    document.getElementById("import-errors-list").innerHTML = errorLines.join("<br>");
+  } else {
+    document.getElementById("import-errors-wrap").style.display = "none";
+  }
+
+  _setImportBtnState(validRows.length > 0);
+}
+
+// Normalisasi berbagai format tanggal ke YYYY-MM-DD
+function _normalizeDate(val) {
+  if (!val) return "";
+  const s = val.toString().trim();
+  // Sudah YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY atau DD-MM-YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`;
+  // YYYY/MM/DD
+  const m2 = s.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
+  if (m2) return `${m2[1]}-${m2[2].padStart(2,"0")}-${m2[3].padStart(2,"0")}`;
+  // Excel serial number
+  if (/^\d+$/.test(s)) {
+    const d = new Date(Math.round((parseInt(s) - 25569) * 86400 * 1000));
+    if (!isNaN(d)) return d.toISOString().slice(0,10);
+  }
+  return "";
+}
+
+async function doImport() {
+  if (!_importParsedRows.length) return;
+
+  const type  = document.getElementById("import-modal-type").value;
+  const agama = document.getElementById("import-modal-agama").value;
+
+  // Show progress
+  document.getElementById("import-progress-wrap").style.display = "block";
+  document.getElementById("import-progress-label").textContent = "Mengimpor...";
+  document.getElementById("import-progress-bar").style.width   = "30%";
+  _setImportBtnState(false);
+
+  try {
+    const r = await fetch("/libur/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: _importParsedRows, type, agama: agama || null })
+    });
+    const result = await r.json();
+
+    document.getElementById("import-progress-bar").style.width = "100%";
+
+    if (result.status === "OK") {
+      document.getElementById("import-progress-label").textContent =
+        `✅ Berhasil mengimpor ${result.imported} hari libur!`;
+
+      showToast(`✅ ${result.imported} hari libur berhasil diimport!`);
+
+      if (result.errors && result.errors.length) {
+        showToast(`⚠️ ${result.errors.length} baris gagal`, "warning");
+      }
+
+      setTimeout(async () => {
+        closeImportModal();
+        await loadLibur();
+        _renderKalenderContent(_activeKalenderKey);
+      }, 1000);
+    } else {
+      document.getElementById("import-progress-label").textContent = "❌ Import gagal";
+      showToast("❌ Import gagal: " + (result.msg || ""), "error");
+      _setImportBtnState(true);
+    }
+  } catch (e) {
+    document.getElementById("import-progress-label").textContent = "❌ Koneksi error";
+    showToast("❌ Gagal terhubung ke server", "error");
+    _setImportBtnState(true);
+  }
+}
+
+function downloadImportTemplate() {
+  const csv = `name,dateStart,dateEnd\nHari Raya Idul Fitri,2025-03-31,2025-04-01\nHari Raya Idul Adha,2025-06-07,\nTahun Baru Islam,2025-06-27,`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "template_import_libur.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ================================================================
 // KEBIJAKAN CUTI
