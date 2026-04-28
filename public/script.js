@@ -1350,10 +1350,10 @@ async function openDetailDivisi(id) {
     const [divisiRes, usersRes] = await Promise.all([fetch("/divisi"), fetch("/anggota")]);
     _divisiList = await divisiRes.json();
     _anggotaAll = await usersRes.json();
-  } catch { /* pakai cache */ }
+  } catch(e) { console.warn("openDetailDivisi: gagal refresh data", e); /* pakai cache */ }
 
   const d = _divisiList.find(x => x.id === id);
-  if (!d) return;
+  if (!d) { showToast("⚠️ Data divisi tidak ditemukan", "warning"); return; }
   _detailDivisiId = id;
 
   // Hitung anggota divisi ini (array-aware)
