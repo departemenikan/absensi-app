@@ -11,14 +11,15 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.static("public"));
 
 const F = {
-  data:      path.join(DATA_DIR, "data.json"),
-  users:     path.join(DATA_DIR, "users.json"),
-  areas:     path.join(DATA_DIR, "areas.json"),
-  libur:     path.join(DATA_DIR, "libur.json"),
-  aktivitas: path.join(DATA_DIR, "aktivitas.json"),
-  groups:    path.join(DATA_DIR, "groups.json"),
-  divisi:    path.join(DATA_DIR, "divisi.json"),
-  tracking:  path.join(DATA_DIR, "tracking.json"),
+  data:           path.join(DATA_DIR, "data.json"),
+  users:          path.join(DATA_DIR, "users.json"),
+  areas:          path.join(DATA_DIR, "areas.json"),
+  libur:          path.join(DATA_DIR, "libur.json"),
+  aktivitas:      path.join(DATA_DIR, "aktivitas.json"),
+  groups:         path.join(DATA_DIR, "groups.json"),
+  divisi:         path.join(DATA_DIR, "divisi.json"),
+  tracking:       path.join(DATA_DIR, "tracking.json"),
+  kebijakanCuti:  path.join(DATA_DIR, "kebijakan_cuti.json"),
 };
 
 function load(file, def) {
@@ -533,7 +534,6 @@ app.delete("/areas/:id", (req, res) => {
 // ========================
 // HARI LIBUR & KEBIJAKAN CUTI
 // ========================
-const F_KEBIJAKAN_CUTI = path.join(DATA_DIR, "kebijakan_cuti.json");
 
 // Endpoint publik: daftar agama unik dari seluruh anggota (tanpa data sensitif)
 app.get("/libur/agama-list", (req, res) => {
@@ -633,12 +633,12 @@ app.delete("/libur/:id", (req, res) => {
 });
 
 // Kebijakan Cuti
-app.get("/kebijakan-cuti", (req, res) => res.send(load(F_KEBIJAKAN_CUTI, [])));
+app.get("/kebijakan-cuti", (req, res) => res.send(load(F.kebijakanCuti, [])));
 
 app.post("/kebijakan-cuti", (req, res) => {
   const { nama, hari, periode, berlaku, keterangan } = req.body;
   if (!nama || !hari) return res.send({ status: "ERROR" });
-  const data = load(F_KEBIJAKAN_CUTI, []);
+  const data = load(F.kebijakanCuti, []);
   data.push({
     id:          Date.now().toString(),
     nama,
@@ -648,15 +648,15 @@ app.post("/kebijakan-cuti", (req, res) => {
     keterangan:  keterangan || "",
     createdAt:   new Date().toISOString()
   });
-  save(F_KEBIJAKAN_CUTI, data);
+  save(F.kebijakanCuti, data);
   res.send({ status: "OK" });
 });
 
 app.delete("/kebijakan-cuti/:id", (req, res) => {
-  const data = load(F_KEBIJAKAN_CUTI, []);
+  const data = load(F.kebijakanCuti, []);
   const idx  = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
-  data.splice(idx, 1); save(F_KEBIJAKAN_CUTI, data); res.send({ status: "OK" });
+  data.splice(idx, 1); save(F.kebijakanCuti, data); res.send({ status: "OK" });
 });
 
 // ========================
