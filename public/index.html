@@ -549,14 +549,8 @@
               <input id="anggota-search" type="text" placeholder="Cari..." oninput="filterAnggota()"
                 style="width:100%;padding:8px 10px 8px 30px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;box-sizing:border-box;outline:none;">
             </div>
-            <select id="anggota-filter-peran" onchange="filterAnggota()"
-              style="padding:8px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;outline:none;background:white;max-width:110px;">
-              <option value="">Peran ▾</option>
-            </select>
-            <select id="anggota-filter-divisi" onchange="filterAnggota()"
-              style="padding:8px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;outline:none;background:white;max-width:110px;">
-              <option value="">Grup ▾</option>
-            </select>
+            <select id="anggota-filter-peran" onchange="filterAnggota()" style="display:none;"></select>
+            <select id="anggota-filter-divisi" onchange="filterAnggota()" style="display:none;"></select>
             <button id="btn-tambah-anggota" onclick="openTambahAnggota()" style="display:none;
               padding:8px 14px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">
               + Tambahkan Anggota
@@ -567,7 +561,7 @@
             <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">
               <span id="anggota-count">0 anggota</span>
             </div>
-            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Grup / Divisi</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Divisi</div>
             <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Terakhir aktif</div>
           </div>
           <!-- Rows -->
@@ -980,12 +974,6 @@
       <input type="text" id="bg-nama" placeholder="contoh: HRD, IT, Finance" style="width:100%;box-sizing:border-box;">
     </div>
     <div class="form-group">
-      <label>Owner Divisi <span style="font-size:11px;color:var(--muted);">(Kepala Divisi)</span></label>
-      <select id="bg-owner" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <option value="">— Pilih Owner —</option>
-      </select>
-    </div>
-    <div class="form-group">
       <label>Manager Divisi</label>
       <select id="bg-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
         <option value="">— Pilih Manager —</option>
@@ -1028,10 +1016,6 @@
       <div class="form-group">
         <label>Nama Divisi</label>
         <input type="text" id="dd-nama" style="width:100%;box-sizing:border-box;">
-      </div>
-      <div class="form-group">
-        <label>Owner Divisi <span style="font-size:11px;color:var(--muted);">(Kepala Divisi)</span></label>
-        <select id="dd-owner" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;"></select>
       </div>
       <div class="form-group">
         <label>Manager Divisi</label>
