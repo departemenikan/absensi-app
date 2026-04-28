@@ -233,7 +233,7 @@ app.get("/profile/:username", (req, res) => {
     group:       user.group        || "anggota",
     groupName:   group?.name       || "Anggota",
     groupColor:  group?.color      || "#7f8c8d",
-    divisi:      user.divisi      || "",
+    divisi:      Array.isArray(user.divisi) ? user.divisi : (user.divisi ? [user.divisi] : []),
     statusKerja: user.statusKerja  || "",
     nominalGaji: user.nominalGaji  || "",
     photo:       user.photo        || "",
@@ -306,7 +306,7 @@ app.get("/anggota", (req, res) => {
       groupName:   g?.name          || "Anggota",
       groupColor:  g?.color         || "#7f8c8d",
       peran:       usr.peran        || (usr.group === "owner" ? "Owner" : usr.group === "admin" ? "Admin" : "Anggota"),
-      divisi:      usr.divisi       || "",
+      divisi:      Array.isArray(usr.divisi) ? usr.divisi : (usr.divisi ? [usr.divisi] : []),
       statusKerja: usr.statusKerja  || "",
       createdAt:   usr.createdAt    || "",
       lastSeen,
@@ -403,14 +403,25 @@ app.put("/divisi/:id", (req, res) => {
   const users = load(F.users, {});
   Object.keys(users).forEach(u => {
     const usr = users[u];
+    // Normalisasi ke array
+    if (!Array.isArray(usr.divisi)) usr.divisi = usr.divisi ? [usr.divisi] : [];
     // Jika nama divisi berubah, update field divisi user
-    if (usr.divisi === oldNama) usr.divisi = item.nama;
-    // Update jabatan berdasarkan posisi di divisi (berlaku untuk semua, termasuk group owner)
-    if (usr.divisi === item.nama) {
-      if (item.owner === u)       usr.jabatan = "Owner";
-      else if (item.manager === u)     usr.jabatan = "Manager";
-      else if (item.koordinator === u) usr.jabatan = "Koordinator";
-      else                             usr.jabatan = "Anggota";
+    const idx2 = usr.divisi.indexOf(oldNama);
+    if (idx2 !== -1) usr.divisi[idx2] = item.nama;
+    // Update jabatan berdasarkan posisi di divisi (prioritas tertinggi)
+    if (usr.divisi.includes(item.nama)) {
+      const priority = { "Owner": 1, "Manager": 2, "Koordinator": 3, "Anggota": 4 };
+      let bestJabatan = "Anggota";
+      usr.divisi.forEach(dNama => {
+        const dItem = list.find(d => d.nama === dNama);
+        if (!dItem) return;
+        let jab = "Anggota";
+        if (dItem.owner === u)            jab = "Owner";
+        else if (dItem.manager === u)     jab = "Manager";
+        else if (dItem.koordinator === u) jab = "Koordinator";
+        if ((priority[jab] || 4) < (priority[bestJabatan] || 4)) bestJabatan = jab;
+      });
+      usr.jabatan = bestJabatan;
     }
   });
   save(F.users, users);
@@ -421,41 +432,67 @@ app.delete("/divisi/:id", (req, res) => {
   const list = load(F.divisi, []);
   const idx  = list.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
-  // Kosongkan field divisi user yang memakai divisi ini
+  // Hapus divisi ini dari array divisi semua user
   const divisiNama = list[idx].nama;
   const users = load(F.users, {});
-  Object.values(users).forEach(u => { if (u.divisi === divisiNama) u.divisi = ""; });
+  Object.values(users).forEach(u => {
+    if (!Array.isArray(u.divisi)) u.divisi = u.divisi ? [u.divisi] : [];
+    u.divisi = u.divisi.filter(d => d !== divisiNama);
+  });
   save(F.users, users);
   list.splice(idx, 1);
   save(F.divisi, list);
   res.send({ status: "OK" });
 });
 
-// Assign anggota ke divisi — jabatan otomatis dari posisi divisi
+// Assign anggota ke divisi — jabatan otomatis dari posisi divisi, support multi-divisi
 app.put("/anggota/:username/divisi", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  const divisiNamaBaru = req.body.divisi || "";
-  users[req.params.username].divisi = divisiNamaBaru;
+  const u = req.params.username;
 
-  if (!divisiNamaBaru) {
-    // Keluar dari divisi — jabatan kembali ke default berdasarkan group/peran
-    const grp = users[req.params.username].group;
-    users[req.params.username].jabatan = grp === "owner" ? "Owner" : "Anggota";
+  // Normalisasi field divisi ke array
+  if (!Array.isArray(users[u].divisi)) {
+    users[u].divisi = users[u].divisi ? [users[u].divisi] : [];
+  }
+
+  const divisiNamaBaru = req.body.divisi || "";   // nama divisi yg ditambahkan
+  const action         = req.body.action || "add"; // "add" | "remove" | "set"
+
+  if (action === "remove") {
+    // Keluarkan dari divisi tertentu
+    users[u].divisi = users[u].divisi.filter(d => d !== divisiNamaBaru);
+  } else if (action === "set") {
+    // Ganti seluruh array (dipakai dari detail-anggota)
+    users[u].divisi = Array.isArray(req.body.divisiList) ? req.body.divisiList : (divisiNamaBaru ? [divisiNamaBaru] : []);
   } else {
-    // Tentukan jabatan berdasarkan posisi di divisi
-    const divisiList = load(F.divisi, []);
-    const divisi = divisiList.find(d => d.nama === divisiNamaBaru);
-    if (divisi) {
-      const u = req.params.username;
-      if (divisi.owner === u)           users[u].jabatan = "Owner";
-      else if (divisi.manager === u)    users[u].jabatan = "Manager";
-      else if (divisi.koordinator === u) users[u].jabatan = "Koordinator";
-      else                              users[u].jabatan = "Anggota";
-    } else {
-      users[req.params.username].jabatan = "Anggota";
+    // "add" — tambahkan jika belum ada
+    if (divisiNamaBaru && !users[u].divisi.includes(divisiNamaBaru)) {
+      users[u].divisi.push(divisiNamaBaru);
     }
   }
+
+  // Update jabatan: prioritas dari divisi pertama; jika tanpa divisi → default group
+  const divisiList = load(F.divisi, []);
+  if (!users[u].divisi.length) {
+    const grp = users[u].group;
+    users[u].jabatan = grp === "owner" ? "Owner" : "Anggota";
+  } else {
+    // Cek posisi di masing-masing divisi, ambil jabatan tertinggi
+    const priority = { "Owner": 1, "Manager": 2, "Koordinator": 3, "Anggota": 4 };
+    let bestJabatan = "Anggota";
+    users[u].divisi.forEach(dNama => {
+      const divisi = divisiList.find(d => d.nama === dNama);
+      if (!divisi) return;
+      let jab = "Anggota";
+      if (divisi.owner === u)            jab = "Owner";
+      else if (divisi.manager === u)     jab = "Manager";
+      else if (divisi.koordinator === u) jab = "Koordinator";
+      if ((priority[jab] || 4) < (priority[bestJabatan] || 4)) bestJabatan = jab;
+    });
+    users[u].jabatan = bestJabatan;
+  }
+
   save(F.users, users);
   res.send({ status: "OK" });
 });

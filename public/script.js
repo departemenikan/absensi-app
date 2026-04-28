@@ -751,6 +751,7 @@ async function loadAnggota() {
     _anggotaData   = await anggotaRes.json();
     _anggotaGroups = await groupsRes.json();
     _anggotaDivisi = await divisiRes.json();
+    _divisiList    = _anggotaDivisi; // sinkronkan cache _divisiList agar renderAnggotaTable bisa baca
 
     // Isi filter Peran
     const selPeran = document.getElementById("anggota-filter-peran");
@@ -786,20 +787,36 @@ function renderAnggotaTable(list) {
   }
 
   el.innerHTML = list.map(m => {
-    const nama     = m.namaLengkap || m.username;
-    const jabatan  = m.jabatan || m.groupName;
-    const divLabel = m.divisi  || '<span style="color:#ccc;">—</span>';
-    const isTL     = m.statusKerja === "Tugas Luar";
+    const nama    = m.namaLengkap || m.username;
+    const jabatan = m.jabatan || m.groupName;
+    const isTL    = m.statusKerja === "Tugas Luar";
+
+    // --- Kolom Divisi: hitung real-time dari _divisiList (bukan data cache user) ---
+    const divisiArr = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
+    // Sinkronisasi: cek juga dari _divisiList agar langsung update saat baru buat divisi
+    const divisiDariList = _divisiList
+      .filter(d =>
+        d.owner === m.username || d.manager === m.username ||
+        d.koordinator === m.username ||
+        (Array.isArray(d.anggota) && d.anggota.includes(m.username))
+      )
+      .map(d => d.nama);
+    // Gabungkan keduanya (union), hapus duplikat
+    const allDivisi = [...new Set([...divisiArr, ...divisiDariList])];
+    const divLabel  = allDivisi.length
+      ? allDivisi.map(d => `<span style="display:inline-block;background:#e8f0fe;color:var(--primary);
+          border-radius:50px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px 2px 1px 0;">${d}</span>`).join('')
+      : '<span style="color:#ccc;">—</span>';
 
     // Avatar: foto atau inisial
-    const avStyle  = `width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
-    const avatar   = m.photo
+    const avStyle = `width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
+    const avatar  = m.photo
       ? `<img src="${m.photo}" style="${avStyle}">`
       : `<div style="${avStyle}background:${m.groupColor||'#7f8c8d'};color:white;
            display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
            ${nama.charAt(0).toUpperCase()}</div>`;
 
-    // Badge tugas luar kecil di samping nama
+    // Badge tugas luar
     const tlBadge = isTL
       ? `<span style="font-size:10px;padding:1px 7px;border-radius:50px;background:#fff3e0;color:#e65100;
            font-weight:700;margin-left:5px;vertical-align:middle;">Tugas Luar</span>`
@@ -820,9 +837,8 @@ function renderAnggotaTable(list) {
             <div style="font-size:11px;color:var(--muted);margin-top:1px;">${jabatan}</div>
           </div>
         </div>
-        <!-- Kolom 2: Divisi -->
-        <div style="font-size:12px;color:#555;padding-right:6px;
-                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${divLabel}</div>
+        <!-- Kolom 2: Divisi (bisa multi) -->
+        <div style="font-size:12px;color:#555;padding-right:6px;line-height:1.6;">${divLabel}</div>
         <!-- Kolom 3: Terakhir Aktif -->
         <div style="font-size:12px;color:var(--muted);">${timeAgo(m.lastSeen)}</div>
       </div>`;
@@ -928,7 +944,9 @@ async function openDetailAnggota(username) {
   // --- Teks info ---
   document.getElementById("da-nama").textContent    = nama;
   document.getElementById("da-jabatan").textContent = m.jabatan || "—";
-  document.getElementById("da-divisi").textContent  = m.divisi  || "—";
+  // Divisi bisa array — tampilkan semua
+  const divisiArr = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
+  document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
 
   // Badge peran
@@ -966,12 +984,16 @@ async function openDetailAnggota(username) {
       ).join('');
     }
 
-    // Dropdown Divisi
+    // Dropdown Divisi — multi-select dengan checkbox
     const selDiv = document.getElementById("da-select-divisi");
+    const divisiArrM = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
     selDiv.innerHTML = '<option value="">— Tanpa Divisi —</option>' +
       _anggotaDivisi.map(d =>
-        `<option value="${d.nama}" ${d.nama === m.divisi ? "selected" : ""}>${d.nama}</option>`
+        `<option value="${d.nama}" ${divisiArrM.includes(d.nama) ? "selected" : ""}>${d.nama}</option>`
       ).join('');
+    // Aktifkan multiple select
+    selDiv.setAttribute("multiple", "true");
+    selDiv.style.height = Math.min(_anggotaDivisi.length * 34 + 34, 150) + "px";
 
     // Tombol hapus — sembunyikan jika diri sendiri
     document.getElementById("da-btn-hapus").style.display = isSelf ? "none" : "inline-block";
@@ -994,10 +1016,15 @@ function onToggleTugasLuar(cb) {
 
 async function saveDetailAnggota() {
   if (!_detailUsername) return;
-  const groupId    = document.getElementById("da-select-group").value;
-  const divisi     = document.getElementById("da-select-divisi").value;
-  const tugasLuar  = document.getElementById("da-chk-tugasluar").checked;
+  const groupId   = document.getElementById("da-select-group").value;
+  const tugasLuar = document.getElementById("da-chk-tugasluar").checked;
   const statusKerja = tugasLuar ? "Tugas Luar" : "";
+
+  // Ambil semua divisi yang dipilih (multi-select)
+  const selDiv    = document.getElementById("da-select-divisi");
+  const divisiList = [...selDiv.selectedOptions]
+    .map(o => o.value)
+    .filter(v => v !== "");
 
   try {
     await Promise.all([
@@ -1007,7 +1034,7 @@ async function saveDetailAnggota() {
       }),
       fetch(`/anggota/${_detailUsername}/divisi`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ divisi })
+        body: JSON.stringify({ action: "set", divisiList })
       }),
       fetch(`/anggota/${_detailUsername}/status`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
@@ -1165,14 +1192,22 @@ function _bgOutsideClick(e) {
 }
 
 function toggleAnggotaDropdown() {
-  const panel = document.getElementById("bg-anggota-panel");
-  const isOpen = panel.style.display !== "none";
-  panel.style.display = isOpen ? "none" : "block";
-  if (!isOpen) {
-    document.getElementById("bg-anggota-search").value = "";
-    filterAnggotaDropdown();
-    setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
+  const panel   = document.getElementById("bg-anggota-panel");
+  const trigger = document.getElementById("bg-anggota-trigger");
+  const isOpen  = panel.style.display !== "none";
+  if (isOpen) {
+    panel.style.display = "none";
+    return;
   }
+  // Hitung posisi trigger untuk tempatkan panel fixed tepat di bawahnya
+  const rect = trigger.getBoundingClientRect();
+  panel.style.top   = (rect.bottom + 4) + "px";
+  panel.style.left  = rect.left + "px";
+  panel.style.width = rect.width + "px";
+  panel.style.display = "block";
+  document.getElementById("bg-anggota-search").value = "";
+  filterAnggotaDropdown();
+  setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
 }
 
 function _renderAnggotaDropdownItems(list) {
@@ -1262,8 +1297,12 @@ async function saveBuatGrup() {
   const koordinator = document.getElementById("bg-koordinator").value;
   if (!nama) { showToast("⚠️ Nama divisi wajib diisi", "warning"); return; }
 
-  // Ambil dari state dropdown multi-select
+  // Kumpulkan semua username yang perlu di-assign (dari dropdown anggota + posisi jabatan)
   const checked = [..._bgSelectedAnggota];
+  // Pastikan owner/manager/koordinator masuk juga
+  for (const u of [owner, manager, koordinator]) {
+    if (u && !checked.includes(u)) checked.push(u);
+  }
 
   try {
     const r = await fetch("/divisi", {
@@ -1274,26 +1313,19 @@ async function saveBuatGrup() {
     if (d.status === "EXIST") { showToast("⚠️ Divisi sudah ada", "warning"); return; }
     if (d.status !== "OK")    { showToast("❌ Gagal membuat divisi", "error"); return; }
 
-    // Assign semua anggota yang dicentang
+    // Assign semua anggota dengan action "add" → TIDAK menghapus divisi sebelumnya (multi-divisi)
     await Promise.all(checked.map(u =>
       fetch(`/anggota/${u}/divisi`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ divisi: nama })
+        body: JSON.stringify({ divisi: nama, action: "add" })
       })
     ));
-    // Pastikan owner/manager/koordinator juga ter-assign ke divisi (jika belum di checklist)
-    for (const u of [owner, manager, koordinator]) {
-      if (u && !checked.includes(u)) {
-        await fetch(`/anggota/${u}/divisi`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ divisi: nama })
-        });
-      }
-    }
 
     showToast("✅ Divisi berhasil dibuat");
     closeBuatGrup();
-    loadDivisi();
+    // Refresh KEDUANYA agar kolom divisi di Daftar Anggota langsung update
+    await loadDivisi();
+    loadAnggota();
   } catch { showToast("❌ Gagal", "error"); }
 }
 

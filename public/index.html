@@ -1016,10 +1016,10 @@
           <span id="bg-anggota-label" style="color:#aaa;">— Pilih Anggota —</span>
           <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:12px;">▼</span>
         </div>
-        <!-- Panel dropdown -->
-        <div id="bg-anggota-panel" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);
-          background:white;border:1px solid #e0e0e0;border-radius:8px;z-index:9999;
-          box-shadow:0 4px 16px rgba(0,0,0,.12);overflow:hidden;">
+        <!-- Panel dropdown — fixed posisi agar tidak terpotong scroll modal -->
+        <div id="bg-anggota-panel" style="display:none;position:fixed;
+          background:white;border:1px solid #e0e0e0;border-radius:8px;z-index:10500;
+          box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden;width:calc(92% - 48px);max-width:372px;">
           <!-- Search dalam dropdown -->
           <div style="padding:8px 10px;border-bottom:1px solid #f0f2f5;">
             <input id="bg-anggota-search" type="text" placeholder="🔍 Cari nama..." oninput="filterAnggotaDropdown()"
