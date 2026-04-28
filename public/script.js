@@ -1751,8 +1751,24 @@ async function deleteArea(id) {
 // ============================================================
 // HARI LIBUR & CUTI
 // ============================================================
+
+// Config semua kalender yang mungkin muncul
+const _KALENDER_CONFIG = [
+  { key: "nasional", label: "🔴 Nasional",  icon: "🔴", agama: null,       color: "#e74c3c", bg: "#fff0f0" },
+  { key: "Islam",    label: "☪️ Islam",      icon: "☪️",  agama: "Islam",    color: "#27ae60", bg: "#e8f5e9" },
+  { key: "Hindu",    label: "🕉️ Hindu",      icon: "🕉️",  agama: "Hindu",    color: "#8e44ad", bg: "#f5eef8" },
+  { key: "Kristen",  label: "✝️ Kristen",    icon: "✝️",  agama: "Kristen",  color: "#2980b9", bg: "#eaf4fb" },
+  { key: "Katolik",  label: "⛪ Katolik",    icon: "⛪",  agama: "Katolik",  color: "#1a5276", bg: "#d6eaf8" },
+  { key: "Buddha",   label: "☸️ Buddha",     icon: "☸️",  agama: "Buddha",   color: "#d4ac0d", bg: "#fef9e7" },
+  { key: "Konghucu", label: "🔯 Konghucu",   icon: "🔯",  agama: "Konghucu", color: "#c0392b", bg: "#fdedec" },
+];
+
+let _activeKalenderKey = "nasional";
+let _allLiburData      = [];
+let _agamaAnggota      = []; // agama unik dari seluruh anggota
+
 // ================================================================
-// HARI LIBUR — Tab switching
+// HARI LIBUR — Tab switching (antara Hari Libur & Kebijakan Cuti)
 // ================================================================
 function switchLiburTab(tab) {
   const isHariLibur = tab === "hari-libur";
@@ -1765,24 +1781,6 @@ function switchLiburTab(tab) {
   if (!isHariLibur) loadKebijakanCuti();
 }
 
-function toggleAgamaField() {
-  const type = document.getElementById("libur-type").value;
-  document.getElementById("libur-agama-group").style.display = type === "agama" ? "block" : "none";
-}
-
-function _initLiburTahunFilter() {
-  const sel = document.getElementById("libur-filter-tahun");
-  if (!sel) return;
-  const cur = new Date().getFullYear();
-  sel.innerHTML = "";
-  for (let y = cur + 1; y >= cur - 2; y--) {
-    const opt = document.createElement("option");
-    opt.value = y; opt.textContent = y;
-    if (y === cur) opt.selected = true;
-    sel.appendChild(opt);
-  }
-}
-
 function _formatTanggalLibur(dateStart, dateEnd) {
   const fmt = d => {
     const [y,m,dy] = d.split("-");
@@ -1793,81 +1791,191 @@ function _formatTanggalLibur(dateStart, dateEnd) {
   return `${fmt(dateStart)} – ${fmt(dateEnd)}`;
 }
 
+// ================================================================
+// LOAD LIBUR — entry point utama
+// ================================================================
 async function loadLibur() {
-  _initLiburTahunFilter();
   try {
-    const r = await fetch("/libur");
-    const d = await r.json();
-    const list = document.getElementById("libur-list");
-    const tahun = document.getElementById("libur-filter-tahun")?.value || "";
-    const jenis = document.getElementById("libur-filter-jenis")?.value || "";
+    // Ambil data libur dan data anggota paralel
+    const [rLibur, rAnggota] = await Promise.all([fetch("/libur"), fetch("/anggota")]);
+    _allLiburData  = await rLibur.json();
+    const anggota  = await rAnggota.json();
 
-    let filtered = d;
-    if (tahun) filtered = filtered.filter(x => (x.dateStart || x.date || "").startsWith(tahun));
-    if (jenis) filtered = filtered.filter(x => x.type === jenis);
+    // Kumpulkan agama unik dari seluruh anggota
+    const agamaSet = new Set();
+    anggota.forEach(a => { if (a.agama) agamaSet.add(a.agama); });
+    _agamaAnggota = [...agamaSet];
 
-    if (!filtered.length) {
-      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data libur</p>';
-      return;
-    }
-
-    filtered.sort((a,b) => (a.dateStart||a.date||"").localeCompare(b.dateStart||b.date||""));
-
-    list.innerHTML = filtered.map(x => {
-      const isNasional = x.type === "nasional";
-      const agamaList  = x.agama ? (Array.isArray(x.agama) ? x.agama : [x.agama]) : [];
-      const agamaBadge = agamaList.map(ag =>
-        `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#4f8ef7;font-weight:600;">${ag}</span>`
-      ).join(" ");
-      const tglText = _formatTanggalLibur(x.dateStart || x.date, x.dateEnd);
-      const anggotaCount = x.anggota ? x.anggota.length : "—";
-      return `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${x.name}</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📆 ${tglText}</div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-            ${isNasional
-              ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fff0f0;color:#e74c3c;font-weight:600;">🔴 Nasional</span>'
-              : `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fff8e6;color:#e67e22;font-weight:600;">🕌 Keagamaan</span> ${agamaBadge}`
-            }
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:5px;">👥 ${isNasional ? "Semua anggota" : (anggotaCount !== "—" ? anggotaCount + " anggota" : "—")}</div>
-        </div>
-        <button onclick="deleteLibur('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 4px;flex-shrink:0;">🗑</button>
-      </div>`;
-    }).join("");
-  } catch { showToast("❌ Gagal memuat data libur", "error"); }
+    _renderKalenderSubmenu();
+    _renderKalenderContent(_activeKalenderKey);
+  } catch (e) {
+    showToast("❌ Gagal memuat data libur", "error");
+  }
 }
 
-async function saveLibur() {
-  const name      = document.getElementById("libur-name").value.trim();
-  const dateStart = document.getElementById("libur-date-start").value;
-  const dateEnd   = document.getElementById("libur-date-end").value;
-  const type      = document.getElementById("libur-type").value;
+// ================================================================
+// RENDER SUBMENU KALENDER (hanya tampil yg ada anggotanya + nasional)
+// ================================================================
+function _renderKalenderSubmenu() {
+  const wrap = document.getElementById("kalender-submenu");
+  if (!wrap) return;
 
-  if (!name || !dateStart) return showToast("⚠️ Isi nama libur dan tanggal mulai!", "warning");
+  // Filter: nasional selalu tampil, agama hanya jika ada anggota
+  const visible = _KALENDER_CONFIG.filter(k =>
+    k.key === "nasional" || _agamaAnggota.includes(k.agama)
+  );
 
-  let agama = [];
-  if (type === "agama") {
-    agama = Array.from(document.querySelectorAll("input[name='libur-agama']:checked")).map(el => el.value);
-    if (!agama.length) return showToast("⚠️ Pilih minimal satu agama!", "warning");
+  wrap.innerHTML = visible.map(k => {
+    const isActive = k.key === _activeKalenderKey;
+    return `<button onclick="switchKalender('${k.key}')" id="kalsub-${k.key}"
+      style="padding:9px 16px;border:2px solid ${isActive ? k.color : '#e0e0e0'};
+        border-radius:20px;background:${isActive ? k.color : 'white'};
+        color:${isActive ? 'white' : 'var(--text)'};font-weight:700;font-size:13px;
+        cursor:pointer;white-space:nowrap;transition:.2s;flex-shrink:0;">
+      ${k.label}
+    </button>`;
+  }).join("");
+}
+
+// ================================================================
+// SWITCH KALENDER AKTIF
+// ================================================================
+function switchKalender(key) {
+  _activeKalenderKey = key;
+  _renderKalenderSubmenu();
+  _renderKalenderContent(key);
+}
+
+// ================================================================
+// RENDER KONTEN KALENDER (daftar libur + tombol tambah)
+// ================================================================
+function _renderKalenderContent(key) {
+  const wrap = document.getElementById("kalender-content-wrap");
+  if (!wrap) return;
+
+  const cfg = _KALENDER_CONFIG.find(k => k.key === key);
+  if (!cfg) return;
+
+  const isNasional = key === "nasional";
+
+  // Filter data libur sesuai kalender aktif
+  let filtered;
+  if (isNasional) {
+    filtered = _allLiburData.filter(x => x.type === "nasional");
+  } else {
+    filtered = _allLiburData.filter(x => {
+      if (x.type !== "agama") return false;
+      const agamaList = Array.isArray(x.agama) ? x.agama : [x.agama];
+      return agamaList.includes(key);
+    });
   }
 
+  // Sort berdasarkan tanggal
+  filtered.sort((a,b) => (a.dateStart||a.date||"").localeCompare(b.dateStart||b.date||""));
+
+  const tahunNow = new Date().getFullYear();
+  const filteredThisYear = filtered.filter(x => (x.dateStart||x.date||"").startsWith(String(tahunNow)));
+
+  // Deskripsi otomatis anggota
+  const anggotaDesc = isNasional
+    ? "Berlaku untuk semua anggota otomatis."
+    : `Berlaku otomatis untuk anggota beragama <b>${key}</b>.`;
+
+  wrap.innerHTML = `
+    <div class="card" style="margin-top:0;padding:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        padding:14px 16px;border-bottom:1px solid #f0f2f5;gap:8px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:800;font-size:15px;color:var(--text);">
+            ${cfg.icon} Kalender Libur ${isNasional ? "Nasional" : key}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${anggotaDesc}</div>
+        </div>
+        <button onclick="openLiburModal('${key}')"
+          style="padding:9px 16px;background:${cfg.color};color:white;border:none;
+            border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+          ➕ Tambah Hari Libur
+        </button>
+      </div>
+      <div id="kal-list-${key}">
+        ${_renderLiburItems(filtered)}
+      </div>
+    </div>`;
+}
+
+function _renderLiburItems(list) {
+  if (!list.length) return '<p style="color:var(--muted);text-align:center;padding:24px;">Belum ada data libur</p>';
+  return list.map(x => {
+    const isNasional = x.type === "nasional";
+    const tglText    = _formatTanggalLibur(x.dateStart || x.date, x.dateEnd);
+    const anggotaCount = x.anggota ? x.anggota.length : null;
+    return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;
+      padding:13px 16px;border-bottom:1px solid #f8f8f8;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:2px;">${x.name}</div>
+        <div style="font-size:12px;color:var(--muted);">📆 ${tglText}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          👥 ${isNasional ? "Semua anggota" : (anggotaCount !== null ? anggotaCount + " anggota" : "—")}
+        </div>
+      </div>
+      <button onclick="deleteLibur('${x.id}')"
+        style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 6px;flex-shrink:0;">🗑</button>
+    </div>`;
+  }).join("");
+}
+
+// ================================================================
+// MODAL TAMBAH HARI LIBUR
+// ================================================================
+function openLiburModal(kalenderKey) {
+  const cfg = _KALENDER_CONFIG.find(k => k.key === kalenderKey) || {};
+  const isNasional = kalenderKey === "nasional";
+
+  document.getElementById("libur-modal-title").textContent =
+    `➕ Tambah Libur ${isNasional ? "Nasional" : cfg.label || kalenderKey}`;
+  document.getElementById("libur-modal-sub").innerHTML =
+    isNasional
+      ? "Akan berlaku untuk <b>semua anggota</b> otomatis."
+      : `Akan berlaku untuk anggota beragama <b>${kalenderKey}</b> otomatis.`;
+  document.getElementById("libur-modal-type").value  = isNasional ? "nasional" : "agama";
+  document.getElementById("libur-modal-agama").value = isNasional ? "" : kalenderKey;
+  document.getElementById("libur-modal-name").value  = "";
+  document.getElementById("libur-modal-date-start").value = "";
+  document.getElementById("libur-modal-date-end").value   = "";
+
+  const overlay = document.getElementById("libur-modal-overlay");
+  overlay.style.display = "flex";
+  setTimeout(() => document.getElementById("libur-modal-name").focus(), 100);
+}
+
+function closeLiburModal() {
+  document.getElementById("libur-modal-overlay").style.display = "none";
+}
+
+async function saveLiburFromModal() {
+  const name      = document.getElementById("libur-modal-name").value.trim();
+  const dateStart = document.getElementById("libur-modal-date-start").value;
+  const dateEnd   = document.getElementById("libur-modal-date-end").value;
+  const type      = document.getElementById("libur-modal-type").value;
+  const agamaVal  = document.getElementById("libur-modal-agama").value;
+
+  if (!name)      return showToast("⚠️ Isi nama hari libur!", "warning");
+  if (!dateStart) return showToast("⚠️ Isi tanggal mulai!", "warning");
+
+  const agama = agamaVal ? [agamaVal] : [];
+
   try {
-    const payload = { name, dateStart, dateEnd: dateEnd || dateStart, type, agama,
-      // backward compat: simpan juga field lama
-      date: dateStart };
+    const payload = { name, dateStart, dateEnd: dateEnd || dateStart, type, agama, date: dateStart };
     const r = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Hari libur berhasil ditambahkan!");
-      document.getElementById("libur-name").value = "";
-      document.getElementById("libur-date-start").value = "";
-      document.getElementById("libur-date-end").value = "";
-      document.getElementById("libur-type").value = "nasional";
-      document.getElementById("libur-agama-group").style.display = "none";
-      document.querySelectorAll("input[name='libur-agama']").forEach(el => el.checked = false);
-      loadLibur();
+      closeLiburModal();
+      await loadLibur();
+      // Pastikan tetap di kalender yang sama
+      _renderKalenderContent(_activeKalenderKey);
+    } else {
+      showToast("❌ Gagal menyimpan", "error");
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
@@ -1881,11 +1989,19 @@ async function deleteLibur(id) {
     onOk: async () => {
       try {
         const r = await fetch(`/libur/${id}`, {method:"DELETE"});
-        if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
+        if ((await r.json()).status === "OK") {
+          showToast("🗑 Berhasil dihapus");
+          await loadLibur();
+          _renderKalenderContent(_activeKalenderKey);
+        }
       } catch {}
     }
   });
 }
+
+// Legacy compat — tidak dipakai lagi tapi jaga-jaga dipanggil dari tempat lain
+function toggleAgamaField() {}
+function saveLibur() { openLiburModal(_activeKalenderKey); }
 
 // ================================================================
 // KEBIJAKAN CUTI

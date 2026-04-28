@@ -15,6 +15,11 @@
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;}
 
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
     /* TOAST */
     #toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
       background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;
@@ -716,70 +721,59 @@
 
       <!-- ===== TAB: HARI LIBUR ===== -->
       <div id="panel-hari-libur">
-        <div class="card" style="margin-top:0;">
-          <h4 style="margin-bottom:4px;">➕ Tambah Hari Libur</h4>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Anggota akan otomatis ditambahkan berdasarkan agama yang terdaftar di profil.</p>
 
-          <div class="form-group">
-            <label>Nama Libur</label>
-            <input type="text" id="libur-name" placeholder="contoh: Idul Fitri, Natal, Nyepi">
+        <!-- Submenu Kalender (dynamic, rendered by JS) -->
+        <div id="kalender-submenu-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px;">
+          <div id="kalender-submenu" style="display:flex;gap:8px;min-width:max-content;padding:2px 0 4px;">
+            <!-- diisi oleh JS -->
           </div>
-          <div style="display:flex;gap:10px;">
-            <div class="form-group" style="flex:1;">
-              <label>Tanggal Mulai</label>
-              <input type="date" id="libur-date-start">
-            </div>
-            <div class="form-group" style="flex:1;">
-              <label>Tanggal Akhir <span style="color:var(--muted);font-weight:400;">(opsional)</span></label>
-              <input type="date" id="libur-date-end">
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Jenis Libur</label>
-            <select id="libur-type" onchange="toggleAgamaField()">
-              <option value="nasional">🔴 Libur Nasional (semua anggota)</option>
-              <option value="agama">🕌 Libur Keagamaan (berdasarkan agama)</option>
-            </select>
-          </div>
-          <div class="form-group" id="libur-agama-group" style="display:none;">
-            <label>Agama yang Berlaku</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Islam"> Islam
-              </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Kristen"> Kristen
-              </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Katolik"> Katolik
-              </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Hindu"> Hindu
-              </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Buddha"> Buddha
-              </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
-                <input type="checkbox" name="libur-agama" value="Konghucu"> Konghucu
-              </label>
-            </div>
-          </div>
-          <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah Hari Libur</button>
         </div>
 
-        <div class="card" style="margin-top:16px;padding:0;overflow:hidden;">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f0f2f5;flex-wrap:wrap;gap:8px;">
-            <h4 style="margin:0;">Daftar Hari Libur</h4>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <select id="libur-filter-tahun" onchange="loadLibur()" style="padding:6px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;"></select>
-              <select id="libur-filter-jenis" onchange="loadLibur()" style="padding:6px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
-                <option value="">Semua Jenis</option>
-                <option value="nasional">Nasional</option>
-                <option value="agama">Keagamaan</option>
-              </select>
+        <!-- Panel konten tiap kalender (dynamic) -->
+        <div id="kalender-content-wrap">
+          <!-- diisi oleh JS -->
+        </div>
+
+      </div>
+
+      <!-- ===== MODAL TAMBAH HARI LIBUR (Pop-up) ===== -->
+      <div id="libur-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+        background:rgba(0,0,0,.55);z-index:800;align-items:center;justify-content:center;">
+        <div style="background:white;border-radius:18px;padding:24px 20px;width:calc(100% - 40px);max-width:420px;
+          box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .25s ease;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <div style="font-weight:800;font-size:16px;color:var(--text);" id="libur-modal-title">➕ Tambah Hari Libur</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;" id="libur-modal-sub"></div>
+            </div>
+            <button onclick="closeLiburModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;">×</button>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:6px;">Nama Hari Libur</label>
+            <input type="text" id="libur-modal-name" placeholder="contoh: Idul Fitri, Nyepi, Waisak..."
+              style="width:100%;padding:11px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;transition:.2s;"
+              onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='#e0e0e0'">
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:12px;">
+            <div style="flex:1;">
+              <label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:6px;">Tanggal Mulai</label>
+              <input type="date" id="libur-modal-date-start"
+                style="width:100%;padding:11px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;"
+                onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='#e0e0e0'">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:6px;">Tanggal Akhir <span style="color:var(--muted);font-weight:400;">(opsional)</span></label>
+              <input type="date" id="libur-modal-date-end"
+                style="width:100%;padding:11px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;"
+                onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='#e0e0e0'">
             </div>
           </div>
-          <div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div>
+          <input type="hidden" id="libur-modal-type">
+          <input type="hidden" id="libur-modal-agama">
+          <div style="display:flex;gap:10px;margin-top:4px;">
+            <button onclick="closeLiburModal()" style="flex:1;padding:12px;border:1.5px solid #e0e0e0;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);">Batal</button>
+            <button onclick="saveLiburFromModal()" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--success);color:white;font-weight:700;font-size:14px;cursor:pointer;">💾 Simpan</button>
+          </div>
         </div>
       </div>
 
