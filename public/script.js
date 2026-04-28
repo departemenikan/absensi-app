@@ -2317,53 +2317,139 @@ function downloadImportTemplate() {
 // ================================================================
 // KEBIJAKAN CUTI
 // ================================================================
+// ============================================================
+// KEBIJAKAN CUTI — Modal & CRUD
+// ============================================================
+
+// Aturan jam kerja per hari (untuk konversi cuti harian → jam)
+const JAM_KERJA_PER_HARI = {
+  1: 7, // Senin
+  2: 7, // Selasa
+  3: 7, // Rabu
+  4: 7, // Kamis
+  5: 7, // Jumat
+  6: 5, // Sabtu
+  0: 0, // Minggu (tidak kerja)
+};
+const JAM_KERJA_SEMINGGU = 40;
+
+function openKebijakanCutiModal() {
+  const overlay = document.getElementById("kebijakan-cuti-modal-overlay");
+  overlay.style.display = "flex";
+  document.getElementById("modal-cuti-nama").value    = "";
+  document.getElementById("modal-cuti-jumlah").value  = "";
+  document.getElementById("modal-cuti-satuan").value  = "hari";
+  document.getElementById("modal-cuti-info").style.display = "none";
+  setTimeout(() => document.getElementById("modal-cuti-nama").focus(), 100);
+
+  // Event: update info konversi saat satuan berubah
+  document.getElementById("modal-cuti-satuan").onchange  = _updateCutiInfo;
+  document.getElementById("modal-cuti-jumlah").oninput   = _updateCutiInfo;
+  // Tutup overlay jika klik di luar modal
+  overlay.onclick = e => { if (e.target === overlay) closeKebijakanCutiModal(); };
+}
+
+function _updateCutiInfo() {
+  const satuan = document.getElementById("modal-cuti-satuan").value;
+  const jumlah = parseInt(document.getElementById("modal-cuti-jumlah").value) || 0;
+  const info   = document.getElementById("modal-cuti-info");
+  const text   = document.getElementById("modal-cuti-info-text");
+
+  if (!jumlah) { info.style.display = "none"; return; }
+
+  if (satuan === "hari") {
+    text.innerHTML = `📌 <b>${jumlah} hari cuti</b> akan dikonversi ke jam kerja saat pengajuan:<br>
+      • Cuti Senin–Jumat = <b>7 jam</b>/hari masuk ke jam kerja<br>
+      • Cuti Sabtu = <b>5 jam</b>/hari masuk ke jam kerja<br>
+      <span style="color:#388e3c;">Sehingga total jam seminggu tetap ≥ 40 jam, menghindari pemotongan gaji.</span>`;
+  } else {
+    text.innerHTML = `⏱ <b>${jumlah} jam</b> simpanan overtime dipakai saat pengajuan.<br>
+      Otomatis memotong saldo overtime anggota dan dimasukkan ke jam kerja minggu tersebut.<br>
+      <span style="color:#388e3c;">Saldo overtime ditambah setiap Senin 00:00 dari kelebihan jam seminggu.</span>`;
+  }
+  info.style.display = "block";
+}
+
+function closeKebijakanCutiModal() {
+  document.getElementById("kebijakan-cuti-modal-overlay").style.display = "none";
+}
+
 async function loadKebijakanCuti() {
   try {
     const r = await fetch("/kebijakan-cuti");
     const d = await r.json();
     const list = document.getElementById("kebijakan-cuti-list");
     if (!d.length) {
-      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada kebijakan cuti</p>';
+      list.innerHTML = `<div style="padding:32px 20px;text-align:center;">
+        <div style="font-size:40px;margin-bottom:8px;">🌴</div>
+        <div style="color:var(--muted);font-size:14px;">Belum ada kebijakan cuti</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Klik "Buat Kebijakan Cuti" untuk menambahkan</div>
+      </div>`;
       return;
     }
-    const periodeLabel = { tahunan:"Tahunan", bulanan:"Bulanan", sekali:"Sekali" };
-    const berlakuLabel = { semua:"Semua Anggota", tetap:"Karyawan Tetap", kontrak:"Karyawan Kontrak" };
-    list.innerHTML = d.map(x => `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
+    const satuanIcon = { hari:"📅", jam:"⏱" };
+    list.innerHTML = d.map(x => {
+      const satuan  = x.satuan || "hari";
+      const icon    = satuanIcon[satuan] || "📅";
+      const badgeColor = satuan === "jam"
+        ? "background:#fff3e0;color:#e65100;"
+        : "background:#e8f5e9;color:#2e7d32;";
+      const konversiNote = satuan === "hari"
+        ? `<span style="font-size:11px;color:var(--muted);">Konversi: Senin–Jumat=7jam, Sabtu=5jam per hari cuti</span>`
+        : `<span style="font-size:11px;color:var(--muted);">Memotong saldo overtime anggota</span>`;
+      return `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;
+                  padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${x.nama}</div>
-          <div style="font-size:13px;color:var(--primary);font-weight:700;margin-bottom:4px;">🗓 ${x.hari} hari / ${periodeLabel[x.periode]||x.periode}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#4f8ef7;font-weight:600;">👥 ${berlakuLabel[x.berlaku]||x.berlaku}</span>
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px;">${x.nama}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:var(--primary);">
+              ${icon} ${x.hari} ${satuan === "jam" ? "Jam" : "Hari"}
+            </span>
+            <span style="font-size:11px;padding:2px 9px;border-radius:10px;font-weight:700;${badgeColor}">
+              ${satuan === "jam" ? "⏱ Overtime" : "📅 Harian"}
+            </span>
           </div>
-          ${x.keterangan ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">📝 ${x.keterangan}</div>` : ""}
+          ${konversiNote}
         </div>
-        <button onclick="deleteKebijakanCuti('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 4px;flex-shrink:0;">🗑</button>
-      </div>`).join("");
+        <button onclick="deleteKebijakanCuti('${x.id}')"
+          style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;
+                 padding:4px 6px;flex-shrink:0;border-radius:8px;"
+          title="Hapus kebijakan ini">🗑</button>
+      </div>`;
+    }).join("");
   } catch { showToast("❌ Gagal memuat kebijakan cuti", "error"); }
 }
 
 async function saveKebijakanCuti() {
-  const nama       = document.getElementById("cuti-nama").value.trim();
-  const hari       = parseInt(document.getElementById("cuti-hari").value);
-  const periode    = document.getElementById("cuti-periode").value;
-  const berlaku    = document.getElementById("cuti-berlaku").value;
-  const keterangan = document.getElementById("cuti-keterangan").value.trim();
+  const nama   = document.getElementById("modal-cuti-nama").value.trim();
+  const jumlah = parseInt(document.getElementById("modal-cuti-jumlah").value);
+  const satuan = document.getElementById("modal-cuti-satuan").value; // "hari" | "jam"
 
-  if (!nama || !hari || hari < 1) return showToast("⚠️ Isi nama cuti dan jumlah hari!", "warning");
+  if (!nama)           return showToast("⚠️ Isi nama jenis cuti!", "warning");
+  if (!jumlah || jumlah < 1) return showToast("⚠️ Isi jumlah yang valid!", "warning");
+
+  // Untuk kompatibilitas backend: field "hari" tetap dipakai, tambah field "satuan"
+  const payload = {
+    nama,
+    hari:   jumlah,
+    satuan,                       // "hari" atau "jam"
+    periode: satuan === "jam" ? "overtime" : "tahunan",
+    berlaku: "semua",
+    isOvertime: satuan === "jam", // flag khusus untuk overtime
+    // Aturan konversi jam kerja (disimpan untuk referensi backend)
+    konversiJam: satuan === "hari" ? { senin_jumat: 7, sabtu: 5 } : null,
+    jamKerjaSeminggu: JAM_KERJA_SEMINGGU,
+  };
 
   try {
     const r = await fetch("/kebijakan-cuti", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ nama, hari, periode, berlaku, keterangan })
+      body: JSON.stringify(payload)
     });
     if ((await r.json()).status === "OK") {
       showToast("✅ Kebijakan cuti berhasil ditambahkan!");
-      document.getElementById("cuti-nama").value = "";
-      document.getElementById("cuti-hari").value = "";
-      document.getElementById("cuti-keterangan").value = "";
-      document.getElementById("cuti-periode").value = "tahunan";
-      document.getElementById("cuti-berlaku").value = "semua";
+      closeKebijakanCutiModal();
       loadKebijakanCuti();
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
@@ -2382,6 +2468,29 @@ async function deleteKebijakanCuti(id) {
       } catch {}
     }
   });
+}
+
+// ============================================================
+// OVERTIME — Perhitungan & Simpanan
+// ============================================================
+
+/**
+ * Hitung overtime dari total jam kerja seminggu.
+ * @param {number} totalJamSeminggu - total jam kerja anggota dalam 1 minggu (Senin-Minggu)
+ * @returns {number} jam overtime (0 jika tidak ada kelebihan)
+ */
+function hitungOvertimeSeminggu(totalJamSeminggu) {
+  return Math.max(0, totalJamSeminggu - JAM_KERJA_SEMINGGU);
+}
+
+/**
+ * Konversi cuti harian ke jam kerja berdasarkan hari dalam seminggu.
+ * @param {string} tanggalCuti - format "YYYY-MM-DD"
+ * @returns {number} jam kerja yang dikreditkan (7 untuk Sen-Jum, 5 untuk Sabtu, 0 untuk Minggu)
+ */
+function konversiCutiHariKeJam(tanggalCuti) {
+  const hari = new Date(tanggalCuti).getDay(); // 0=Minggu, 1=Senin, dst
+  return JAM_KERJA_PER_HARI[hari] || 0;
 }
 
 // ============================================================
