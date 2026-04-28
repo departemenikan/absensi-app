@@ -987,6 +987,12 @@
       <input type="text" id="bg-nama" placeholder="contoh: HRD, IT, Finance" style="width:100%;box-sizing:border-box;">
     </div>
     <div class="form-group">
+      <label>Owner Divisi</label>
+      <select id="bg-owner" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
+        <option value="">— Pilih Owner —</option>
+      </select>
+    </div>
+    <div class="form-group">
       <label>Manager Divisi</label>
       <select id="bg-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
         <option value="">— Pilih Manager —</option>
@@ -1150,6 +1156,52 @@
   to   { transform: translateY(0);    opacity: 1; }
 }
 </style>
+
+<!-- ============================================================ -->
+<!-- MODAL: TAMBAH ANGGOTA (oleh Admin/Owner)                     -->
+<!-- ============================================================ -->
+<div id="modal-tambah-anggota" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;width:92%;max-width:420px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.22);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="margin:0;font-size:17px;">👤 Tambah Anggota Baru</h3>
+      <button onclick="closeTambahAnggota()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;">×</button>
+    </div>
+    <div class="form-group">
+      <label>Username <span style="color:red;">*</span></label>
+      <input type="text" id="ta-username" placeholder="contoh: budi123" style="width:100%;box-sizing:border-box;" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Password <span style="color:red;">*</span></label>
+      <div style="position:relative;">
+        <input type="password" id="ta-password" placeholder="Minimal 6 karakter" style="width:100%;box-sizing:border-box;padding-right:44px;" autocomplete="new-password">
+        <button type="button" onclick="_taToggleEye()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;font-size:16px;" id="ta-eye-btn">👁️</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Nama Lengkap</label>
+      <input type="text" id="ta-nama" placeholder="Nama lengkap anggota" style="width:100%;box-sizing:border-box;">
+    </div>
+    <div class="form-group">
+      <label>Agama</label>
+      <select id="ta-agama" style="width:100%;padding:11px 12px;border:2px solid #e8ecf0;border-radius:10px;font-size:14px;outline:none;">
+        <option value="">— Pilih Agama —</option>
+        <option value="Islam">Islam</option>
+        <option value="Kristen">Kristen</option>
+        <option value="Katolik">Katolik</option>
+        <option value="Hindu">Hindu</option>
+        <option value="Buddha">Buddha</option>
+        <option value="Konghucu">Konghucu</option>
+      </select>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
+      ℹ️ Setelah terdaftar, anggota wajib memperbarui data wajah melalui menu <b>Profil → Login & Keamanan</b> agar bisa melakukan Clock In.
+    </p>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button onclick="closeTambahAnggota()" style="flex:1;padding:12px;border:1px solid #e0e0e0;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;">Batal</button>
+      <button onclick="saveTambahAnggota()" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">💾 Simpan</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

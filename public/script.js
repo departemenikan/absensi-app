@@ -843,7 +843,55 @@ function filterAnggota() {
 }
 
 function openTambahAnggota() {
-  showToast("💡 Anggota baru dapat mendaftar sendiri melalui halaman signup.", "info");
+  // Bersihkan field sebelum buka
+  ["ta-username","ta-password","ta-nama"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const agama = document.getElementById("ta-agama");
+  if (agama) agama.value = "";
+  document.getElementById("modal-tambah-anggota").style.display = "flex";
+}
+
+function closeTambahAnggota() {
+  document.getElementById("modal-tambah-anggota").style.display = "none";
+}
+
+function _taToggleEye() {
+  const inp = document.getElementById("ta-password");
+  const btn = document.getElementById("ta-eye-btn");
+  if (!inp) return;
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  btn.textContent = show ? "🙈" : "👁️";
+}
+
+async function saveTambahAnggota() {
+  const username    = (document.getElementById("ta-username")?.value || "").trim();
+  const password    = document.getElementById("ta-password")?.value  || "";
+  const namaLengkap = (document.getElementById("ta-nama")?.value    || "").trim();
+  const agama       = document.getElementById("ta-agama")?.value     || "";
+
+  if (!username)        return showToast("⚠️ Username wajib diisi!", "warning");
+  if (password.length < 6) return showToast("⚠️ Password minimal 6 karakter!", "warning");
+
+  try {
+    const r = await fetch("/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, namaLengkap, agama, faceDescriptor: [] })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Anggota berhasil didaftarkan!");
+      closeTambahAnggota();
+      loadAnggota();
+    } else if (d.status === "EXIST") {
+      showToast("⚠️ Username sudah terdaftar!", "warning");
+    } else {
+      showToast("❌ Gagal mendaftarkan anggota", "error");
+    }
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
 }
 
 // ----------------------------------------------------------------
