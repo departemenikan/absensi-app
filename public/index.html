@@ -396,9 +396,21 @@
         <button id="btn-out"   class="btn-absen btn-out   hidden"   onclick="clockOut()"><span style="font-size:22px;">🔴</span>Clock Out</button>
       </div>
     </div>
-    <div class="card" style="margin-top:16px;">
-      <h4>📊 Hari Ini</h4>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+    <!-- TAB: Hari Ini / Minggu Ini (parallel) -->
+    <div style="display:flex;gap:0;background:white;border-radius:12px 12px 0 0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:16px;">
+      <button id="home-tab-hari" onclick="switchHomeTab('hari')"
+        style="flex:1;padding:12px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;transition:.2s;">
+        📊 Hari Ini
+      </button>
+      <button id="home-tab-minggu" onclick="switchHomeTab('minggu')"
+        style="flex:1;padding:12px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;transition:.2s;">
+        📅 Minggu Ini
+      </button>
+    </div>
+
+    <!-- Panel Hari Ini -->
+    <div id="home-panel-hari" class="card" style="margin-top:0;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="stat-box">
           <div class="val" id="t-in">--:--</div>
           <div class="lbl">Masuk</div>
@@ -418,33 +430,28 @@
       </div>
     </div>
 
-    <!-- Kartu Minggu Ini -->
-    <div class="card" style="margin-top:16px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <h4 style="margin:0;">📅 Minggu Ini</h4>
-        <span style="font-size:11px;color:var(--muted);">Target: 40j / minggu</span>
-      </div>
-      <div style="background:#f0f2f5;border-radius:50px;height:10px;margin-bottom:14px;overflow:hidden;">
-        <div id="week-progress" style="height:100%;border-radius:50px;background:#27ae60;width:0%;transition:width .5s;"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+    <!-- Panel Minggu Ini -->
+    <div id="home-panel-minggu" class="card" style="display:none;margin-top:0;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="stat-box">
-          <div class="val" id="t-week" style="font-size:16px;">0j</div>
+          <div class="val" id="t-week" style="font-size:22px;color:var(--primary);">0j</div>
           <div class="lbl">Jam Kerja</div>
         </div>
         <div class="stat-box">
-          <div class="val" style="font-size:16px;color:#e67e22;">40j</div>
-          <div class="lbl">Target</div>
-        </div>
-        <div class="stat-box">
-          <div class="val" id="t-overtime" style="font-size:16px;color:#8e44ad;">0j</div>
+          <div class="val" id="t-overtime" style="font-size:22px;color:#8e44ad;">0j</div>
           <div class="lbl">Overtime</div>
         </div>
       </div>
-      <div style="margin-top:12px;padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:11px;color:var(--muted);line-height:1.7;">
-        <b style="color:var(--text);">Jadwal Kerja Default:</b><br>
-        Senin-Jumat 09.00-17.00 · Sabtu 09.00-15.00 · Istirahat 12.00-13.00<br>
-        <span style="color:#8e44ad;">Overtime otomatis masuk kuota cuti setiap Minggu pukul 23.59</span>
+    </div>
+
+    <!-- Kalender Libur Bulan Berjalan -->
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h4 style="margin:0;">🗓️ Kalender Libur Bulan Ini</h4>
+        <span id="home-libur-bulan" style="font-size:12px;color:var(--muted);font-weight:600;"></span>
+      </div>
+      <div id="home-libur-list">
+        <p style="color:var(--muted);text-align:center;padding:12px;font-size:13px;">Memuat...</p>
       </div>
     </div>
 
