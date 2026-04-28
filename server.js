@@ -18,6 +18,7 @@ const F = {
   aktivitas: path.join(DATA_DIR, "aktivitas.json"),
   groups:    path.join(DATA_DIR, "groups.json"),
   divisi:    path.join(DATA_DIR, "divisi.json"),
+  tracking:  path.join(DATA_DIR, "tracking.json"),
 };
 
 function load(file, def) {
@@ -46,15 +47,15 @@ function initGroups() {
     const defaults = [
       {
         id: "owner", name: "Owner", level: 1, color: "#8e44ad",
-        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet"]
+        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet","tracking"]
       },
       {
         id: "admin", name: "Admin", level: 2, color: "#2980b9",
-        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet"]
+        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet","tracking"]
       },
       {
         id: "manager", name: "Manager", level: 3, color: "#27ae60",
-        menus: ["home","rekap","admin","aktivitas","timesheet"]
+        menus: ["home","rekap","admin","aktivitas","timesheet","tracking"]
       },
       {
         id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
@@ -576,4 +577,73 @@ app.get("/timesheet", (req, res) => {
   res.send(result);
 });
 
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ========================
+// TRACKING
+// ========================
+
+// POST lokasi dari anggota (dipanggil periodik saat sedang kerja)
+app.post("/tracking/ping", (req, res) => {
+  const { user, lat, lng, accuracy } = req.body;
+  if (!user || lat == null || lng == null) return res.send({ status: "ERROR" });
+
+  const tracking = load(F.tracking, {});
+  const today    = new Date().toISOString().split("T")[0];
+  const now      = new Date().toISOString();
+
+  if (!tracking[today]) tracking[today] = {};
+  if (!tracking[today][user]) tracking[today][user] = [];
+
+  // Tambah titik baru
+  tracking[today][user].push({ lat, lng, accuracy: accuracy || 0, time: now });
+
+  // Batasi 500 titik per user per hari agar file tidak membengkak
+  if (tracking[today][user].length > 500) tracking[today][user].splice(0, 1);
+
+  // Hapus data lebih dari 7 hari lalu
+  const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  Object.keys(tracking).forEach(d => { if (d < cutoff) delete tracking[d]; });
+
+  save(F.tracking, tracking);
+  res.send({ status: "OK" });
+});
+
+// GET rute anggota tertentu untuk tanggal tertentu
+app.get("/tracking/:user", (req, res) => {
+  const date     = req.query.date || new Date().toISOString().split("T")[0];
+  const tracking = load(F.tracking, {});
+  const points   = (tracking[date] || {})[req.params.user] || [];
+  res.send({ user: req.params.user, date, points });
+});
+
+// GET posisi terakhir semua anggota (live map)
+app.get("/tracking/live/all", (req, res) => {
+  const tracking = load(F.tracking, {});
+  const users    = load(F.users, {});
+  const data     = load(F.data, []);
+  const today    = new Date().toISOString().split("T")[0];
+  const todayData = (tracking[today] || {});
+
+  const result = Object.keys(users).map(username => {
+    const points  = todayData[username] || [];
+    const last    = points.length ? points[points.length - 1] : null;
+    const rec     = data.find(d => d.user === username && d.date === today);
+    let status    = "OUT";
+    if (rec && !rec.jamKeluar) {
+      const lb = rec.breaks.at(-1);
+      status   = (lb && !lb.end) ? "BREAK" : "IN";
+    } else if (rec && rec.jamKeluar) status = "DONE";
+
+    return {
+      username,
+      namaLengkap: users[username].namaLengkap || username,
+      photo:       users[username].photo || "",
+      jabatan:     users[username].jabatan || "",
+      divisi:      users[username].divisi || "",
+      status,
+      last,
+      totalPoints: points.length,
+    };
+  });
+  res.send(result);
+});
+

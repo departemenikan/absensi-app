@@ -57,6 +57,7 @@ function openView(viewId) {
   if (viewId === "view-libur")      loadLibur();
   if (viewId === "view-anggota")    { loadAnggota(); }
   if (viewId === "view-profil")     loadProfil();
+  if (viewId === "view-tracking")   loadTracking();
   if (viewId === "view-timesheet")  {
     const m = document.getElementById("ts-month");
     if (!m.value) m.value = new Date().toISOString().slice(0, 7);
@@ -216,6 +217,11 @@ function enterApp(menus, group, level) {
   navTo("home");
   loadStatus();
   loadTodayDetail();
+  // Jika sudah clock in, mulai tracking ping
+  fetch("/status/" + (localStorage.getItem("user")||""))
+    .then(r => r.json())
+    .then(d => { if (d.status === "IN") startTrackingPing(); })
+    .catch(() => {});
 
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
@@ -230,6 +236,7 @@ function applyMenuAccess() {
     "menu-aktivitas":     "aktivitas",
     "menu-rekap":         "rekap",
     "menu-aksesibilitas": "aksesibilitas",
+    "menu-tracking":      "tracking",
   };
   Object.entries(map).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
@@ -464,6 +471,9 @@ async function sendAbsen(type, label) {
       // Update record lokal langsung agar ticker responsif
       updateLocalRecord(type, now);
       loadStatus();
+      // Tracking: mulai ping saat IN/BREAK_END, stop saat OUT
+      if (type === "IN" || type === "BREAK_END") startTrackingPing();
+      if (type === "OUT") stopTrackingPing();
     } else if (d.status === "OUT_OF_AREA") {
       showToast(`❌ Di luar area kantor (${d.distance}m dari ${d.area||"kantor"})`, "error");
     } else if (d.status === "ALREADY_IN") {
@@ -2156,6 +2166,289 @@ async function profilHapusAkun() {
       } catch { showToast("❌ Gagal terhubung ke server", "error"); }
     }
   });
+}
+
+// ============================================================
+// TRACKING — ping lokasi & tampilan peta
+// ============================================================
+let _trackPingInterval = null;
+let _trkLiveMap        = null;
+let _trkRiwayatMap     = null;
+let _trkLiveMarkers    = [];
+let _trkRiwayatLayer   = null;
+let _trkSelectedUser   = null; // untuk modal detail → lihat rute
+
+// --- Ping lokasi ke server setiap 30 detik saat bekerja ---
+async function sendTrackPing() {
+  const user = localStorage.getItem("user");
+  if (!user) return;
+  try {
+    const loc = await getLoc();
+    if (!loc.lat && !loc.lng) return;
+    await fetch("/tracking/ping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 0 })
+    });
+  } catch {}
+}
+
+function startTrackingPing() {
+  if (_trackPingInterval) return; // sudah berjalan
+  sendTrackPing(); // kirim segera
+  _trackPingInterval = setInterval(sendTrackPing, 30000); // lalu tiap 30 detik
+}
+
+function stopTrackingPing() {
+  if (_trackPingInterval) { clearInterval(_trackPingInterval); _trackPingInterval = null; }
+}
+
+// --- Tab switch ---
+function switchTrackTab(tab) {
+  const isLive = tab === "live";
+  document.getElementById("trk-panel-live").style.display    = isLive ? "block" : "none";
+  document.getElementById("trk-panel-riwayat").style.display = isLive ? "none"  : "block";
+  document.getElementById("trk-tab-live").style.background    = isLive ? "var(--primary)" : "white";
+  document.getElementById("trk-tab-live").style.color         = isLive ? "white" : "var(--muted)";
+  document.getElementById("trk-tab-riwayat").style.background = isLive ? "white" : "var(--primary)";
+  document.getElementById("trk-tab-riwayat").style.color      = isLive ? "var(--muted)" : "white";
+  if (isLive) refreshLiveTracking();
+  else        initRiwayatMap();
+}
+
+// --- Load / inisialisasi halaman tracking ---
+async function loadTracking() {
+  // Set tanggal default riwayat ke hari ini
+  const dateEl = document.getElementById("trk-pilih-date");
+  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split("T")[0];
+  // Load daftar anggota untuk dropdown riwayat
+  try {
+    if (!_anggotaAll.length) {
+      const r = await fetch("/anggota"); _anggotaAll = await r.json();
+    }
+    const sel = document.getElementById("trk-pilih-user");
+    sel.innerHTML = '<option value="">— Pilih Anggota —</option>' +
+      _anggotaAll.map(a => `<option value="${a.username}">${a.namaLengkap || a.username}</option>`).join('');
+  } catch {}
+  refreshLiveTracking();
+}
+
+// --- Live map ---
+async function refreshLiveTracking() {
+  try {
+    const r    = await fetch("/tracking/live/all");
+    const list = await r.json();
+    renderLiveList(list);
+    renderLiveMap(list);
+  } catch { document.getElementById("trk-live-list").innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat data</p>'; }
+}
+
+const _statusColor = { IN: "#27ae60", BREAK: "#f39c12", DONE: "#4f8ef7", OUT: "#bdc3c7" };
+const _statusLabel = { IN: "Bekerja", BREAK: "Istirahat", DONE: "Selesai", OUT: "Belum Absen" };
+
+function renderLiveList(list) {
+  const el = document.getElementById("trk-live-list");
+  if (!list.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
+  el.innerHTML = list.map(a => {
+    const color = _statusColor[a.status] || "#bdc3c7";
+    const label = _statusLabel[a.status] || a.status;
+    const lastTime = a.last ? new Date(a.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "—";
+    const hasLoc   = a.last && a.last.lat;
+    return `
+      <div onclick="openTrkDetail('${a.username}')"
+        style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:background .15s;"
+        onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background='transparent'">
+        <div style="width:40px;height:40px;border-radius:50%;background:${color};color:white;
+          display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;">
+          ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.namaLengkap||a.username}</div>
+          <div style="font-size:11px;color:var(--muted);">${a.jabatan||""} ${a.divisi?'· '+a.divisi:''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:12px;font-weight:700;color:${color};">● ${label}</div>
+          <div style="font-size:11px;color:var(--muted);">${hasLoc ? '📍 ' + lastTime : 'Tidak ada lokasi'}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderLiveMap(list) {
+  // Init peta jika belum
+  if (!_trkLiveMap) {
+    _trkLiveMap = L.map("trk-live-map", { zoomControl: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap", maxZoom: 19
+    }).addTo(_trkLiveMap);
+  }
+  // Hapus marker lama
+  _trkLiveMarkers.forEach(m => m.remove());
+  _trkLiveMarkers = [];
+
+  const bounds = [];
+  list.forEach(a => {
+    if (!a.last || !a.last.lat) return;
+    const color = _statusColor[a.status] || "#bdc3c7";
+    const icon  = L.divIcon({
+      className: "",
+      html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};
+        border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);
+        display:flex;align-items:center;justify-content:center;
+        color:white;font-weight:700;font-size:13px;">
+        ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
+      </div>`,
+      iconSize: [32, 32], iconAnchor: [16, 16]
+    });
+    const marker = L.marker([a.last.lat, a.last.lng], { icon })
+      .addTo(_trkLiveMap)
+      .bindPopup(`<b>${a.namaLengkap||a.username}</b><br>${_statusLabel[a.status]||a.status}<br>
+        ${new Date(a.last.time).toLocaleTimeString("id-ID")}`);
+    marker.on("click", () => openTrkDetail(a.username));
+    _trkLiveMarkers.push(marker);
+    bounds.push([a.last.lat, a.last.lng]);
+  });
+
+  if (bounds.length === 1) {
+    _trkLiveMap.setView(bounds[0], 15);
+  } else if (bounds.length > 1) {
+    _trkLiveMap.fitBounds(bounds, { padding: [30, 30] });
+  } else {
+    // Default ke Bali jika tidak ada lokasi
+    _trkLiveMap.setView([-8.65, 115.22], 12);
+  }
+  setTimeout(() => _trkLiveMap.invalidateSize(), 200);
+}
+
+// --- Detail popup dari live list ---
+let _trkDetailUsername = "";
+async function openTrkDetail(username) {
+  _trkDetailUsername = username;
+  const a = (_anggotaAll.length ? _anggotaAll : []).find(x => x.username === username);
+  const nama = a ? (a.namaLengkap || username) : username;
+  document.getElementById("trkd-nama").textContent = "👤 " + nama;
+  // Ambil data live
+  try {
+    const r    = await fetch("/tracking/live/all");
+    const list = await r.json();
+    const info = list.find(x => x.username === username);
+    if (info) {
+      const color = _statusColor[info.status] || "#bdc3c7";
+      const label = _statusLabel[info.status] || info.status;
+      const lastTime = info.last ? new Date(info.last.time).toLocaleTimeString("id-ID") : "—";
+      const coords   = info.last ? `${info.last.lat.toFixed(5)}, ${info.last.lng.toFixed(5)}` : "Tidak tersedia";
+      document.getElementById("trkd-body").innerHTML =
+        `<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;">
+          <span style="color:var(--muted);">Status</span>
+          <span style="color:${color};font-weight:700;">● ${label}</span>
+          <span style="color:var(--muted);">Jabatan</span>
+          <span>${info.jabatan||"—"}</span>
+          <span style="color:var(--muted);">Divisi</span>
+          <span>${Array.isArray(info.divisi) ? info.divisi.join(", ") : (info.divisi||"—")}</span>
+          <span style="color:var(--muted);">Lokasi terakhir</span>
+          <span>${coords}</span>
+          <span style="color:var(--muted);">Waktu</span>
+          <span>${lastTime}</span>
+          <span style="color:var(--muted);">Total titik</span>
+          <span>${info.totalPoints} titik hari ini</span>
+        </div>`;
+    }
+  } catch {}
+  document.getElementById("trk-modal-detail").style.display = "flex";
+}
+
+function viewRouteFromModal() {
+  document.getElementById("trk-modal-detail").style.display = "none";
+  // Pindah ke tab riwayat, pilih user ini
+  switchTrackTab("riwayat");
+  const sel  = document.getElementById("trk-pilih-user");
+  const date = document.getElementById("trk-pilih-date");
+  if (sel) sel.value = _trkDetailUsername;
+  if (!date.value) date.value = new Date().toISOString().split("T")[0];
+  loadRiwayatRute();
+}
+
+// --- Riwayat rute ---
+function initRiwayatMap() {
+  if (_trkRiwayatMap) { setTimeout(() => _trkRiwayatMap.invalidateSize(), 200); return; }
+  _trkRiwayatMap = L.map("trk-riwayat-map", { zoomControl: true });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap", maxZoom: 19
+  }).addTo(_trkRiwayatMap);
+  _trkRiwayatMap.setView([-8.65, 115.22], 12);
+  setTimeout(() => _trkRiwayatMap.invalidateSize(), 200);
+}
+
+async function loadRiwayatRute() {
+  const user = document.getElementById("trk-pilih-user").value;
+  const date = document.getElementById("trk-pilih-date").value;
+  const info = document.getElementById("trk-riwayat-info");
+  const tl   = document.getElementById("trk-timeline");
+
+  if (!user || !date) { info.textContent = "Pilih anggota dan tanggal untuk melihat rute"; return; }
+
+  initRiwayatMap();
+  info.textContent = "Memuat rute...";
+  tl.innerHTML     = '<p style="color:var(--muted);text-align:center;padding:16px;">Memuat...</p>';
+
+  try {
+    const r   = await fetch(`/tracking/${user}?date=${date}`);
+    const d   = await r.json();
+    const pts = d.points || [];
+
+    if (!pts.length) {
+      info.textContent = "Tidak ada data lokasi untuk tanggal ini";
+      tl.innerHTML     = '<p style="color:var(--muted);text-align:center;padding:16px;">Belum ada titik rute</p>';
+      return;
+    }
+
+    // Hapus layer lama
+    if (_trkRiwayatLayer) { _trkRiwayatLayer.remove(); _trkRiwayatLayer = null; }
+
+    const latlngs = pts.map(p => [p.lat, p.lng]);
+
+    // Garis rute
+    const polyline = L.polyline(latlngs, { color: "#4f8ef7", weight: 4, opacity: 0.8 }).addTo(_trkRiwayatMap);
+
+    // Marker start
+    L.marker(latlngs[0], {
+      icon: L.divIcon({ className:"", html:`<div style="background:#27ae60;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">▶</div>`, iconSize:[26,26], iconAnchor:[13,13] })
+    }).addTo(_trkRiwayatMap).bindPopup(`Mulai: ${new Date(pts[0].time).toLocaleTimeString("id-ID")}`);
+
+    // Marker end
+    if (latlngs.length > 1) {
+      L.marker(latlngs[latlngs.length-1], {
+        icon: L.divIcon({ className:"", html:`<div style="background:#e74c3c;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">■</div>`, iconSize:[26,26], iconAnchor:[13,13] })
+      }).addTo(_trkRiwayatMap).bindPopup(`Terakhir: ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID")}`);
+    }
+
+    _trkRiwayatLayer = polyline;
+    _trkRiwayatMap.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+    setTimeout(() => _trkRiwayatMap.invalidateSize(), 200);
+
+    // Info ringkasan
+    const durMenit = Math.round((new Date(pts[pts.length-1].time) - new Date(pts[0].time)) / 60000);
+    info.innerHTML = `<b>${pts.length} titik lokasi</b> · Durasi: <b>${durMenit} menit</b> · 
+      ${new Date(pts[0].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})} – ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}`;
+
+    // Timeline
+    // Ambil setiap N titik agar tidak terlalu panjang (maks 20 entri)
+    const step = Math.max(1, Math.floor(pts.length / 20));
+    const shown = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+    tl.innerHTML = shown.map((p, i) => {
+      const t = new Date(p.time).toLocaleTimeString("id-ID", {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      const isFirst = i === 0, isLast = i === shown.length - 1;
+      const dot = isFirst ? "🟢" : isLast ? "🔴" : "🔵";
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
+        <span style="font-size:15px;flex-shrink:0;">${dot}</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;">${t}</div>
+          <div style="font-size:11px;color:var(--muted);">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch { info.textContent = "Gagal memuat data rute"; }
 }
 
 // ============================================================
