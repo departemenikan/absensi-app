@@ -20,6 +20,7 @@ const F = {
   divisi:         path.join(DATA_DIR, "divisi.json"),
   tracking:       path.join(DATA_DIR, "tracking.json"),
   kebijakanCuti:  path.join(DATA_DIR, "kebijakan_cuti.json"),
+  kuotaCuti:      path.join(DATA_DIR, "kuota_cuti.json"),
 };
 
 function load(file, def) {
@@ -642,8 +643,8 @@ app.post("/kebijakan-cuti", (req, res) => {
   data.push({
     id:          Date.now().toString(),
     nama,
-    jenis:       jenis,                          // "kuota" | "non-kuota"
-    hari:        hari ? parseInt(hari) : null,    // jumlah hari kuota (opsional)
+    jenis:       jenis,
+    hari:        hari ? parseInt(hari) : null,
     periode:     periode || "tahunan",
     berlaku:     berlaku || "semua",
     keterangan:  keterangan || "",
@@ -687,6 +688,173 @@ app.get("/timesheet", (req, res) => {
     return { user: username, totalDays: recs.length, totalJam: totalJam.toFixed(1), overtime: overtime.toFixed(1) };
   });
   res.send(result);
+});
+
+// ========================
+// KUOTA CUTI
+// ========================
+
+// Jam kerja wajib per minggu (Senin-Minggu)
+const JAM_WAJIB_MINGGU = 40;
+
+// Helper: hitung jam kerja bersih dari satu record absensi
+function hitungJamKerja(rec) {
+  if (!rec.jamMasuk || !rec.jamKeluar) return 0;
+  const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+  let bt = 0;
+  (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+  return Math.max(0, work - bt);
+}
+
+// Helper: week key "YYYY-Www" (ISO week, Senin = awal minggu)
+function weekKey(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay(); // 0=Sun
+  const diff = (day === 0) ? -6 : 1 - day; // Senin
+  const mon = new Date(d); mon.setDate(d.getDate() + diff);
+  const year = mon.getFullYear();
+  const jan4 = new Date(year, 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() || 7) - 1));
+  const weekNum = Math.floor((mon - startOfWeek1) / (7 * 86400000)) + 1;
+  return `${year}-W${String(weekNum).padStart(2, "0")}`;
+}
+
+// Helper: inisialisasi kuota default per user (tahunan & overtime)
+function initKuotaUser(kuota, username, tahun) {
+  if (!kuota[username]) kuota[username] = {};
+  const key = String(tahun);
+  if (!kuota[username][key]) {
+    kuota[username][key] = {
+      tahunan:  { total: 12, terpakai: 0, resetAt: `${tahun}-12-31` },
+      overtime: { jamAkumulasi: 0, hariDiambil: 0 }  // 1 hari = 8 jam
+    };
+  }
+  return kuota[username][key];
+}
+
+// GET kuota semua user (admin view)
+app.get("/kuota-cuti", (req, res) => {
+  const users  = load(F.users, {});
+  const kuota  = load(F.kuotaCuti, {});
+  const tahun  = parseInt(req.query.tahun) || new Date().getFullYear();
+  const result = Object.keys(users).map(username => {
+    const k = initKuotaUser(kuota, username, tahun);
+    const u = users[username];
+    return {
+      username,
+      nama: u.namaLengkap || username,
+      divisi: u.divisi || "-",
+      tahunan:  k.tahunan,
+      overtime: k.overtime
+    };
+  });
+  // Simpan jika ada inisialisasi baru
+  save(F.kuotaCuti, kuota);
+  res.send(result);
+});
+
+// GET kuota milik user sendiri
+app.get("/kuota-cuti/:user", (req, res) => {
+  const kuota = load(F.kuotaCuti, {});
+  const tahun = parseInt(req.query.tahun) || new Date().getFullYear();
+  const k = initKuotaUser(kuota, req.params.user, tahun);
+  save(F.kuotaCuti, kuota);
+  res.send(k);
+});
+
+// POST: hitung ulang overtime satu user berdasarkan data absensi (per-minggu)
+app.post("/kuota-cuti/hitung-overtime/:user", (req, res) => {
+  const username = req.params.user;
+  const tahun    = parseInt(req.query.tahun) || new Date().getFullYear();
+  const data     = load(F.data, []);
+  const kuota    = load(F.kuotaCuti, {});
+
+  // Kumpulkan jam per minggu untuk user di tahun ini
+  const weekMap = {};
+  data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
+    .forEach(d => {
+      const wk = weekKey(d.date);
+      if (!weekMap[wk]) weekMap[wk] = 0;
+      weekMap[wk] += hitungJamKerja(d);
+    });
+
+  // Total jam overtime = kelebihan di atas 40 jam per minggu
+  let totalOvertimeJam = 0;
+  Object.values(weekMap).forEach(jam => {
+    if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
+  });
+
+  const k = initKuotaUser(kuota, username, tahun);
+  k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
+  save(F.kuotaCuti, kuota);
+  res.send({ status: "OK", jamOvertime: k.overtime.jamAkumulasi });
+});
+
+// POST: hitung overtime semua user sekaligus (bisa dipanggil cron/manual)
+app.post("/kuota-cuti/hitung-overtime-semua", (req, res) => {
+  const tahun = parseInt(req.query.tahun) || new Date().getFullYear();
+  const users = load(F.users, {});
+  const data  = load(F.data, []);
+  const kuota = load(F.kuotaCuti, {});
+
+  Object.keys(users).forEach(username => {
+    const weekMap = {};
+    data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
+      .forEach(d => {
+        const wk = weekKey(d.date);
+        if (!weekMap[wk]) weekMap[wk] = 0;
+        weekMap[wk] += hitungJamKerja(d);
+      });
+    let totalOvertimeJam = 0;
+    Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU); });
+    const k = initKuotaUser(kuota, username, tahun);
+    k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
+  });
+  save(F.kuotaCuti, kuota);
+  res.send({ status: "OK" });
+});
+
+// POST: catat pengambilan cuti tahunan (kurangi saldo)
+app.post("/kuota-cuti/ambil-tahunan/:user", (req, res) => {
+  const { hari } = req.body;
+  if (!hari || hari < 1) return res.send({ status: "ERROR", msg: "Jumlah hari tidak valid" });
+  const tahun = new Date().getFullYear();
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, req.params.user, tahun);
+  const sisa = k.tahunan.total - k.tahunan.terpakai;
+  if (hari > sisa) return res.send({ status: "ERROR", msg: "Saldo cuti tahunan tidak cukup" });
+  k.tahunan.terpakai += parseInt(hari);
+  save(F.kuotaCuti, kuota);
+  res.send({ status: "OK", sisa: k.tahunan.total - k.tahunan.terpakai });
+});
+
+// POST: catat pengambilan cuti overtime (kurangi jam akumulasi)
+app.post("/kuota-cuti/ambil-overtime/:user", (req, res) => {
+  const { hari } = req.body;  // 1 hari overtime = 8 jam
+  if (!hari || hari < 1) return res.send({ status: "ERROR", msg: "Jumlah hari tidak valid" });
+  const tahun = new Date().getFullYear();
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, req.params.user, tahun);
+  const jamDibutuhkan = parseInt(hari) * 8;
+  if (jamDibutuhkan > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: "Jam overtime tidak cukup" });
+  k.overtime.jamAkumulasi -= jamDibutuhkan;
+  k.overtime.hariDiambil  += parseInt(hari);
+  k.overtime.jamAkumulasi  = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+  save(F.kuotaCuti, kuota);
+  res.send({ status: "OK", jamSisa: k.overtime.jamAkumulasi });
+});
+
+// POST: reset cuti tahunan semua user (dipanggil tiap 31 Des → 1 Jan)
+app.post("/kuota-cuti/reset-tahunan", (req, res) => {
+  const tahunBaru = new Date().getFullYear();
+  const users = load(F.users, {});
+  const kuota = load(F.kuotaCuti, {});
+  Object.keys(users).forEach(username => {
+    initKuotaUser(kuota, username, tahunBaru); // buat entry tahun baru (12 hari fresh)
+  });
+  save(F.kuotaCuti, kuota);
+  res.send({ status: "OK", tahun: tahunBaru });
 });
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ========================

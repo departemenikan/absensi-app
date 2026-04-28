@@ -1782,6 +1782,7 @@ function switchLiburTab(tab) {
     btn.style.color      = active ? "white" : "var(--muted)";
   });
   if (tab === "kebijakan-cuti") loadKebijakanCuti();
+  if (tab === "kuota-cuti") loadKuotaCuti();
 }
 
 function _formatTanggalLibur(dateStart, dateEnd) {
@@ -2341,10 +2342,6 @@ function openKebijakanCutiModal() {
   overlay.style.display = "flex";
   document.getElementById("modal-cuti-nama").value  = "";
   document.getElementById("modal-cuti-jenis").value = "";
-  const hariInput = document.getElementById("modal-cuti-hari");
-  if (hariInput) hariInput.value = "";
-  const hariWrap = document.getElementById("modal-cuti-hari-wrap");
-  if (hariWrap) hariWrap.style.display = "none";
   setTimeout(() => document.getElementById("modal-cuti-nama").focus(), 100);
   // Tutup overlay jika klik di luar modal
   overlay.onclick = e => { if (e.target === overlay) closeKebijakanCutiModal(); };
@@ -2399,13 +2396,9 @@ async function saveKebijakanCuti() {
   if (!nama)  return showToast("⚠️ Isi nama cuti!", "warning");
   if (!jenis) return showToast("⚠️ Pilih jenis cuti!", "warning");
 
-  const hariInput = document.getElementById("modal-cuti-hari");
-  const hari = (jenis === "kuota" && hariInput) ? hariInput.value.trim() : "";
-
   const payload = {
     nama,
     jenis,          // "kuota" | "non-kuota"
-    hari: hari || null,
     berlaku: "semua",
   };
 
@@ -3119,3 +3112,151 @@ window.onload = async function () {
   await loadFaceModels();
   checkLoginStatus();
 };
+
+// ================================================================
+// KUOTA CUTI — client-side logic
+// ================================================================
+
+let _kuotaData = []; // cache hasil load
+
+async function loadKuotaCuti() {
+  // Isi dropdown tahun (5 tahun ke belakang + tahun ini)
+  const tahunEl = document.getElementById("kuota-filter-tahun");
+  if (tahunEl && !tahunEl.options.length) {
+    const now = new Date().getFullYear();
+    for (let y = now; y >= now - 4; y--) {
+      const o = document.createElement("option");
+      o.value = y; o.textContent = "Tahun " + y;
+      if (y === now) o.selected = true;
+      tahunEl.appendChild(o);
+    }
+  }
+
+  const tahun = (tahunEl && tahunEl.value) || new Date().getFullYear();
+  const listEl = document.getElementById("kuota-cuti-list");
+  if (listEl) listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
+
+  try {
+    const r = await fetch(`/kuota-cuti?tahun=${tahun}`);
+    _kuotaData = await r.json();
+    renderKuotaList();
+  } catch {
+    if (listEl) listEl.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat data</p>`;
+  }
+}
+
+function renderKuotaList() {
+  const listEl = document.getElementById("kuota-cuti-list");
+  if (!listEl) return;
+
+  const q = (document.getElementById("kuota-search")?.value || "").toLowerCase();
+  const filtered = _kuotaData.filter(d =>
+    (d.nama || d.username).toLowerCase().includes(q) || d.username.toLowerCase().includes(q)
+  );
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada data anggota</p>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(d => {
+    const tSisa  = d.tahunan.total - d.tahunan.terpakai;
+    const tPct   = Math.round((d.tahunan.terpakai / d.tahunan.total) * 100);
+    const otJam  = d.overtime.jamAkumulasi || 0;
+    const otHari = Math.floor(otJam / 8);
+    const otSisa = (otJam % 8).toFixed(1);
+
+    // Warna sisa cuti tahunan
+    const sisaColor = tSisa <= 3 ? "#e53935" : tSisa <= 6 ? "#f57f17" : "#2e7d32";
+
+    return `
+    <div onclick="openKuotaDetailModal('${d.username}')"
+      style="display:flex;align-items:center;justify-content:space-between;
+             padding:13px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;
+             transition:background .15s;gap:10px;"
+      onmouseenter="this.style.background='#fafbff'" onmouseleave="this.style.background=''">
+      <!-- Avatar + nama -->
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+                    display:flex;align-items:center;justify-content:center;color:white;font-weight:800;
+                    font-size:14px;flex-shrink:0;">
+          ${(d.nama||d.username).charAt(0).toUpperCase()}
+        </div>
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.nama || d.username}</div>
+          <div style="font-size:11px;color:var(--muted);">@${d.username} · ${d.divisi||'—'}</div>
+        </div>
+      </div>
+
+      <!-- Cuti Tahunan chip -->
+      <div style="text-align:center;flex:0 0 auto;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">📅 Tahunan</div>
+        <div style="display:inline-flex;align-items:center;gap:3px;">
+          <span style="font-size:18px;font-weight:900;color:${sisaColor};">${tSisa}</span>
+          <span style="font-size:10px;color:var(--muted);">/ ${d.tahunan.total}</span>
+        </div>
+        <div style="background:#e8ecf0;border-radius:50px;height:4px;width:52px;overflow:hidden;margin-top:3px;">
+          <div style="height:100%;border-radius:50px;width:${tPct}%;background:${sisaColor};transition:width .3s;"></div>
+        </div>
+      </div>
+
+      <!-- Overtime chip -->
+      <div style="text-align:center;flex:0 0 auto;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">⏱ Overtime</div>
+        <div style="font-size:18px;font-weight:900;color:#e65100;">${otJam.toFixed(1)}<span style="font-size:10px;color:var(--muted);font-weight:400;"> jam</span></div>
+        <div style="font-size:10px;color:#81c784;">${otHari} hari ${otSisa>0?'+ '+otSisa+' jam':''}</div>
+      </div>
+
+      <span style="color:#ddd;font-size:18px;flex-shrink:0;">›</span>
+    </div>`;
+  }).join("");
+}
+
+let _kuotaModalUser = null;
+
+function openKuotaDetailModal(username) {
+  _kuotaModalUser = username;
+  const d = _kuotaData.find(x => x.username === username);
+  if (!d) return;
+
+  document.getElementById("mkd-nama").textContent   = d.nama || d.username;
+  document.getElementById("mkd-divisi").textContent = `@${d.username}` + (d.divisi && d.divisi !== "-" ? ` · ${d.divisi}` : "");
+
+  // Tahunan
+  const sisa = d.tahunan.total - d.tahunan.terpakai;
+  const pct  = Math.round((d.tahunan.terpakai / d.tahunan.total) * 100);
+  document.getElementById("mkd-tahunan-total").textContent = d.tahunan.total;
+  document.getElementById("mkd-tahunan-pakai").textContent = d.tahunan.terpakai;
+  document.getElementById("mkd-tahunan-sisa").textContent  = sisa;
+  document.getElementById("mkd-tahunan-bar").style.width   = pct + "%";
+
+  // Overtime
+  const otJam  = d.overtime.jamAkumulasi || 0;
+  const otHari = Math.floor(otJam / 8);
+  document.getElementById("mkd-ot-jam").textContent    = otJam.toFixed(1);
+  document.getElementById("mkd-ot-hari").textContent   = otHari;
+  document.getElementById("mkd-ot-diambil").textContent = d.overtime.hariDiambil || 0;
+
+  const overlay = document.getElementById("modal-kuota-detail-overlay");
+  overlay.style.display = "flex";
+  overlay.onclick = e => { if (e.target === overlay) closeKuotaDetailModal(); };
+}
+
+function closeKuotaDetailModal() {
+  document.getElementById("modal-kuota-detail-overlay").style.display = "none";
+  _kuotaModalUser = null;
+}
+
+async function hitungOvertimeSemua() {
+  const tahunEl = document.getElementById("kuota-filter-tahun");
+  const tahun   = tahunEl ? tahunEl.value : new Date().getFullYear();
+  showToast("🔄 Menghitung overtime semua anggota...", "warning");
+  try {
+    const r = await fetch(`/kuota-cuti/hitung-overtime-semua?tahun=${tahun}`, { method: "POST" });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Overtime berhasil dihitung ulang!");
+      loadKuotaCuti();
+    }
+  } catch { showToast("❌ Gagal menghitung overtime", "error"); }
+}

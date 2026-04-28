@@ -933,21 +933,11 @@
                 style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
                        font-size:14px;outline:none;box-sizing:border-box;background:white;appearance:auto;
                        transition:border .2s;cursor:pointer;"
-                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'"
-                onchange="document.getElementById('modal-cuti-hari-wrap').style.display=this.value==='kuota'?'block':'none'">
+                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
                 <option value="">-- Pilih Jenis Cuti --</option>
                 <option value="kuota">📊 Kuota</option>
                 <option value="non-kuota">🔓 Non-Kuota</option>
               </select>
-            </div>
-
-            <!-- Jumlah Hari (hanya tampil jika jenis = kuota) -->
-            <div id="modal-cuti-hari-wrap" style="display:none;">
-              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jumlah Hari per Tahun</label>
-              <input id="modal-cuti-hari" type="number" min="1" placeholder="contoh: 12"
-                style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
-                       font-size:14px;outline:none;box-sizing:border-box;transition:border .2s;"
-                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
             </div>
 
           </div>
@@ -971,16 +961,138 @@
 
       <!-- ===== TAB: KUOTA CUTI ===== -->
       <div id="panel-kuota-cuti" class="hidden">
-        <div class="card" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-weight:700;font-size:15px;color:var(--text);">📊 Kuota Cuti</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px;">Kelola kuota cuti anggota berdasarkan kebijakan yang berlaku.</div>
+
+        <!-- Header + Toolbar -->
+        <div class="card" style="margin-top:0;padding:16px 18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:800;font-size:15px;color:var(--text);">📊 Kuota Cuti Anggota</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">Cuti Tahunan (12 hari) & Overtime otomatis per anggota</div>
+            </div>
+            <button onclick="hitungOvertimeSemua()"
+              style="background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;border:none;
+                     border-radius:10px;padding:9px 16px;font-weight:700;font-size:12px;cursor:pointer;
+                     display:flex;align-items:center;gap:6px;white-space:nowrap;">
+              🔄 Hitung Ulang Overtime
+            </button>
+          </div>
+
+          <!-- Info chips -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+            <div style="background:#e8f5e9;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
+              <div style="font-size:10px;color:#388e3c;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">📅 Cuti Tahunan</div>
+              <div style="font-size:13px;font-weight:800;color:#2e7d32;margin-top:2px;">12 hari / tahun</div>
+              <div style="font-size:10px;color:#66bb6a;margin-top:1px;">Reset 1 Januari</div>
+            </div>
+            <div style="background:#fff8e1;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
+              <div style="font-size:10px;color:#f57f17;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">⏱ Overtime</div>
+              <div style="font-size:13px;font-weight:800;color:#e65100;margin-top:2px;">Akumulasi otomatis</div>
+              <div style="font-size:10px;color:#ffa726;margin-top:1px;">Kelebihan > 40 jam/minggu</div>
+            </div>
+            <div style="background:#f3e5f5;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
+              <div style="font-size:10px;color:#7b1fa2;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">⚡ Jam Kerja</div>
+              <div style="font-size:13px;font-weight:800;color:#6a1b9a;margin-top:2px;">40 jam / minggu</div>
+              <div style="font-size:10px;color:#ab47bc;margin-top:1px;">Senin – Minggu, fleksibel</div>
+            </div>
           </div>
         </div>
-        <div class="card" style="margin-top:16px;padding:32px 20px;text-align:center;">
-          <div style="font-size:48px;margin-bottom:12px;">🚧</div>
-          <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:6px;">Segera Hadir</div>
-          <div style="font-size:13px;color:var(--muted);">Fitur Kuota Cuti sedang dalam pengembangan.</div>
+
+        <!-- Filter tahun + search -->
+        <div style="display:flex;gap:8px;margin-top:12px;margin-bottom:2px;">
+          <select id="kuota-filter-tahun" onchange="loadKuotaCuti()"
+            style="padding:9px 12px;border:1.5px solid #e8ecf0;border-radius:10px;font-size:13px;outline:none;background:white;flex:0 0 auto;">
+          </select>
+          <div style="position:relative;flex:1;">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#bbb;font-size:13px;">🔍</span>
+            <input id="kuota-search" type="text" placeholder="Cari nama anggota..."
+              oninput="renderKuotaList()"
+              style="width:100%;padding:9px 12px 9px 30px;border:1.5px solid #e8ecf0;border-radius:10px;
+                     font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+
+        <!-- Daftar kuota per anggota -->
+        <div class="card" style="margin-top:12px;padding:0;overflow:hidden;">
+          <div id="kuota-cuti-list">
+            <p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ===== MODAL: Detail Kuota Cuti Anggota ===== -->
+      <div id="modal-kuota-detail-overlay"
+           style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+                  align-items:center;justify-content:center;padding:16px;">
+        <div style="background:white;border-radius:18px;width:100%;max-width:400px;
+                    box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .25s ease;">
+          <!-- Header -->
+          <div style="background:linear-gradient(135deg,#1a237e,#4f8ef7);padding:18px 20px 14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div id="mkd-nama" style="color:white;font-weight:800;font-size:15px;"></div>
+                <div id="mkd-divisi" style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"></div>
+              </div>
+              <button onclick="closeKuotaDetailModal()"
+                style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:30px;height:30px;
+                       color:white;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+            </div>
+          </div>
+          <!-- Body -->
+          <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px;">
+
+            <!-- Cuti Tahunan -->
+            <div style="background:#f1f8e9;border-radius:12px;padding:14px;">
+              <div style="font-weight:800;font-size:13px;color:#2e7d32;margin-bottom:10px;">📅 Cuti Tahunan</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-tahunan-total" style="font-size:22px;font-weight:900;color:#2e7d32;"></div>
+                  <div style="font-size:10px;color:#81c784;font-weight:700;">Total</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-tahunan-pakai" style="font-size:22px;font-weight:900;color:#e57373;"></div>
+                  <div style="font-size:10px;color:#ef9a9a;font-weight:700;">Terpakai</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-tahunan-sisa" style="font-size:22px;font-weight:900;color:#1565c0;"></div>
+                  <div style="font-size:10px;color:#64b5f6;font-weight:700;">Sisa</div>
+                </div>
+              </div>
+              <!-- Progress bar -->
+              <div style="background:#c8e6c9;border-radius:50px;height:7px;overflow:hidden;">
+                <div id="mkd-tahunan-bar" style="height:100%;background:#43a047;border-radius:50px;transition:width .4s;"></div>
+              </div>
+            </div>
+
+            <!-- Overtime -->
+            <div style="background:#fff8e1;border-radius:12px;padding:14px;">
+              <div style="font-weight:800;font-size:13px;color:#e65100;margin-bottom:10px;">⏱ Cuti Overtime</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-ot-jam" style="font-size:22px;font-weight:900;color:#e65100;"></div>
+                  <div style="font-size:10px;color:#ffa726;font-weight:700;">Jam Terkumpul</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-ot-hari" style="font-size:22px;font-weight:900;color:#2e7d32;"></div>
+                  <div style="font-size:10px;color:#81c784;font-weight:700;">Setara Hari</div>
+                </div>
+                <div style="text-align:center;flex:1;">
+                  <div id="mkd-ot-diambil" style="font-size:22px;font-weight:900;color:#7b1fa2;"></div>
+                  <div style="font-size:10px;color:#ba68c8;font-weight:700;">Hari Diambil</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#f57f17;text-align:center;">1 hari cuti overtime = 8 jam akumulasi</div>
+            </div>
+
+          </div>
+          <!-- Footer -->
+          <div style="padding:0 20px 18px;display:flex;gap:8px;">
+            <button onclick="closeKuotaDetailModal()"
+              style="flex:1;padding:11px;border:1.5px solid #e8eaf0;background:white;border-radius:10px;
+                     font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">
+              Tutup
+            </button>
+          </div>
         </div>
       </div>
 
