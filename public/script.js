@@ -218,7 +218,6 @@ function enterApp(menus, group, level) {
   loadStatus();
   loadTodayDetail();
   loadWeeklyInfo();
-  loadHomeLibur();
   // Jika sudah clock in, mulai tracking ping
   fetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
@@ -792,106 +791,18 @@ async function loadWeeklyInfo() {
     const elOT   = document.getElementById("t-overtime");
     if (elWeek) elWeek.innerText = totalJam.toFixed(1) + "j";
     if (elOT)   elOT.innerText  = overtime > 0 ? "+" + overtime.toFixed(1) + "j" : "0j";
+
+    // Warna indikator progress jam
+    const elProgress = document.getElementById("week-progress");
+    if (elProgress) {
+      const pct = Math.min(100, (totalJam / TARGET_JAM_MINGGU) * 100);
+      elProgress.style.width = pct + "%";
+      elProgress.style.background = pct >= 100 ? "#f39c12" : "#27ae60";
+    }
   } catch (e) {
     console.warn("loadWeeklyInfo gagal:", e);
   }
 }
-
-// ─── HOME TAB SWITCHER ──────────────────────────────────────
-
-function switchHomeTab(tab) {
-  const panelHari   = document.getElementById('home-panel-hari');
-  const panelMinggu = document.getElementById('home-panel-minggu');
-  const tabHari     = document.getElementById('home-tab-hari');
-  const tabMinggu   = document.getElementById('home-tab-minggu');
-
-  if (tab === 'hari') {
-    panelHari.style.display   = 'block';
-    panelMinggu.style.display = 'none';
-    tabHari.style.background    = 'var(--primary)';
-    tabHari.style.color         = 'white';
-    tabMinggu.style.background  = 'white';
-    tabMinggu.style.color       = 'var(--muted)';
-  } else {
-    panelHari.style.display   = 'none';
-    panelMinggu.style.display = 'block';
-    tabMinggu.style.background  = 'var(--primary)';
-    tabMinggu.style.color       = 'white';
-    tabHari.style.background    = 'white';
-    tabHari.style.color         = 'var(--muted)';
-  }
-}
-
-// ─── KALENDER LIBUR BULAN BERJALAN (HOME) ───────────────────
-
-async function loadHomeLibur() {
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const prefix = year + '-' + month;
-
-  const BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
-                 'Juli','Agustus','September','Oktober','November','Desember'];
-
-  const elBulan = document.getElementById('home-libur-bulan');
-  const elList  = document.getElementById('home-libur-list');
-  if (elBulan) elBulan.textContent = BULAN[now.getMonth()] + ' ' + year;
-
-  try {
-    const user   = localStorage.getItem('user') || '';
-    const [rLibur] = await Promise.all([fetch('/libur')]);
-    const semua  = await rLibur.json();
-
-    // Filter: bulan berjalan dan relevan untuk user ini
-    const bulanIni = semua.filter(h => {
-      const ds = h.dateStart || h.date || '';
-      const de = h.dateEnd   || ds;
-      // masuk rentang bulan ini
-      return ds.startsWith(prefix) || de.startsWith(prefix) || (ds <= prefix + '-31' && de >= prefix + '-01');
-    }).filter(h => {
-      // tampilkan nasional atau jika user ada di array anggota
-      if (h.type === 'nasional') return true;
-      if (Array.isArray(h.anggota) && h.anggota.includes(user)) return true;
-      return false;
-    });
-
-    if (!bulanIni.length) {
-      elList.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px;font-size:13px;">Tidak ada hari libur bulan ini 🎉</p>';
-      return;
-    }
-
-    bulanIni.sort((a, b) => (a.dateStart || a.date || '').localeCompare(b.dateStart || b.date || ''));
-
-    const fmtDate = (ds, de) => {
-      if (!de || de === ds) return fmtTgl(ds);
-      return fmtTgl(ds) + ' – ' + fmtTgl(de);
-    };
-    const fmtTgl = d => {
-      if (!d) return '';
-      const [y, m, dd] = d.split('-');
-      return parseInt(dd) + ' ' + BULAN[parseInt(m) - 1];
-    };
-
-    elList.innerHTML = bulanIni.map(h => {
-      const ds   = h.dateStart || h.date || '';
-      const de   = h.dateEnd   || ds;
-      const isNas = h.type === 'nasional';
-      const tipe  = isNas
-        ? '<span style="font-size:10px;padding:2px 8px;border-radius:50px;background:#fce4ec;color:#c62828;font-weight:700;">Nasional</span>'
-        : '<span style="font-size:10px;padding:2px 8px;border-radius:50px;background:#e8f5e9;color:#2e7d32;font-weight:700;">Agama</span>';
-      return \`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f5;">
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);">\${h.name}</div>
-          <div style="font-size:11px;color:var(--primary);margin-top:2px;">\${fmtDate(ds, de)}</div>
-        </div>
-        \${tipe}
-      </div>\`;
-    }).join('') + '<div style="height:4px;"></div>';
-  } catch (e) {
-    if (elList) elList.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px;font-size:13px;">Gagal memuat data libur</p>';
-  }
-}
-
 
 async function getLoc() {
   return new Promise(resolve => {
