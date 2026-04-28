@@ -73,6 +73,43 @@ function initGroups() {
 }
 initGroups();
 
+// Inisialisasi kebijakan cuti default jika belum ada
+function initKebijakanCutiDefault() {
+  const data = load(F.kebijakanCuti, []);
+  const hasDefault = data.some(d => d._default === true);
+  if (!hasDefault) {
+    const defaults = [
+      {
+        id:         "default-tahunan",
+        nama:       "Cuti Tahunan",
+        jenis:      "kuota",
+        kuotaKey:   "tahunan",           // key yang diacu di kuota_cuti.json
+        periode:    "tahunan",
+        berlaku:    "semua",
+        keterangan: "Cuti tahunan 12 hari. Otomatis terhubung ke Kuota Cuti Tahunan.",
+        _default:   true,
+        _locked:    true,                // tidak bisa dihapus
+        createdAt:  new Date().toISOString()
+      },
+      {
+        id:         "default-overtime",
+        nama:       "Cuti Overtime",
+        jenis:      "kuota",
+        kuotaKey:   "overtime",          // key yang diacu di kuota_cuti.json
+        periode:    "akumulasi",
+        berlaku:    "semua",
+        keterangan: "Cuti dari akumulasi jam overtime. Otomatis terhubung ke Kuota Cuti Overtime.",
+        _default:   true,
+        _locked:    true,
+        createdAt:  new Date().toISOString()
+      }
+    ];
+    // Gabungkan: default di depan, kebijakan custom di belakang
+    save(F.kebijakanCuti, [...defaults, ...data.filter(d => !d._default)]);
+  }
+}
+initKebijakanCutiDefault();
+
 // ========================
 // AUTH
 // ========================
@@ -658,6 +695,7 @@ app.delete("/kebijakan-cuti/:id", (req, res) => {
   const data = load(F.kebijakanCuti, []);
   const idx  = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  if (data[idx]._locked) return res.status(403).send({ status: "LOCKED", msg: "Kebijakan default tidak dapat dihapus." });
   data.splice(idx, 1); save(F.kebijakanCuti, data); res.send({ status: "OK" });
 });
 

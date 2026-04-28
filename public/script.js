@@ -2365,25 +2365,58 @@ async function loadKebijakanCuti() {
       return;
     }
     list.innerHTML = d.map(x => {
-      const jenis = x.jenis || "kuota";
-      const isKuota = jenis === "kuota";
+      const jenis    = x.jenis || "kuota";
+      const isKuota  = jenis === "kuota";
+      const isDefault = !!x._default;
+      const isLocked  = !!x._locked;
+
       const jenisLabel = isKuota ? "📊 Kuota" : "🔓 Non-Kuota";
       const badgeColor = isKuota
         ? "background:#e8f5e9;color:#2e7d32;"
         : "background:#e3f2fd;color:#1565c0;";
+
+      // Label koneksi ke kuota cuti
+      let kuotaBadge = "";
+      if (isDefault && x.kuotaKey === "tahunan") {
+        kuotaBadge = `<span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;
+          background:#e8f5e9;color:#1b5e20;margin-left:6px;">🔗 Kuota Cuti Tahunan</span>`;
+      } else if (isDefault && x.kuotaKey === "overtime") {
+        kuotaBadge = `<span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;
+          background:#fff8e1;color:#e65100;margin-left:6px;">🔗 Kuota Cuti Overtime</span>`;
+      }
+
+      // Tombol hapus: sembunyikan jika locked
+      const deleteBtn = isLocked
+        ? `<span title="Kebijakan default tidak dapat dihapus"
+             style="font-size:18px;color:#ddd;padding:4px 6px;flex-shrink:0;">🔒</span>`
+        : `<button onclick="deleteKebijakanCuti('${x.id}')"
+             style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;
+                    padding:4px 6px;flex-shrink:0;border-radius:8px;"
+             title="Hapus kebijakan ini">🗑</button>`;
+
+      // Info keterangan jika default
+      const keteranganEl = isDefault && x.keterangan
+        ? `<div style="font-size:11px;color:var(--muted);margin-top:5px;">${x.keterangan}</div>`
+        : "";
+
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;
-                  padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
+                  padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;
+                  ${isDefault ? 'background:#fafffe;' : ''}">
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:6px;">${x.nama}</div>
-          <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;${badgeColor}">
-            ${jenisLabel}
-          </span>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+            <span style="font-weight:700;font-size:14px;color:var(--text);">${x.nama}</span>
+            ${isDefault ? `<span style="font-size:10px;padding:2px 8px;border-radius:50px;font-weight:700;background:#f0f4ff;color:#3949ab;">⭐ Default</span>` : ""}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;${badgeColor}">
+              ${jenisLabel}
+            </span>
+            ${kuotaBadge}
+          </div>
+          ${keteranganEl}
         </div>
-        <button onclick="deleteKebijakanCuti('${x.id}')"
-          style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;
-                 padding:4px 6px;flex-shrink:0;border-radius:8px;"
-          title="Hapus kebijakan ini">🗑</button>
+        ${deleteBtn}
       </div>`;
     }).join("");
   } catch { showToast("❌ Gagal memuat kebijakan cuti", "error"); }
@@ -2424,7 +2457,9 @@ async function deleteKebijakanCuti(id) {
     onOk: async () => {
       try {
         const r = await fetch(`/kebijakan-cuti/${id}`, {method:"DELETE"});
-        if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadKebijakanCuti(); }
+        const res = await r.json();
+        if (res.status === "OK") { showToast("🗑 Berhasil dihapus"); loadKebijakanCuti(); }
+        else if (res.status === "LOCKED") showToast("🔒 " + (res.msg || "Kebijakan default tidak dapat dihapus"), "warning");
       } catch {}
     }
   });
