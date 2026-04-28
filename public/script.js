@@ -1751,34 +1751,122 @@ async function deleteArea(id) {
 // ============================================================
 // HARI LIBUR & CUTI
 // ============================================================
+// ================================================================
+// HARI LIBUR — Tab switching
+// ================================================================
+function switchLiburTab(tab) {
+  const isHariLibur = tab === "hari-libur";
+  document.getElementById("panel-hari-libur").classList.toggle("hidden", !isHariLibur);
+  document.getElementById("panel-kebijakan-cuti").classList.toggle("hidden", isHariLibur);
+  document.getElementById("tab-hari-libur").style.background    = isHariLibur ? "var(--primary)" : "white";
+  document.getElementById("tab-hari-libur").style.color         = isHariLibur ? "white" : "var(--muted)";
+  document.getElementById("tab-kebijakan-cuti").style.background = isHariLibur ? "white" : "var(--primary)";
+  document.getElementById("tab-kebijakan-cuti").style.color      = isHariLibur ? "var(--muted)" : "white";
+  if (!isHariLibur) loadKebijakanCuti();
+}
+
+function toggleAgamaField() {
+  const type = document.getElementById("libur-type").value;
+  document.getElementById("libur-agama-group").style.display = type === "agama" ? "block" : "none";
+}
+
+function _initLiburTahunFilter() {
+  const sel = document.getElementById("libur-filter-tahun");
+  if (!sel) return;
+  const cur = new Date().getFullYear();
+  sel.innerHTML = "";
+  for (let y = cur + 1; y >= cur - 2; y--) {
+    const opt = document.createElement("option");
+    opt.value = y; opt.textContent = y;
+    if (y === cur) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function _formatTanggalLibur(dateStart, dateEnd) {
+  const fmt = d => {
+    const [y,m,dy] = d.split("-");
+    const bulan = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+    return `${parseInt(dy)} ${bulan[parseInt(m)-1]} ${y}`;
+  };
+  if (!dateEnd || dateEnd === dateStart) return fmt(dateStart);
+  return `${fmt(dateStart)} – ${fmt(dateEnd)}`;
+}
+
 async function loadLibur() {
+  _initLiburTahunFilter();
   try {
     const r = await fetch("/libur");
     const d = await r.json();
     const list = document.getElementById("libur-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
-    list.innerHTML = d.sort((a,b)=>a.date.localeCompare(b.date)).map(x => `
-      <div class="holiday-item">
-        <div><div class="h-date-text">${x.date}</div><div class="h-name">${x.name}</div></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="h-type ${x.type}">${x.type==='nasional'?'🔴 Nasional':'🟢 Cuti'}</span>
-          <button onclick="deleteLibur('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
+    const tahun = document.getElementById("libur-filter-tahun")?.value || "";
+    const jenis = document.getElementById("libur-filter-jenis")?.value || "";
+
+    let filtered = d;
+    if (tahun) filtered = filtered.filter(x => (x.dateStart || x.date || "").startsWith(tahun));
+    if (jenis) filtered = filtered.filter(x => x.type === jenis);
+
+    if (!filtered.length) {
+      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data libur</p>';
+      return;
+    }
+
+    filtered.sort((a,b) => (a.dateStart||a.date||"").localeCompare(b.dateStart||b.date||""));
+
+    list.innerHTML = filtered.map(x => {
+      const isNasional = x.type === "nasional";
+      const agamaList  = x.agama ? (Array.isArray(x.agama) ? x.agama : [x.agama]) : [];
+      const agamaBadge = agamaList.map(ag =>
+        `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#4f8ef7;font-weight:600;">${ag}</span>`
+      ).join(" ");
+      const tglText = _formatTanggalLibur(x.dateStart || x.date, x.dateEnd);
+      const anggotaCount = x.anggota ? x.anggota.length : "—";
+      return `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${x.name}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📆 ${tglText}</div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+            ${isNasional
+              ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fff0f0;color:#e74c3c;font-weight:600;">🔴 Nasional</span>'
+              : `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fff8e6;color:#e67e22;font-weight:600;">🕌 Keagamaan</span> ${agamaBadge}`
+            }
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px;">👥 ${isNasional ? "Semua anggota" : (anggotaCount !== "—" ? anggotaCount + " anggota" : "—")}</div>
         </div>
-      </div>`).join("");
-  } catch {}
+        <button onclick="deleteLibur('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 4px;flex-shrink:0;">🗑</button>
+      </div>`;
+    }).join("");
+  } catch { showToast("❌ Gagal memuat data libur", "error"); }
 }
 
 async function saveLibur() {
-  const date = document.getElementById("libur-date").value;
-  const name = document.getElementById("libur-name").value.trim();
-  const type = document.getElementById("libur-type").value;
-  if (!date || !name) return showToast("⚠️ Isi tanggal dan nama!", "warning");
+  const name      = document.getElementById("libur-name").value.trim();
+  const dateStart = document.getElementById("libur-date-start").value;
+  const dateEnd   = document.getElementById("libur-date-end").value;
+  const type      = document.getElementById("libur-type").value;
+
+  if (!name || !dateStart) return showToast("⚠️ Isi nama libur dan tanggal mulai!", "warning");
+
+  let agama = [];
+  if (type === "agama") {
+    agama = Array.from(document.querySelectorAll("input[name='libur-agama']:checked")).map(el => el.value);
+    if (!agama.length) return showToast("⚠️ Pilih minimal satu agama!", "warning");
+  }
+
   try {
-    const r = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({date,name,type}) });
+    const payload = { name, dateStart, dateEnd: dateEnd || dateStart, type, agama,
+      // backward compat: simpan juga field lama
+      date: dateStart };
+    const r = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
     if ((await r.json()).status === "OK") {
-      showToast("✅ Berhasil ditambahkan!");
-      document.getElementById("libur-date").value = "";
+      showToast("✅ Hari libur berhasil ditambahkan!");
       document.getElementById("libur-name").value = "";
+      document.getElementById("libur-date-start").value = "";
+      document.getElementById("libur-date-end").value = "";
+      document.getElementById("libur-type").value = "nasional";
+      document.getElementById("libur-agama-group").style.display = "none";
+      document.querySelectorAll("input[name='libur-agama']").forEach(el => el.checked = false);
       loadLibur();
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
@@ -1788,12 +1876,82 @@ async function deleteLibur(id) {
   uConfirm({
     icon: "📅",
     title: "Hapus Data Libur",
-    msg: "Yakin ingin menghapus data libur ini?",
+    msg: "Yakin ingin menghapus hari libur ini?",
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
         const r = await fetch(`/libur/${id}`, {method:"DELETE"});
         if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadLibur(); }
+      } catch {}
+    }
+  });
+}
+
+// ================================================================
+// KEBIJAKAN CUTI
+// ================================================================
+async function loadKebijakanCuti() {
+  try {
+    const r = await fetch("/kebijakan-cuti");
+    const d = await r.json();
+    const list = document.getElementById("kebijakan-cuti-list");
+    if (!d.length) {
+      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada kebijakan cuti</p>';
+      return;
+    }
+    const periodeLabel = { tahunan:"Tahunan", bulanan:"Bulanan", sekali:"Sekali" };
+    const berlakuLabel = { semua:"Semua Anggota", tetap:"Karyawan Tetap", kontrak:"Karyawan Kontrak" };
+    list.innerHTML = d.map(x => `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f5f5f5;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${x.nama}</div>
+          <div style="font-size:13px;color:var(--primary);font-weight:700;margin-bottom:4px;">🗓 ${x.hari} hari / ${periodeLabel[x.periode]||x.periode}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#4f8ef7;font-weight:600;">👥 ${berlakuLabel[x.berlaku]||x.berlaku}</span>
+          </div>
+          ${x.keterangan ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;">📝 ${x.keterangan}</div>` : ""}
+        </div>
+        <button onclick="deleteKebijakanCuti('${x.id}')" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 4px;flex-shrink:0;">🗑</button>
+      </div>`).join("");
+  } catch { showToast("❌ Gagal memuat kebijakan cuti", "error"); }
+}
+
+async function saveKebijakanCuti() {
+  const nama       = document.getElementById("cuti-nama").value.trim();
+  const hari       = parseInt(document.getElementById("cuti-hari").value);
+  const periode    = document.getElementById("cuti-periode").value;
+  const berlaku    = document.getElementById("cuti-berlaku").value;
+  const keterangan = document.getElementById("cuti-keterangan").value.trim();
+
+  if (!nama || !hari || hari < 1) return showToast("⚠️ Isi nama cuti dan jumlah hari!", "warning");
+
+  try {
+    const r = await fetch("/kebijakan-cuti", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ nama, hari, periode, berlaku, keterangan })
+    });
+    if ((await r.json()).status === "OK") {
+      showToast("✅ Kebijakan cuti berhasil ditambahkan!");
+      document.getElementById("cuti-nama").value = "";
+      document.getElementById("cuti-hari").value = "";
+      document.getElementById("cuti-keterangan").value = "";
+      document.getElementById("cuti-periode").value = "tahunan";
+      document.getElementById("cuti-berlaku").value = "semua";
+      loadKebijakanCuti();
+    }
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
+}
+
+async function deleteKebijakanCuti(id) {
+  uConfirm({
+    icon: "🌴",
+    title: "Hapus Kebijakan Cuti",
+    msg: "Yakin ingin menghapus kebijakan cuti ini?",
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/kebijakan-cuti/${id}`, {method:"DELETE"});
+        if ((await r.json()).status === "OK") { showToast("🗑 Berhasil dihapus"); loadKebijakanCuti(); }
       } catch {}
     }
   });

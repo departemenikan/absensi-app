@@ -692,7 +692,7 @@
 </div>
 
 <!-- ============================================================ -->
-<!-- VIEW: HARI LIBUR & CUTI -->
+<!-- VIEW: HARI LIBUR & KEBIJAKAN CUTI -->
 <!-- ============================================================ -->
 <div id="view-libur" class="view">
   <div class="page-wrap">
@@ -701,23 +701,135 @@
       <h3>📅 Hari Libur & Cuti</h3>
     </div>
     <div style="margin-top:46px;">
-      <div class="card" style="margin-top:0;">
-        <h4>Tambah Libur / Cuti</h4>
-        <div class="form-group"><label>Tanggal</label><input type="date" id="libur-date"></div>
-        <div class="form-group"><label>Nama</label><input type="text" id="libur-name" placeholder="contoh: Lebaran, Cuti Bersama"></div>
-        <div class="form-group">
-          <label>Jenis</label>
-          <select id="libur-type">
-            <option value="nasional">🔴 Hari Libur Nasional</option>
-            <option value="cuti">🟢 Cuti</option>
-          </select>
+
+      <!-- Submenu tabs -->
+      <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;">
+        <button id="tab-hari-libur" onclick="switchLiburTab('hari-libur')"
+          style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">
+          📅 Hari Libur
+        </button>
+        <button id="tab-kebijakan-cuti" onclick="switchLiburTab('kebijakan-cuti')"
+          style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
+          🌴 Kebijakan Cuti
+        </button>
+      </div>
+
+      <!-- ===== TAB: HARI LIBUR ===== -->
+      <div id="panel-hari-libur">
+        <div class="card" style="margin-top:0;">
+          <h4 style="margin-bottom:4px;">➕ Tambah Hari Libur</h4>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Anggota akan otomatis ditambahkan berdasarkan agama yang terdaftar di profil.</p>
+
+          <div class="form-group">
+            <label>Nama Libur</label>
+            <input type="text" id="libur-name" placeholder="contoh: Idul Fitri, Natal, Nyepi">
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div class="form-group" style="flex:1;">
+              <label>Tanggal Mulai</label>
+              <input type="date" id="libur-date-start">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Tanggal Akhir <span style="color:var(--muted);font-weight:400;">(opsional)</span></label>
+              <input type="date" id="libur-date-end">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Jenis Libur</label>
+            <select id="libur-type" onchange="toggleAgamaField()">
+              <option value="nasional">🔴 Libur Nasional (semua anggota)</option>
+              <option value="agama">🕌 Libur Keagamaan (berdasarkan agama)</option>
+            </select>
+          </div>
+          <div class="form-group" id="libur-agama-group" style="display:none;">
+            <label>Agama yang Berlaku</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Islam"> Islam
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Kristen"> Kristen
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Katolik"> Katolik
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Hindu"> Hindu
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Buddha"> Buddha
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border:1.5px solid #e0e0e0;border-radius:20px;background:white;">
+                <input type="checkbox" name="libur-agama" value="Konghucu"> Konghucu
+              </label>
+            </div>
+          </div>
+          <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah Hari Libur</button>
         </div>
-        <button onclick="saveLibur()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah</button>
+
+        <div class="card" style="margin-top:16px;padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f0f2f5;flex-wrap:wrap;gap:8px;">
+            <h4 style="margin:0;">Daftar Hari Libur</h4>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <select id="libur-filter-tahun" onchange="loadLibur()" style="padding:6px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;"></select>
+              <select id="libur-filter-jenis" onchange="loadLibur()" style="padding:6px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
+                <option value="">Semua Jenis</option>
+                <option value="nasional">Nasional</option>
+                <option value="agama">Keagamaan</option>
+              </select>
+            </div>
+          </div>
+          <div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div>
+        </div>
       </div>
-      <div class="card" style="margin-top:16px;">
-        <h4>Daftar Libur & Cuti</h4>
-        <div id="libur-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p></div>
+
+      <!-- ===== TAB: KEBIJAKAN CUTI ===== -->
+      <div id="panel-kebijakan-cuti" class="hidden">
+        <div class="card" style="margin-top:0;">
+          <h4 style="margin-bottom:4px;">➕ Tambah Jenis Cuti</h4>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Atur jenis dan kuota cuti yang berlaku untuk seluruh anggota.</p>
+
+          <div class="form-group">
+            <label>Nama Jenis Cuti</label>
+            <input type="text" id="cuti-nama" placeholder="contoh: Cuti Tahunan, Cuti Sakit">
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div class="form-group" style="flex:1;">
+              <label>Jumlah Hari</label>
+              <input type="number" id="cuti-hari" placeholder="12" min="1" max="365">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Periode Reset</label>
+              <select id="cuti-periode">
+                <option value="tahunan">Tahunan</option>
+                <option value="bulanan">Bulanan</option>
+                <option value="sekali">Sekali</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Berlaku untuk</label>
+            <select id="cuti-berlaku">
+              <option value="semua">Semua Anggota</option>
+              <option value="tetap">Karyawan Tetap</option>
+              <option value="kontrak">Karyawan Kontrak</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Keterangan <span style="color:var(--muted);font-weight:400;">(opsional)</span></label>
+            <input type="text" id="cuti-keterangan" placeholder="contoh: Dapat diambil setelah 1 tahun kerja">
+          </div>
+          <button onclick="saveKebijakanCuti()" class="btn-green" style="width:100%;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">➕ Tambah Kebijakan</button>
+        </div>
+
+        <div class="card" style="margin-top:16px;padding:0;overflow:hidden;">
+          <div style="padding:14px 16px;border-bottom:1px solid #f0f2f5;">
+            <h4 style="margin:0;">Daftar Kebijakan Cuti</h4>
+          </div>
+          <div id="kebijakan-cuti-list"><p style="color:var(--muted);text-align:center;padding:20px;">Belum ada kebijakan cuti</p></div>
+        </div>
       </div>
+
     </div>
   </div>
 </div>

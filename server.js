@@ -531,21 +531,76 @@ app.delete("/areas/:id", (req, res) => {
 });
 
 // ========================
-// HARI LIBUR & CUTI
+// HARI LIBUR & KEBIJAKAN CUTI
 // ========================
+const F_KEBIJAKAN_CUTI = path.join(DATA_DIR, "kebijakan_cuti.json");
+
 app.get("/libur", (req, res) => res.send(load(F.libur, [])));
+
 app.post("/libur", (req, res) => {
-  const { date, name, type } = req.body;
-  if (!date || !name) return res.send({ status: "ERROR" });
+  const { name, dateStart, dateEnd, type, agama, date } = req.body;
+  if (!name || (!dateStart && !date)) return res.send({ status: "ERROR" });
+
+  const users = load(F.users, {});
+  const start = dateStart || date;
+  const end   = dateEnd   || start;
+
+  // Auto-assign anggota berdasarkan agama
+  let anggota = [];
+  if (type === "agama" && agama && agama.length > 0) {
+    anggota = Object.keys(users).filter(u => agama.includes(users[u].agama || ""));
+  } else if (type === "nasional") {
+    anggota = Object.keys(users);
+  }
+
   const data = load(F.libur, []);
-  data.push({ id: Date.now().toString(), date, name, type: type||"nasional" });
-  save(F.libur, data); res.send({ status: "OK" });
+  data.push({
+    id:        Date.now().toString(),
+    name,
+    date:      start,        // backward compat
+    dateStart: start,
+    dateEnd:   end,
+    type:      type || "nasional",
+    agama:     agama || [],
+    anggota,
+    createdAt: new Date().toISOString()
+  });
+  save(F.libur, data);
+  res.send({ status: "OK" });
 });
+
 app.delete("/libur/:id", (req, res) => {
   const data = load(F.libur, []);
   const idx  = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
   data.splice(idx, 1); save(F.libur, data); res.send({ status: "OK" });
+});
+
+// Kebijakan Cuti
+app.get("/kebijakan-cuti", (req, res) => res.send(load(F_KEBIJAKAN_CUTI, [])));
+
+app.post("/kebijakan-cuti", (req, res) => {
+  const { nama, hari, periode, berlaku, keterangan } = req.body;
+  if (!nama || !hari) return res.send({ status: "ERROR" });
+  const data = load(F_KEBIJAKAN_CUTI, []);
+  data.push({
+    id:          Date.now().toString(),
+    nama,
+    hari:        parseInt(hari),
+    periode:     periode || "tahunan",
+    berlaku:     berlaku || "semua",
+    keterangan:  keterangan || "",
+    createdAt:   new Date().toISOString()
+  });
+  save(F_KEBIJAKAN_CUTI, data);
+  res.send({ status: "OK" });
+});
+
+app.delete("/kebijakan-cuti/:id", (req, res) => {
+  const data = load(F_KEBIJAKAN_CUTI, []);
+  const idx  = data.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  data.splice(idx, 1); save(F_KEBIJAKAN_CUTI, data); res.send({ status: "OK" });
 });
 
 // ========================
