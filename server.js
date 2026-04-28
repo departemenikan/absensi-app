@@ -244,7 +244,7 @@ app.get("/profile/:username", (req, res) => {
 app.put("/profile/:username", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  const allowed = ["namaLengkap","agama","jabatan","divisi","statusKerja","nominalGaji"];
+  const allowed = ["namaLengkap","agama","statusKerja","nominalGaji"];
   allowed.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
   save(F.users, users);
   res.send({ status: "OK" });
@@ -284,7 +284,7 @@ app.get("/anggota", (req, res) => {
   const groups = load(F.groups, []);
   const list   = Object.keys(users).map(u => {
     const g = groups.find(g => g.id === (users[u].group || "anggota"));
-    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", divisi: users[u].divisi || "", createdAt: users[u].createdAt || "" };
+    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", divisi: users[u].divisi || "", jabatan: users[u].jabatan || "", peran: users[u].peran || g?.name || "Anggota", createdAt: users[u].createdAt || "" };
   });
   res.send(list);
 });
@@ -293,6 +293,15 @@ app.put("/anggota/:username/group", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   users[req.params.username].group = req.body.group;
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+app.put("/anggota/:username/jabatan", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  if (req.body.jabatan !== undefined) users[req.params.username].jabatan = req.body.jabatan.trim();
+  if (req.body.peran   !== undefined) users[req.params.username].peran   = req.body.peran.trim();
   save(F.users, users);
   res.send({ status: "OK" });
 });
