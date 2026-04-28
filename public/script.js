@@ -1120,18 +1120,30 @@ function renderDivisiTable(list) {
     return;
   }
   el.innerHTML = list.map(d => {
-    const anggotaDivisi = _anggotaAll.filter(a => a.divisi === d.nama);
+    // Hitung anggota: cek array divisi ATAU string lama (backward-compat)
+    const anggotaDivisi = _anggotaAll.filter(a => {
+      const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+      return arr.includes(d.nama);
+    });
+    // Hitung juga dari posisi jabatan di divisi (owner/manager/koordinator)
+    const fromPosisi = _anggotaAll.filter(a =>
+      a.username === d.owner || a.username === d.manager || a.username === d.koordinator
+    );
+    const allUniq = [...new Map([...anggotaDivisi, ...fromPosisi].map(a => [a.username, a])).values()];
+
     const manager = _anggotaAll.find(a => a.username === d.manager);
     const managerLabel = manager
       ? (manager.namaLengkap || manager.username)
       : (d.manager ? d.manager : '<span style="color:#ccc;">—</span>');
-    const canEdit = userLevel <= 2; // owner (1) dan admin (2)
+
     return `
-      <div style="display:grid;grid-template-columns:1fr 1fr;padding:13px 16px;border-bottom:1px solid #f0f2f5;align-items:center;cursor:pointer;"
-        onclick="openDetailDivisi('${d.id}')">
+      <div onclick="openDetailDivisi('${d.id}')"
+        style="display:grid;grid-template-columns:1fr 1fr;padding:13px 16px;border-bottom:1px solid #f0f2f5;
+               align-items:center;cursor:pointer;transition:background .15s;"
+        onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background='transparent'">
         <div>
           <div style="font-size:14px;font-weight:700;color:#1a1a1a;">${d.nama}</div>
-          <div style="font-size:11px;color:var(--primary);margin-top:2px;">👤 ${anggotaDivisi.length} anggota</div>
+          <div style="font-size:11px;color:var(--primary);margin-top:2px;">👤 ${allUniq.length} anggota</div>
         </div>
         <div style="font-size:13px;color:#444;">${managerLabel}</div>
       </div>`;
@@ -1333,11 +1345,23 @@ async function saveBuatGrup() {
 let _detailDivisiId = null;
 
 async function openDetailDivisi(id) {
+  // Refresh data terbaru
+  try {
+    const [divisiRes, usersRes] = await Promise.all([fetch("/divisi"), fetch("/anggota")]);
+    _divisiList = await divisiRes.json();
+    _anggotaAll = await usersRes.json();
+  } catch { /* pakai cache */ }
+
   const d = _divisiList.find(x => x.id === id);
   if (!d) return;
   _detailDivisiId = id;
-  const anggotaDivisi = _anggotaAll.filter(a => a.divisi === d.nama);
-  const manager = _anggotaAll.find(a => a.username === d.manager);
+
+  // Hitung anggota divisi ini (array-aware)
+  const anggotaDivisi = _anggotaAll.filter(a => {
+    const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+    return arr.includes(d.nama) || a.username === d.owner || a.username === d.manager || a.username === d.koordinator;
+  });
+  const uniqAnggota = [...new Map(anggotaDivisi.map(a => [a.username, a])).values()];
 
   document.getElementById("dd-judul").textContent = "🏢 " + d.nama;
   const ownerObj   = _anggotaAll.find(a => a.username === d.owner);
@@ -1351,33 +1375,33 @@ async function openDetailDivisi(id) {
     " · Manager: " + managerLabel +
     (koordLabel ? " · Koordinator: " + koordLabel : "");
 
-  // Tampilkan daftar anggota (read-only)
+  // Daftar anggota read-only
   const viewEl = document.getElementById("dd-anggota-view");
-  if (anggotaDivisi.length) {
-    viewEl.innerHTML = `<div style="margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">ANGGOTA (${anggotaDivisi.length})</div>` +
-      anggotaDivisi.map(a => `
+  if (uniqAnggota.length) {
+    viewEl.innerHTML = `<div style="margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">ANGGOTA (${uniqAnggota.length})</div>` +
+      uniqAnggota.map(a => `
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
-          <div style="width:30px;height:30px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">
+          <div style="width:30px;height:30px;border-radius:50%;background:var(--primary);color:white;
+                      display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">
             ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
           </div>
           <div>
             <div style="font-size:13px;font-weight:600;">${a.namaLengkap || a.username}</div>
-            <div style="font-size:11px;color:var(--muted);">${a.groupName}</div>
+            <div style="font-size:11px;color:var(--muted);">${a.jabatan || a.groupName}</div>
           </div>
         </div>`).join('');
   } else {
     viewEl.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:8px 0;">Belum ada anggota</p>';
   }
 
-  // Edit section hanya untuk owner/admin
+  // Edit section hanya owner/admin
   const editSec = document.getElementById("dd-edit-section");
   if (userLevel <= 2) {
     editSec.style.display = "block";
     document.getElementById("dd-nama").value = d.nama;
 
-    // Dropdown Owner: hanya user dengan group "owner"
-    const ownerList  = _anggotaAll.filter(a => a.group === "owner");
-    const nonOwner   = _anggotaAll.filter(a => a.group !== "owner");
+    const ownerList = _anggotaAll.filter(a => a.group === "owner");
+    const nonOwner  = _anggotaAll.filter(a => a.group !== "owner");
 
     document.getElementById("dd-owner").innerHTML =
       '<option value="">— Pilih Owner —</option>' +
@@ -1385,19 +1409,23 @@ async function openDetailDivisi(id) {
 
     document.getElementById("dd-manager").innerHTML =
       '<option value="">— Pilih Manager —</option>' +
-      nonOwner.map(a => `<option value="${a.username}" ${a.username===d.manager?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
+      _anggotaAll.map(a => `<option value="${a.username}" ${a.username===d.manager?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
 
     document.getElementById("dd-koordinator").innerHTML =
       '<option value="">— Pilih Koordinator —</option>' +
-      nonOwner.map(a => `<option value="${a.username}" ${a.username===(d.koordinator||'')?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
+      _anggotaAll.map(a => `<option value="${a.username}" ${a.username===(d.koordinator||'')?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
 
-    // Checkbox anggota (semua kecuali group owner)
-    document.getElementById("dd-anggota-edit").innerHTML = nonOwner.map(a => `
-      <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" value="${a.username}" ${a.divisi===d.nama?'checked':''} style="width:15px;height:15px;">
-        ${a.namaLengkap || a.username}
-        <span style="font-size:11px;color:var(--muted);">(${a.jabatan||a.groupName})</span>
-      </label>`).join('');
+    // Checkbox anggota — checked jika sudah di divisi ini (array-aware)
+    document.getElementById("dd-anggota-edit").innerHTML = nonOwner.map(a => {
+      const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+      const isIn = arr.includes(d.nama);
+      return `
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" value="${a.username}" ${isIn?'checked':''} style="width:15px;height:15px;">
+          ${a.namaLengkap || a.username}
+          <span style="font-size:11px;color:var(--muted);">(${a.jabatan||a.groupName})</span>
+        </label>`;
+    }).join('');
   } else {
     editSec.style.display = "none";
   }
@@ -1422,43 +1450,41 @@ async function saveDetailDivisi() {
   const checked   = [...document.querySelectorAll("#dd-anggota-edit input[type=checkbox]:checked")].map(cb => cb.value);
   const unchecked = [...document.querySelectorAll("#dd-anggota-edit input[type=checkbox]:not(:checked)")].map(cb => cb.value);
 
+  // Gabungkan semua yang harus masuk divisi (checked + jabatan)
+  const allToAdd = [...new Set([...checked, ownerBaru, managerBaru, koordBaru].filter(Boolean))];
+
   try {
     await fetch(`/divisi/${_detailDivisiId}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nama: namaBaru, owner: ownerBaru, manager: managerBaru, koordinator: koordBaru, deskripsi: d.deskripsi || "" })
     });
 
-    // Assign/unassign anggota biasa (non-owner group)
-    await Promise.all([
-      ...checked.map(u => fetch(`/anggota/${u}/divisi`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ divisi: namaBaru })
-      })),
-      ...unchecked.map(u => {
+    // Add anggota yang dicentang (action "add" → tidak hapus divisi lain)
+    await Promise.all(allToAdd.map(u => fetch(`/anggota/${u}/divisi`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ divisi: namaBaru, action: "add" })
+    })));
+
+    // Remove anggota yang tidak dicentang dan bukan jabatan
+    await Promise.all(unchecked
+      .filter(u => !allToAdd.includes(u))
+      .map(u => {
         const ang = _anggotaAll.find(a => a.username === u);
-        if (ang && ang.divisi === d.nama) {
+        const arr = Array.isArray(ang?.divisi) ? ang.divisi : (ang?.divisi ? [ang.divisi] : []);
+        if (arr.includes(d.nama)) {
           return fetch(`/anggota/${u}/divisi`, {
             method: "PUT", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ divisi: "" })
+            body: JSON.stringify({ divisi: d.nama, action: "remove" })
           });
         }
         return Promise.resolve();
       })
-    ]);
-
-    // Pastikan owner/manager/koordinator ter-assign ke divisi
-    for (const u of [ownerBaru, managerBaru, koordBaru]) {
-      if (u && !checked.includes(u)) {
-        await fetch(`/anggota/${u}/divisi`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ divisi: namaBaru })
-        });
-      }
-    }
+    );
 
     showToast("✅ Divisi diperbarui");
     closeDetailDivisi();
-    loadDivisi();
+    await loadDivisi();
+    loadAnggota();
   } catch { showToast("❌ Gagal", "error"); }
 }
 
