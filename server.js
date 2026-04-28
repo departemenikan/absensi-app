@@ -282,9 +282,35 @@ app.put("/profile/:username/password", (req, res) => {
 app.get("/anggota", (req, res) => {
   const users  = load(F.users, {});
   const groups = load(F.groups, []);
+  const absen  = load(F.data, []);
   const list   = Object.keys(users).map(u => {
-    const g = groups.find(g => g.id === (users[u].group || "anggota"));
-    return { username: u, group: users[u].group || "anggota", groupName: g?.name || "Anggota", groupColor: g?.color || "#7f8c8d", divisi: users[u].divisi || "", createdAt: users[u].createdAt || "" };
+    const usr = users[u];
+    const g   = groups.find(g => g.id === (usr.group || "anggota"));
+    // Cari waktu terakhir aktif dari data absensi
+    const recs = absen
+      .filter(d => d.user === u)
+      .sort((a, b) => {
+        const ta = new Date(a.jamKeluar || a.jamMasuk || (a.date + "T00:00:00")).getTime();
+        const tb = new Date(b.jamKeluar || b.jamMasuk || (b.date + "T00:00:00")).getTime();
+        return tb - ta;
+      });
+    const lastSeen = recs.length
+      ? (recs[0].jamKeluar || recs[0].jamMasuk || (recs[0].date + "T00:00:00"))
+      : (usr.createdAt || null);
+    return {
+      username:    u,
+      namaLengkap: usr.namaLengkap  || "",
+      jabatan:     usr.jabatan      || "",
+      photo:       usr.photo        || "",
+      group:       usr.group        || "anggota",
+      groupName:   g?.name          || "Anggota",
+      groupColor:  g?.color         || "#7f8c8d",
+      peran:       usr.peran        || g?.name || "Anggota",
+      divisi:      usr.divisi       || "",
+      statusKerja: usr.statusKerja  || "",
+      createdAt:   usr.createdAt    || "",
+      lastSeen,
+    };
   });
   res.send(list);
 });
@@ -293,6 +319,19 @@ app.put("/anggota/:username/group", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   users[req.params.username].group = req.body.group;
+  // Sync peran ke nama group
+  const groups = load(F.groups, []);
+  const g = groups.find(g => g.id === req.body.group);
+  if (g) users[req.params.username].peran = g.name;
+  save(F.users, users);
+  res.send({ status: "OK" });
+});
+
+// Update statusKerja (Tugas Luar / kosong)
+app.put("/anggota/:username/status", (req, res) => {
+  const users = load(F.users, {});
+  if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
+  users[req.params.username].statusKerja = req.body.statusKerja || "";
   save(F.users, users);
   res.send({ status: "OK" });
 });

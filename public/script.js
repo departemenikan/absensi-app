@@ -601,67 +601,291 @@ function switchAnggotaTab(tab) {
   if (!isDaftar) loadDivisi();
 }
 
-async function loadAnggota() {
-  try {
-    const r = await fetch("/anggota");
-    const d = await r.json();
-    const [groups, divisiAll] = await Promise.all([
-      (await fetch("/groups")).json(),
-      (await fetch("/divisi")).json(),
-    ]);
-    const list = document.getElementById("member-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
-    list.innerHTML = d.map(m => {
-      const gOpts = groups.map(g =>
-        `<option value="${g.id}" ${g.id===m.group?'selected':''}>${g.name}</option>`
-      ).join("");
-      const dOpts = `<option value="">— Divisi —</option>` + divisiAll.map(dv =>
-        `<option value="${dv.nama}" ${dv.nama===m.divisi?'selected':''}>${dv.nama}</option>`
-      ).join("");
-      return `<div class="member-item">
-        <div style="display:flex;align-items:center;">
-          <div class="avatar" style="background:${m.groupColor||'#7f8c8d'};">${m.username[0].toUpperCase()}</div>
-          <div>
-            <div class="m-name">${m.username}</div>
-            <div class="m-role" style="color:${m.groupColor||'#7f8c8d'};">● ${m.groupName}${m.divisi ? ' · ' + m.divisi : ''}</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-          <select onchange="changeGroup('${m.username}',this.value)"
-            style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;">
-            ${gOpts}
-          </select>
-          <select onchange="assignDivisi('${m.username}',this.value)"
-            style="padding:5px 8px;border:1px solid #e8ecf0;border-radius:8px;font-size:12px;outline:none;max-width:90px;">
-            ${dOpts}
-          </select>
-          ${m.username !== localStorage.getItem("user") && userLevel <= 2
-            ? `<button onclick="deleteAnggota('${m.username}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>`
-            : ""}
-        </div>
-      </div>`;
-    }).join("");
-  } catch { document.getElementById("member-list").innerHTML='<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+// ================================================================
+// ANGGOTA — Daftar & Detail
+// ================================================================
+let _anggotaData     = [];   // cache hasil GET /anggota
+let _anggotaGroups   = [];   // cache GET /groups
+let _anggotaDivisi   = [];   // cache GET /divisi
+
+/** Konversi ISO timestamp ke "X jam yang lalu" */
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  if (isNaN(diff) || diff < 0) return "—";
+  const m  = Math.floor(diff / 60000);
+  const h  = Math.floor(diff / 3600000);
+  const d  = Math.floor(diff / 86400000);
+  const mo = Math.floor(d / 30);
+  if (m < 1)  return "baru saja";
+  if (m < 60) return m + " menit yang lalu";
+  if (h < 24) return h + " jam yang lalu";
+  if (d < 30) return d + " hari yang lalu";
+  return mo + " bulan yang lalu";
 }
 
+async function loadAnggota() {
+  try {
+    const [anggotaRes, groupsRes, divisiRes] = await Promise.all([
+      fetch("/anggota"), fetch("/groups"), fetch("/divisi")
+    ]);
+    _anggotaData   = await anggotaRes.json();
+    _anggotaGroups = await groupsRes.json();
+    _anggotaDivisi = await divisiRes.json();
+
+    // Isi filter Peran
+    const selPeran = document.getElementById("anggota-filter-peran");
+    if (selPeran) {
+      selPeran.innerHTML = '<option value="">Peran ▾</option>' +
+        _anggotaGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+    }
+    // Isi filter Grup/Divisi
+    const selDiv = document.getElementById("anggota-filter-divisi");
+    if (selDiv) {
+      selDiv.innerHTML = '<option value="">Grup ▾</option>' +
+        _anggotaDivisi.map(d => `<option value="${d.nama}">${d.nama}</option>`).join('');
+    }
+    // Tombol Tambahkan Anggota — hanya owner/admin
+    const btnTambah = document.getElementById("btn-tambah-anggota");
+    if (btnTambah) btnTambah.style.display = userLevel <= 2 ? "inline-block" : "none";
+
+    renderAnggotaTable(_anggotaData);
+  } catch {
+    document.getElementById("member-list").innerHTML =
+      '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat</p>';
+  }
+}
+
+function renderAnggotaTable(list) {
+  const el      = document.getElementById("member-list");
+  const countEl = document.getElementById("anggota-count");
+  if (countEl) countEl.textContent = list.length + " anggota";
+
+  if (!list.length) {
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px;">Tidak ada anggota</p>';
+    return;
+  }
+
+  el.innerHTML = list.map(m => {
+    const nama     = m.namaLengkap || m.username;
+    const jabatan  = m.jabatan || m.groupName;
+    const divLabel = m.divisi  || '<span style="color:#ccc;">—</span>';
+    const isTL     = m.statusKerja === "Tugas Luar";
+
+    // Avatar: foto atau inisial
+    const avStyle  = `width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
+    const avatar   = m.photo
+      ? `<img src="${m.photo}" style="${avStyle}">`
+      : `<div style="${avStyle}background:${m.groupColor||'#7f8c8d'};color:white;
+           display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
+           ${nama.charAt(0).toUpperCase()}</div>`;
+
+    // Badge tugas luar kecil di samping nama
+    const tlBadge = isTL
+      ? `<span style="font-size:10px;padding:1px 7px;border-radius:50px;background:#fff3e0;color:#e65100;
+           font-weight:700;margin-left:5px;vertical-align:middle;">Tugas Luar</span>`
+      : "";
+
+    return `
+      <div onclick="openDetailAnggota('${m.username}')"
+        style="display:grid;grid-template-columns:2fr 1.2fr 1fr;align-items:center;
+               padding:11px 14px;border-bottom:1px solid #f5f5f5;cursor:pointer;
+               transition:background .15s;" onmouseover="this.style.background='#fafafa'"
+               onmouseout="this.style.background='transparent'">
+        <!-- Kolom 1: Avatar + Nama + Jabatan -->
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          ${avatar}
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#111;white-space:nowrap;
+                        overflow:hidden;text-overflow:ellipsis;">${nama}${tlBadge}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${jabatan}</div>
+          </div>
+        </div>
+        <!-- Kolom 2: Divisi -->
+        <div style="font-size:12px;color:#555;padding-right:6px;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${divLabel}</div>
+        <!-- Kolom 3: Terakhir Aktif -->
+        <div style="font-size:12px;color:var(--muted);">${timeAgo(m.lastSeen)}</div>
+      </div>`;
+  }).join('');
+}
+
+function filterAnggota() {
+  const q     = (document.getElementById("anggota-search")?.value || "").toLowerCase();
+  const peran = document.getElementById("anggota-filter-peran")?.value  || "";
+  const div   = document.getElementById("anggota-filter-divisi")?.value || "";
+  const out   = _anggotaData.filter(m => {
+    const nama = (m.namaLengkap || m.username).toLowerCase();
+    return (!q     || nama.includes(q) || m.username.toLowerCase().includes(q))
+        && (!peran || m.group  === peran)
+        && (!div   || m.divisi === div);
+  });
+  renderAnggotaTable(out);
+}
+
+function openTambahAnggota() {
+  showToast("💡 Anggota baru dapat mendaftar sendiri melalui halaman signup.", "info");
+}
+
+// ----------------------------------------------------------------
+// MODAL DETAIL ANGGOTA
+// ----------------------------------------------------------------
+let _detailUsername = null;
+
+async function openDetailAnggota(username) {
+  // Refresh data dulu agar selalu up-to-date
+  try {
+    const [anggotaRes, groupsRes, divisiRes] = await Promise.all([
+      fetch("/anggota"), fetch("/groups"), fetch("/divisi")
+    ]);
+    _anggotaData   = await anggotaRes.json();
+    _anggotaGroups = await groupsRes.json();
+    _anggotaDivisi = await divisiRes.json();
+  } catch { /* pakai cache lama */ }
+
+  const m = _anggotaData.find(a => a.username === username);
+  if (!m) return;
+  _detailUsername = username;
+
+  // --- Avatar ---
+  const avEl = document.getElementById("da-avatar");
+  const nama  = m.namaLengkap || m.username;
+  if (m.photo) {
+    avEl.innerHTML = `<img src="${m.photo}" style="width:58px;height:58px;object-fit:cover;">`;
+    avEl.style.background = "transparent";
+  } else {
+    avEl.innerHTML = nama.charAt(0).toUpperCase();
+    avEl.style.background = m.groupColor || "#7f8c8d";
+  }
+
+  // --- Teks info ---
+  document.getElementById("da-nama").textContent    = nama;
+  document.getElementById("da-jabatan").textContent = m.jabatan || "—";
+  document.getElementById("da-divisi").textContent  = m.divisi  || "—";
+  document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
+
+  // Badge peran
+  const badge = document.getElementById("da-peran-badge");
+  badge.textContent   = m.groupName;
+  badge.style.background = (m.groupColor || "#7f8c8d") + "22";
+  badge.style.color      = m.groupColor || "#7f8c8d";
+
+  // Badge Tugas Luar
+  const tlBadge = document.getElementById("da-status-badge");
+  tlBadge.style.display = m.statusKerja === "Tugas Luar" ? "inline-block" : "none";
+
+  // --- Section Edit (owner=1 / admin=2 saja) ---
+  const editSec = document.getElementById("da-edit-section");
+  const isSelf  = username === localStorage.getItem("user");
+
+  if (userLevel <= 2) {
+    editSec.style.display = "block";
+
+    // Checkbox Tugas Luar
+    document.getElementById("da-chk-tugasluar").checked = m.statusKerja === "Tugas Luar";
+
+    // Dropdown Peran — hanya tampilkan Owner dan Admin untuk dipilih
+    // (level di bawah admin tidak bisa mengubah ke level di atas dirinya)
+    const selGroup = document.getElementById("da-select-group");
+    selGroup.innerHTML = _anggotaGroups.map(g =>
+      `<option value="${g.id}" ${g.id === m.group ? "selected" : ""}>${g.name}</option>`
+    ).join('');
+
+    // Dropdown Divisi
+    const selDiv = document.getElementById("da-select-divisi");
+    selDiv.innerHTML = '<option value="">— Tanpa Divisi —</option>' +
+      _anggotaDivisi.map(d =>
+        `<option value="${d.nama}" ${d.nama === m.divisi ? "selected" : ""}>${d.nama}</option>`
+      ).join('');
+
+    // Tombol hapus — sembunyikan jika diri sendiri
+    document.getElementById("da-btn-hapus").style.display = isSelf ? "none" : "inline-block";
+  } else {
+    editSec.style.display = "none";
+  }
+
+  document.getElementById("modal-detail-anggota").style.display = "flex";
+}
+
+function closeDetailAnggota() {
+  document.getElementById("modal-detail-anggota").style.display = "none";
+  _detailUsername = null;
+}
+
+// Live preview badge Tugas Luar saat checkbox berubah
+function onToggleTugasLuar(cb) {
+  document.getElementById("da-status-badge").style.display = cb.checked ? "inline-block" : "none";
+}
+
+async function saveDetailAnggota() {
+  if (!_detailUsername) return;
+  const groupId    = document.getElementById("da-select-group").value;
+  const divisi     = document.getElementById("da-select-divisi").value;
+  const tugasLuar  = document.getElementById("da-chk-tugasluar").checked;
+  const statusKerja = tugasLuar ? "Tugas Luar" : "";
+
+  try {
+    await Promise.all([
+      fetch(`/anggota/${_detailUsername}/group`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: groupId })
+      }),
+      fetch(`/anggota/${_detailUsername}/divisi`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ divisi })
+      }),
+      fetch(`/anggota/${_detailUsername}/status`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statusKerja })
+      }),
+    ]);
+    showToast("✅ Data anggota berhasil diperbarui");
+    closeDetailAnggota();
+    loadAnggota();
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
+}
+
+async function deleteAnggotaFromModal() {
+  const username = _detailUsername;
+  if (!username) return;
+  uConfirm({
+    icon: "👤", title: "Hapus Anggota",
+    msg: `Hapus akun <b>${username}</b>?<br>Data absensi akan tetap tersimpan.`,
+    btnOk: "Hapus", btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await fetch(`/anggota/${username}`, { method: "DELETE" });
+        if ((await r.json()).status === "OK") {
+          showToast("🗑 Anggota dihapus");
+          closeDetailAnggota();
+          loadAnggota();
+        }
+      } catch { showToast("❌ Gagal menghapus", "error"); }
+    }
+  });
+}
+
+// Tetap ada untuk backward-compat (dipanggil dari tempat lain)
 async function changeGroup(username, groupId) {
   try {
-    const r = await fetch(`/anggota/${username}/group`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({group:groupId}) });
+    const r = await fetch(`/anggota/${username}/group`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group: groupId })
+    });
     const d = await r.json();
-    if (d.status === "OK") { showToast("✅ Jabatan berhasil diubah!"); loadAnggota(); }
-    else showToast("❌ Gagal mengubah jabatan", "error");
+    if (d.status === "OK") { showToast("✅ Peran berhasil diubah!"); loadAnggota(); }
+    else showToast("❌ Gagal mengubah peran", "error");
   } catch { showToast("❌ Gagal", "error"); }
 }
 
 async function deleteAnggota(username) {
   uConfirm({
-    icon: "👤",
-    title: "Hapus Anggota",
+    icon: "👤", title: "Hapus Anggota",
     msg: `Hapus akun <b>${username}</b>?<br>Data absensi akan tetap tersimpan.`,
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/anggota/${username}`, { method:"DELETE" });
+        const r = await fetch(`/anggota/${username}`, { method: "DELETE" });
         if ((await r.json()).status === "OK") { showToast("🗑 Anggota dihapus"); loadAnggota(); }
       } catch { showToast("❌ Gagal menghapus", "error"); }
     }
