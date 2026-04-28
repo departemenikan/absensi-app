@@ -549,26 +549,27 @@
 
       <!-- Tab: Divisi -->
       <div id="panel-divisi" class="hidden">
-        <!-- Form tambah divisi -->
-        <div class="card" style="margin-top:0;">
-          <h4>➕ Tambah Divisi</h4>
-          <div class="form-group">
-            <label>Nama Divisi</label>
-            <input type="text" id="divisi-nama" placeholder="contoh: HRD, IT, Finance">
+        <div class="card" style="margin-top:0;padding:0;overflow:hidden;">
+          <!-- Toolbar: search + jumlah + tombol buat grup -->
+          <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #f0f2f5;flex-wrap:wrap;">
+            <div style="position:relative;flex:1;min-width:160px;">
+              <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:14px;">🔍</span>
+              <input id="divisi-search" type="text" placeholder="Cari grup..." oninput="filterDivisi()"
+                style="width:100%;padding:9px 12px 9px 32px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;box-sizing:border-box;outline:none;">
+            </div>
+            <span id="divisi-count" style="font-size:13px;color:var(--muted);white-space:nowrap;">0 grup</span>
+            <button onclick="openBuatGrup()" style="padding:9px 16px;border:none;border-radius:8px;
+              background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">
+              + Buat Grup
+            </button>
           </div>
-          <div class="form-group">
-            <label>Deskripsi (opsional)</label>
-            <input type="text" id="divisi-deskripsi" placeholder="contoh: Bagian Sumber Daya Manusia">
+          <!-- Header kolom tabel -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;padding:10px 16px;background:#fafafa;border-bottom:1px solid #f0f2f5;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Nama Divisi</div>
+            <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Manager Divisi</div>
           </div>
-          <button onclick="saveDivisi()" style="width:100%;padding:12px;border:none;border-radius:10px;
-            background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:14px;cursor:pointer;">
-            ➕ Tambah Divisi
-          </button>
-        </div>
-        <!-- Daftar divisi -->
-        <div class="card" style="margin-top:16px;">
-          <h4>🏢 Daftar Divisi</h4>
-          <div id="divisi-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+          <!-- List divisi -->
+          <div id="divisi-list"><p style="color:var(--muted);text-align:center;padding:24px;">Memuat...</p></div>
         </div>
       </div>
     </div>
@@ -936,5 +937,73 @@
 <canvas id="canvas-profil" style="display:none;"></canvas>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="script.js"></script>
+
+<!-- ============================================================ -->
+<!-- MODAL: BUAT GRUP (DIVISI)                                    -->
+<!-- ============================================================ -->
+<div id="modal-buat-grup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;width:92%;max-width:420px;max-height:88vh;overflow-y:auto;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="margin:0;font-size:17px;">🏢 Buat Grup Divisi</h3>
+      <button onclick="closeBuatGrup()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;">×</button>
+    </div>
+    <div class="form-group">
+      <label>Nama Divisi <span style="color:red;">*</span></label>
+      <input type="text" id="bg-nama" placeholder="contoh: HRD, IT, Finance" style="width:100%;box-sizing:border-box;">
+    </div>
+    <div class="form-group">
+      <label>Manager Divisi</label>
+      <select id="bg-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
+        <option value="">— Pilih Manager —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Anggota</label>
+      <div id="bg-anggota-list" style="border:1px solid #e0e0e0;border-radius:8px;max-height:200px;overflow-y:auto;padding:8px;">
+        <p style="color:#aaa;font-size:13px;text-align:center;">Memuat anggota...</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:6px;">
+      <button onclick="closeBuatGrup()" style="flex:1;padding:11px;border:1px solid #e0e0e0;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;">Batal</button>
+      <button onclick="saveBuatGrup()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: DETAIL DIVISI                                         -->
+<!-- ============================================================ -->
+<div id="modal-detail-divisi" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;width:92%;max-width:460px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h3 id="dd-judul" style="margin:0;font-size:17px;">Detail Divisi</h3>
+      <button onclick="closeDetailDivisi()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;">×</button>
+    </div>
+    <p id="dd-manager-label" style="font-size:12px;color:var(--muted);margin:4px 0 16px;"></p>
+    <!-- Anggota list readonly -->
+    <div id="dd-anggota-view" style="margin-bottom:14px;"></div>
+    <!-- Edit section (owner/admin only) -->
+    <div id="dd-edit-section" style="display:none;border-top:1px solid #f0f2f5;padding-top:14px;margin-top:4px;">
+      <p style="font-size:13px;font-weight:700;margin:0 0 10px;">✏️ Edit Divisi</p>
+      <div class="form-group">
+        <label>Nama Divisi</label>
+        <input type="text" id="dd-nama" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>Manager Divisi</label>
+        <select id="dd-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;"></select>
+      </div>
+      <div class="form-group">
+        <label>Tambah / Keluarkan Anggota</label>
+        <div id="dd-anggota-edit" style="border:1px solid #e0e0e0;border-radius:8px;max-height:200px;overflow-y:auto;padding:8px;"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button onclick="deleteDetailDivisi()" style="flex:1;padding:11px;border:none;border-radius:10px;background:#fce4ec;color:var(--danger);font-weight:700;font-size:13px;cursor:pointer;">🗑 Hapus</button>
+        <button onclick="saveDetailDivisi()" style="flex:2;padding:11px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">💾 Simpan Perubahan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

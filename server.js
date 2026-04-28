@@ -326,12 +326,12 @@ app.put("/groups/:id/menus", (req, res) => {
 app.get("/divisi", (req, res) => res.send(load(F.divisi, [])));
 
 app.post("/divisi", (req, res) => {
-  const { nama, deskripsi } = req.body;
+  const { nama, deskripsi, manager } = req.body;
   if (!nama || !nama.trim()) return res.send({ status: "ERROR", msg: "Nama divisi wajib diisi" });
   const list = load(F.divisi, []);
   if (list.find(d => d.nama.toLowerCase() === nama.trim().toLowerCase()))
     return res.send({ status: "EXIST", msg: "Divisi sudah ada" });
-  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), createdAt: new Date().toISOString() });
+  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), manager: (manager||"").trim(), createdAt: new Date().toISOString() });
   save(F.divisi, list);
   res.send({ status: "OK" });
 });
@@ -342,6 +342,7 @@ app.put("/divisi/:id", (req, res) => {
   if (!item) return res.send({ status: "NOT_FOUND" });
   if (req.body.nama) item.nama = req.body.nama.trim();
   if (req.body.deskripsi !== undefined) item.deskripsi = req.body.deskripsi.trim();
+  if (req.body.manager !== undefined) item.manager = req.body.manager.trim();
   save(F.divisi, list);
   res.send({ status: "OK" });
 });
