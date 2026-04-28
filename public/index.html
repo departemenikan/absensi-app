@@ -717,6 +717,10 @@
           style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
           🌴 Kebijakan Cuti
         </button>
+        <button id="tab-kuota-cuti" onclick="switchLiburTab('kuota-cuti')"
+          style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
+          📊 Kuota Cuti
+        </button>
       </div>
 
       <!-- ===== TAB: HARI LIBUR ===== -->
@@ -913,38 +917,27 @@
           <!-- Modal body -->
           <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px;">
 
-            <!-- Nama Jenis Cuti -->
+            <!-- Nama Cuti -->
             <div>
-              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Nama Jenis Cuti</label>
+              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Nama Cuti</label>
               <input id="modal-cuti-nama" type="text" placeholder="contoh: Cuti Tahunan, Cuti Sakit"
                 style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
                        font-size:14px;outline:none;box-sizing:border-box;transition:border .2s;"
                 onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
             </div>
 
-            <!-- Jumlah + Satuan -->
-            <div style="display:flex;gap:10px;">
-              <div style="flex:1;">
-                <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jumlah</label>
-                <input id="modal-cuti-jumlah" type="number" placeholder="12" min="1"
-                  style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
-                         font-size:14px;outline:none;box-sizing:border-box;transition:border .2s;"
-                  onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
-              </div>
-              <div style="flex:1;">
-                <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Satuan</label>
-                <select id="modal-cuti-satuan"
-                  style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
-                         font-size:14px;outline:none;box-sizing:border-box;background:white;appearance:auto;">
-                  <option value="hari">📅 Hari</option>
-                  <option value="jam">⏱ Jam</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Info konversi (muncul dinamis) -->
-            <div id="modal-cuti-info" style="background:#f0faf4;border:1.5px solid #c8e6c9;border-radius:10px;padding:10px 14px;font-size:12px;color:#2e7d32;display:none;">
-              <span id="modal-cuti-info-text"></span>
+            <!-- Jenis Cuti -->
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jenis Cuti</label>
+              <select id="modal-cuti-jenis"
+                style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
+                       font-size:14px;outline:none;box-sizing:border-box;background:white;appearance:auto;
+                       transition:border .2s;cursor:pointer;"
+                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
+                <option value="">-- Pilih Jenis Cuti --</option>
+                <option value="kuota">📊 Kuota</option>
+                <option value="non-kuota">🔓 Non-Kuota</option>
+              </select>
             </div>
 
           </div>
@@ -963,6 +956,21 @@
               💾 Simpan Kebijakan
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: KUOTA CUTI ===== -->
+      <div id="panel-kuota-cuti" class="hidden">
+        <div class="card" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:700;font-size:15px;color:var(--text);">📊 Kuota Cuti</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">Kelola kuota cuti anggota berdasarkan kebijakan yang berlaku.</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;padding:32px 20px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">🚧</div>
+          <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:6px;">Segera Hadir</div>
+          <div style="font-size:13px;color:var(--muted);">Fitur Kuota Cuti sedang dalam pengembangan.</div>
         </div>
       </div>
 
