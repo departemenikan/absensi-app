@@ -86,7 +86,7 @@ app.post("/signup", (req, res) => {
     peran:       isFirst ? "Owner"   : "Anggota",
     namaLengkap: namaLengkap || "",
     agama:       agama || "",
-    jabatan:     "",
+    jabatan:     isFirst ? "Owner" : "Anggota",
     divisi:      "",
     statusKerja: "",
     nominalGaji: "",
@@ -228,8 +228,8 @@ app.get("/profile/:username", (req, res) => {
     username:    req.params.username,
     namaLengkap: user.namaLengkap  || "",
     agama:       user.agama        || "",
-    jabatan:     user.jabatan      || "",
-    peran:       user.peran || group?.name || "Anggota",
+    jabatan:     user.jabatan      || "Anggota",
+    peran:       user.peran || (user.group === "owner" ? "Owner" : user.group === "admin" ? "Admin" : ""),
     group:       user.group        || "anggota",
     groupName:   group?.name       || "Anggota",
     groupColor:  group?.color      || "#7f8c8d",
@@ -300,12 +300,12 @@ app.get("/anggota", (req, res) => {
     return {
       username:    u,
       namaLengkap: usr.namaLengkap  || "",
-      jabatan:     usr.jabatan      || "",
+      jabatan:     usr.jabatan      || "Anggota",
       photo:       usr.photo        || "",
       group:       usr.group        || "anggota",
       groupName:   g?.name          || "Anggota",
       groupColor:  g?.color         || "#7f8c8d",
-      peran:       usr.peran        || g?.name || "Anggota",
+      peran:       usr.peran        || (usr.group === "owner" ? "Owner" : usr.group === "admin" ? "Admin" : "Anggota"),
       divisi:      usr.divisi       || "",
       statusKerja: usr.statusKerja  || "",
       createdAt:   usr.createdAt    || "",
@@ -318,11 +318,15 @@ app.get("/anggota", (req, res) => {
 app.put("/anggota/:username/group", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  users[req.params.username].group = req.body.group;
-  // Sync peran ke nama group
-  const groups = load(F.groups, []);
-  const g = groups.find(g => g.id === req.body.group);
-  if (g) users[req.params.username].peran = g.name;
+  const newGroup = req.body.group;
+  users[req.params.username].group = newGroup;
+  // Peran hanya untuk Owner dan Admin — jika group bukan owner/admin, peran tetap "Anggota"
+  if (newGroup === "owner" || newGroup === "admin") {
+    users[req.params.username].peran = newGroup === "owner" ? "Owner" : "Admin";
+  } else {
+    users[req.params.username].peran = "Anggota";
+  }
+  // Jabatan tidak diubah di sini — jabatan diatur via posisi divisi
   save(F.users, users);
   res.send({ status: "OK" });
 });
@@ -365,12 +369,12 @@ app.put("/groups/:id/menus", (req, res) => {
 app.get("/divisi", (req, res) => res.send(load(F.divisi, [])));
 
 app.post("/divisi", (req, res) => {
-  const { nama, deskripsi, manager } = req.body;
+  const { nama, deskripsi, manager, koordinator } = req.body;
   if (!nama || !nama.trim()) return res.send({ status: "ERROR", msg: "Nama divisi wajib diisi" });
   const list = load(F.divisi, []);
   if (list.find(d => d.nama.toLowerCase() === nama.trim().toLowerCase()))
     return res.send({ status: "EXIST", msg: "Divisi sudah ada" });
-  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), manager: (manager||"").trim(), createdAt: new Date().toISOString() });
+  list.push({ id: Date.now().toString(), nama: nama.trim(), deskripsi: (deskripsi||"").trim(), manager: (manager||"").trim(), koordinator: (koordinator||"").trim(), createdAt: new Date().toISOString() });
   save(F.divisi, list);
   res.send({ status: "OK" });
 });
@@ -379,10 +383,27 @@ app.put("/divisi/:id", (req, res) => {
   const list = load(F.divisi, []);
   const item = list.find(d => d.id === req.params.id);
   if (!item) return res.send({ status: "NOT_FOUND" });
+  const oldNama = item.nama;
   if (req.body.nama) item.nama = req.body.nama.trim();
   if (req.body.deskripsi !== undefined) item.deskripsi = req.body.deskripsi.trim();
   if (req.body.manager !== undefined) item.manager = req.body.manager.trim();
+  if (req.body.koordinator !== undefined) item.koordinator = req.body.koordinator.trim();
   save(F.divisi, list);
+
+  // Update jabatan semua anggota di divisi ini
+  const users = load(F.users, {});
+  Object.keys(users).forEach(u => {
+    const usr = users[u];
+    // Jika nama divisi berubah, update field divisi user
+    if (usr.divisi === oldNama) usr.divisi = item.nama;
+    // Update jabatan berdasarkan posisi
+    if (usr.divisi === item.nama && usr.group !== "owner") {
+      if (item.manager === u) usr.jabatan = "Manager";
+      else if (item.koordinator === u) usr.jabatan = "Koordinator";
+      else usr.jabatan = "Anggota";
+    }
+  });
+  save(F.users, users);
   res.send({ status: "OK" });
 });
 
@@ -400,11 +421,34 @@ app.delete("/divisi/:id", (req, res) => {
   res.send({ status: "OK" });
 });
 
-// Assign anggota ke divisi
+// Assign anggota ke divisi — jabatan otomatis dari posisi divisi
 app.put("/anggota/:username/divisi", (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  users[req.params.username].divisi = req.body.divisi || "";
+  const divisiNamaBaru = req.body.divisi || "";
+  users[req.params.username].divisi = divisiNamaBaru;
+
+  if (!divisiNamaBaru) {
+    // Keluar dari divisi — jabatan kembali ke Anggota (kecuali Owner)
+    if (users[req.params.username].group !== "owner") {
+      users[req.params.username].jabatan = "Anggota";
+    }
+  } else {
+    // Tentukan jabatan berdasarkan posisi di divisi
+    const divisiList = load(F.divisi, []);
+    const divisi = divisiList.find(d => d.nama === divisiNamaBaru);
+    if (divisi) {
+      if (divisi.manager === req.params.username) {
+        users[req.params.username].jabatan = "Manager";
+      } else if (divisi.koordinator === req.params.username) {
+        users[req.params.username].jabatan = "Koordinator";
+      } else {
+        users[req.params.username].jabatan = "Anggota";
+      }
+    } else {
+      users[req.params.username].jabatan = "Anggota";
+    }
+  }
   save(F.users, users);
   res.send({ status: "OK" });
 });

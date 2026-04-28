@@ -588,7 +588,7 @@
             <span id="divisi-count" style="font-size:13px;color:var(--muted);white-space:nowrap;">0 grup</span>
             <button onclick="openBuatGrup()" style="padding:9px 16px;border:none;border-radius:8px;
               background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">
-              + Buat Grup
+              + Buat Divisi
             </button>
           </div>
           <!-- Header kolom tabel -->
@@ -972,7 +972,7 @@
 <div id="modal-buat-grup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
   <div style="background:white;border-radius:16px;width:92%;max-width:420px;max-height:88vh;overflow-y:auto;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-      <h3 style="margin:0;font-size:17px;">🏢 Buat Grup Divisi</h3>
+      <h3 style="margin:0;font-size:17px;">🏢 Buat Divisi</h3>
       <button onclick="closeBuatGrup()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;">×</button>
     </div>
     <div class="form-group">
@@ -983,6 +983,12 @@
       <label>Manager Divisi</label>
       <select id="bg-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
         <option value="">— Pilih Manager —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Koordinator Divisi</label>
+      <select id="bg-koordinator" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;">
+        <option value="">— Pilih Koordinator —</option>
       </select>
     </div>
     <div class="form-group">
@@ -1020,6 +1026,10 @@
       <div class="form-group">
         <label>Manager Divisi</label>
         <select id="dd-manager" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;"></select>
+      </div>
+      <div class="form-group">
+        <label>Koordinator Divisi</label>
+        <select id="dd-koordinator" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;"></select>
       </div>
       <div class="form-group">
         <label>Tambah / Keluarkan Anggota</label>
@@ -1095,14 +1105,14 @@
         </div>
       </label>
 
-      <!-- Dropdown Peran -->
+      <!-- Dropdown Peran — hanya Owner dan Admin -->
       <div class="form-group" style="margin-bottom:12px;">
         <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Peran</label>
         <select id="da-select-group"
           style="width:100%;padding:11px 12px;border:1px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;background:white;">
         </select>
         <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-          Menentukan hak akses menu dan fitur untuk anggota ini.
+          Peran menentukan hak akses (Owner/Admin). Jabatan ditentukan dari posisi di Divisi.
         </div>
       </div>
 
