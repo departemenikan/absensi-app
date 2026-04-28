@@ -454,13 +454,16 @@ async function sendAbsen(type, label) {
   const photo = takePhoto();
   const loc   = await getLoc();
   try {
+    const now = new Date().toISOString();
     const r = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user, type, time:new Date().toISOString(), lat:loc.lat, lng:loc.lng, photo}) });
+      body: JSON.stringify({user, type, time: now, lat:loc.lat, lng:loc.lng, photo}) });
     const d = await r.json();
     if (d.status === "OK") {
       const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
       showToast(msgs[type] || "✅ Berhasil!");
-      loadStatus(); loadTodayDetail();
+      // Update record lokal langsung agar ticker responsif
+      updateLocalRecord(type, now);
+      loadStatus();
     } else if (d.status === "OUT_OF_AREA") {
       showToast(`❌ Di luar area kantor (${d.distance}m dari ${d.area||"kantor"})`, "error");
     } else if (d.status === "ALREADY_IN") {
@@ -506,20 +509,136 @@ function updateBtns(status) {
   }
 }
 
+// ─── REALTIME TICKER ───────────────────────────────────────
+let _tickerInterval = null;
+let _todayRec       = null;   // record absensi hari ini (cache)
+
+// Format detik → HH:MM:SS
+function fmtDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// Format detik → MM:SS (untuk istirahat, biasanya < 1 jam cukup tapi tetap HH:MM:SS)
+function fmtBreak(sec) { return fmtDuration(sec); }
+
+// Hitung total detik istirahat dari array breaks (termasuk break yg masih berjalan)
+function hitungBreakDetik(breaks) {
+  const now = Date.now();
+  return (breaks || []).reduce((total, b) => {
+    const start = new Date(b.start).getTime();
+    const end   = b.end ? new Date(b.end).getTime() : now;
+    return total + Math.max(0, (end - start) / 1000);
+  }, 0);
+}
+
+// Hitung durasi kerja bersih (detik)
+function hitungKerjaDetik(rec) {
+  if (!rec || !rec.jamMasuk) return 0;
+  const now      = Date.now();
+  const masuk    = new Date(rec.jamMasuk).getTime();
+  const keluar   = rec.jamKeluar ? new Date(rec.jamKeluar).getTime() : now;
+  const totalSec = Math.max(0, (keluar - masuk) / 1000);
+  const breakSec = hitungBreakDetik(rec.breaks);
+  return Math.max(0, totalSec - breakSec);
+}
+
+// Update tampilan kotak Hari Ini
+function updateTodayUI(rec) {
+  const elIn       = document.getElementById("t-in");
+  const elOut      = document.getElementById("t-out");
+  const elIstirahat= document.getElementById("t-istirahat");
+  const elDur      = document.getElementById("t-dur");
+
+  if (!rec || !rec.jamMasuk) {
+    if (elIn)        elIn.innerText        = "--:--";
+    if (elOut)       elOut.innerText       = "--:--";
+    if (elIstirahat) elIstirahat.innerText = "00:00:00";
+    if (elDur)       elDur.innerText       = "00:00:00";
+    return;
+  }
+
+  if (elIn)  elIn.innerText  = fmt(rec.jamMasuk);
+  if (elOut) elOut.innerText = rec.jamKeluar ? fmt(rec.jamKeluar) : "--:--";
+
+  const breakSec = hitungBreakDetik(rec.breaks);
+  const kerjaSec = hitungKerjaDetik(rec);
+
+  if (elIstirahat) elIstirahat.innerText = fmtBreak(breakSec);
+  if (elDur)       elDur.innerText       = fmtDuration(kerjaSec);
+}
+
+// Mulai ticker realtime (update setiap detik)
+function startTicker(rec) {
+  stopTicker();
+  _todayRec = rec;
+  updateTodayUI(rec);
+
+  // Jika sudah clock out, tidak perlu ticker
+  if (rec && rec.jamKeluar) return;
+
+  _tickerInterval = setInterval(() => {
+    // Cek reset tengah malam
+    const today = new Date().toISOString().split("T")[0];
+    if (_todayRec && _todayRec.date && _todayRec.date !== today) {
+      stopTicker();
+      resetTodayUI();
+      return;
+    }
+    updateTodayUI(_todayRec);
+  }, 1000);
+}
+
+function stopTicker() {
+  if (_tickerInterval) { clearInterval(_tickerInterval); _tickerInterval = null; }
+}
+
+function resetTodayUI() {
+  _todayRec = null;
+  updateTodayUI(null);
+}
+
+// Muat data hari ini dari server lalu mulai ticker
 async function loadTodayDetail() {
   const user  = localStorage.getItem("user");
   const today = new Date().toISOString().split("T")[0];
   try {
-    const r = await fetch("/history/" + user);
-    const d = await r.json();
-    const rec = d.find(x => x.date === today);
-    if (rec) {
-      document.getElementById("t-in").innerText  = rec.jamMasuk  ? fmt(rec.jamMasuk)  : "--:--";
-      document.getElementById("t-out").innerText = rec.jamKeluar ? fmt(rec.jamKeluar) : "--:--";
-      if (rec.jamMasuk && rec.jamKeluar)
-        document.getElementById("t-dur").innerText = ((new Date(rec.jamKeluar)-new Date(rec.jamMasuk))/3600000).toFixed(1)+"j";
+    const r   = await fetch("/history/" + user);
+    const d   = await r.json();
+    const rec = d.find(x => x.date === today) || null;
+    startTicker(rec);
+  } catch {
+    startTicker(null);
+  }
+}
+
+// Saat status absen berubah (clock in/out/break), update record lokal langsung
+// agar ticker tidak perlu nunggu fetch berikutnya
+function updateLocalRecord(type, time) {
+  if (!_todayRec) {
+    if (type === "IN") {
+      _todayRec = {
+        date:      new Date().toISOString().split("T")[0],
+        jamMasuk:  time,
+        jamKeluar: null,
+        breaks:    [],
+      };
+      startTicker(_todayRec);
     }
-  } catch {}
+    return;
+  }
+  if (type === "OUT") {
+    _todayRec.jamKeluar = time;
+    updateTodayUI(_todayRec);
+    stopTicker();
+  } else if (type === "BREAK_START") {
+    _todayRec.breaks.push({ start: time, end: null });
+  } else if (type === "BREAK_END") {
+    const lb = _todayRec.breaks.at(-1);
+    if (lb && !lb.end) lb.end = time;
+  }
 }
 
 async function getLoc() {

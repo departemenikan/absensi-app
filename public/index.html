@@ -391,10 +391,23 @@
     </div>
     <div class="card" style="margin-top:16px;">
       <h4>📊 Hari Ini</h4>
-      <div class="stat-row">
-        <div class="stat-box"><div class="val" id="t-in">--:--</div><div class="lbl">Masuk</div></div>
-        <div class="stat-box"><div class="val" id="t-out">--:--</div><div class="lbl">Keluar</div></div>
-        <div class="stat-box"><div class="val" id="t-dur">0j</div><div class="lbl">Durasi</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div class="stat-box">
+          <div class="val" id="t-in">--:--</div>
+          <div class="lbl">Masuk</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="t-istirahat" style="color:#f39c12;">00:00</div>
+          <div class="lbl">Istirahat</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="t-out">--:--</div>
+          <div class="lbl">Keluar</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="t-dur" style="color:#27ae60;">00:00:00</div>
+          <div class="lbl">Durasi Kerja</div>
+        </div>
       </div>
     </div>
     <div class="copyright">
