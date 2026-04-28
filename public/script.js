@@ -1118,40 +1118,141 @@ function filterDivisi() {
 }
 
 // ---- MODAL: BUAT GRUP ----
+// State terpilih anggota
+let _bgSelectedAnggota = []; // array username
+
 async function openBuatGrup() {
   if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa membuat divisi", "error"); return; }
   if (!_anggotaAll.length) {
     const r = await fetch("/anggota"); _anggotaAll = await r.json();
   }
-  // Dropdown Owner: load semua user dengan group "owner"
+
+  // Reset state
+  _bgSelectedAnggota = [];
+  document.getElementById("bg-nama").value = "";
+  document.getElementById("bg-anggota-search").value = "";
+  document.getElementById("bg-anggota-panel").style.display = "none";
+  _renderAnggotaDropdownItems(_anggotaAll.filter(a => a.group !== "owner"));
+  _renderAnggotaTags();
+
+  // Dropdown Owner: semua user group "owner"
   const ownerList = _anggotaAll.filter(a => a.group === "owner");
   document.getElementById("bg-owner").innerHTML =
     '<option value="">— Pilih Owner —</option>' +
     ownerList.map(a => `<option value="${a.username}">${a.namaLengkap || a.username}</option>`).join('');
 
-  // Dropdown Manager & Koordinator: semua anggota (kecuali group owner)
-  const nonOwner = _anggotaAll.filter(a => a.group !== "owner");
-  document.getElementById("bg-manager").innerHTML =
-    '<option value="">— Pilih Manager —</option>' +
-    nonOwner.map(a => `<option value="${a.username}">${a.namaLengkap || a.username} (${a.jabatan || a.groupName})</option>`).join('');
-  document.getElementById("bg-koordinator").innerHTML =
-    '<option value="">— Pilih Koordinator —</option>' +
-    nonOwner.map(a => `<option value="${a.username}">${a.namaLengkap || a.username} (${a.jabatan || a.groupName})</option>`).join('');
+  // Dropdown Manager & Koordinator: semua anggota
+  const allList = _anggotaAll;
+  const opts = '<option value="">— Pilih —</option>' +
+    allList.map(a => `<option value="${a.username}">${a.namaLengkap || a.username} (${a.jabatan || a.groupName || a.group})</option>`).join('');
+  document.getElementById("bg-manager").innerHTML    = opts.replace('— Pilih —', '— Pilih Manager —');
+  document.getElementById("bg-koordinator").innerHTML = opts.replace('— Pilih —', '— Pilih Koordinator —');
 
-  // Checkbox Anggota: semua kecuali group owner
-  document.getElementById("bg-anggota-list").innerHTML = nonOwner.map(a => `
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;cursor:pointer;">
-      <input type="checkbox" value="${a.username}" style="width:15px;height:15px;">
-      ${a.namaLengkap || a.username}
-      <span style="font-size:11px;color:var(--muted);">(${a.jabatan || a.groupName})</span>
-    </label>`).join('');
-
-  document.getElementById("bg-nama").value = "";
   document.getElementById("modal-buat-grup").style.display = "flex";
+
+  // Tutup dropdown jika klik di luar
+  setTimeout(() => {
+    document.addEventListener("click", _bgOutsideClick);
+  }, 100);
+}
+
+function _bgOutsideClick(e) {
+  const wrap = document.getElementById("bg-anggota-wrap");
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById("bg-anggota-panel").style.display = "none";
+    document.removeEventListener("click", _bgOutsideClick);
+  }
+}
+
+function toggleAnggotaDropdown() {
+  const panel = document.getElementById("bg-anggota-panel");
+  const isOpen = panel.style.display !== "none";
+  panel.style.display = isOpen ? "none" : "block";
+  if (!isOpen) {
+    document.getElementById("bg-anggota-search").value = "";
+    filterAnggotaDropdown();
+    setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
+  }
+}
+
+function _renderAnggotaDropdownItems(list) {
+  const container = document.getElementById("bg-anggota-list");
+  if (!list.length) {
+    container.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:12px;">Tidak ada anggota</p>';
+    return;
+  }
+  container.innerHTML = list.map(a => {
+    const checked = _bgSelectedAnggota.includes(a.username);
+    const nama    = a.namaLengkap || a.username;
+    const jabatan = a.jabatan || a.groupName || a.group;
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;
+                    transition:background .1s;font-size:13px;"
+             onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background='transparent'"
+             onclick="toggleBgAnggota('${a.username}', event)">
+        <div style="width:18px;height:18px;border-radius:4px;border:2px solid ${checked ? 'var(--primary)' : '#ccc'};
+                    background:${checked ? 'var(--primary)' : 'white'};display:flex;align-items:center;
+                    justify-content:center;flex-shrink:0;transition:.15s;">
+          ${checked ? '<span style="color:white;font-size:11px;font-weight:900;">✓</span>' : ''}
+        </div>
+        <div style="min-width:0;">
+          <div style="font-weight:600;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nama}</div>
+          <div style="font-size:11px;color:var(--muted);">${jabatan}</div>
+        </div>
+      </label>`;
+  }).join('');
+}
+
+function toggleBgAnggota(username, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const idx = _bgSelectedAnggota.indexOf(username);
+  if (idx > -1) _bgSelectedAnggota.splice(idx, 1);
+  else          _bgSelectedAnggota.push(username);
+  // Re-render items dengan filter aktif
+  filterAnggotaDropdown();
+  _renderAnggotaTags();
+}
+
+function filterAnggotaDropdown() {
+  const q = (document.getElementById("bg-anggota-search")?.value || "").toLowerCase();
+  const nonOwner = _anggotaAll.filter(a => a.group !== "owner");
+  const filtered = q ? nonOwner.filter(a =>
+    (a.namaLengkap || a.username).toLowerCase().includes(q) ||
+    a.username.toLowerCase().includes(q)
+  ) : nonOwner;
+  _renderAnggotaDropdownItems(filtered);
+}
+
+function _renderAnggotaTags() {
+  const wrap  = document.getElementById("bg-anggota-tags");
+  const label = document.getElementById("bg-anggota-label");
+  if (!_bgSelectedAnggota.length) {
+    wrap.innerHTML = "";
+    label.style.color = "#aaa";
+    label.textContent = "— Pilih Anggota —";
+    return;
+  }
+  label.style.color = "#222";
+  label.textContent = _bgSelectedAnggota.length + " anggota dipilih";
+  wrap.innerHTML = _bgSelectedAnggota.map(u => {
+    const a    = _anggotaAll.find(x => x.username === u);
+    const nama = a ? (a.namaLengkap || a.username) : u;
+    return `
+      <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+                   background:#e8f0fe;color:var(--primary);border-radius:50px;font-size:12px;font-weight:600;">
+        ${nama}
+        <span onclick="toggleBgAnggota('${u}', event)" style="cursor:pointer;font-size:14px;line-height:1;
+              color:#7090d0;font-weight:700;" title="Hapus">×</span>
+      </span>`;
+  }).join('');
 }
 
 function closeBuatGrup() {
   document.getElementById("modal-buat-grup").style.display = "none";
+  document.getElementById("bg-anggota-panel").style.display = "none";
+  document.removeEventListener("click", _bgOutsideClick);
+  _bgSelectedAnggota = [];
 }
 
 async function saveBuatGrup() {
@@ -1161,8 +1262,8 @@ async function saveBuatGrup() {
   const koordinator = document.getElementById("bg-koordinator").value;
   if (!nama) { showToast("⚠️ Nama divisi wajib diisi", "warning"); return; }
 
-  const checked = [...document.querySelectorAll("#bg-anggota-list input[type=checkbox]:checked")]
-    .map(cb => cb.value);
+  // Ambil dari state dropdown multi-select
+  const checked = [..._bgSelectedAnggota];
 
   try {
     const r = await fetch("/divisi", {
