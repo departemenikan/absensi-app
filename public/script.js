@@ -218,6 +218,7 @@ function enterApp(menus, group, level) {
   loadStatus();
   loadTodayDetail();
   loadWeeklyInfo();
+  loadHomeLibur();
   // Jika sudah clock in, mulai tracking ping
   fetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
@@ -792,17 +793,106 @@ async function loadWeeklyInfo() {
     if (elWeek) elWeek.innerText = totalJam.toFixed(1) + "j";
     if (elOT)   elOT.innerText  = overtime > 0 ? "+" + overtime.toFixed(1) + "j" : "0j";
 
-    // Warna indikator progress jam
-    const elProgress = document.getElementById("week-progress");
-    if (elProgress) {
-      const pct = Math.min(100, (totalJam / TARGET_JAM_MINGGU) * 100);
-      elProgress.style.width = pct + "%";
-      elProgress.style.background = pct >= 100 ? "#f39c12" : "#27ae60";
-    }
+
   } catch (e) {
     console.warn("loadWeeklyInfo gagal:", e);
   }
 }
+
+// ─── HOME TAB SWITCHER ──────────────────────────────────────
+
+function switchHomeTab(tab) {
+  var panelHari   = document.getElementById('home-panel-hari');
+  var panelMinggu = document.getElementById('home-panel-minggu');
+  var tabHari     = document.getElementById('home-tab-hari');
+  var tabMinggu   = document.getElementById('home-tab-minggu');
+
+  if (tab === 'hari') {
+    if (panelHari)   panelHari.style.display   = 'block';
+    if (panelMinggu) panelMinggu.style.display = 'none';
+    if (tabHari)   { tabHari.style.background   = 'var(--primary)'; tabHari.style.color   = 'white'; }
+    if (tabMinggu) { tabMinggu.style.background = 'white';           tabMinggu.style.color = 'var(--muted)'; }
+  } else {
+    if (panelHari)   panelHari.style.display   = 'none';
+    if (panelMinggu) panelMinggu.style.display = 'block';
+    if (tabMinggu) { tabMinggu.style.background = 'var(--primary)'; tabMinggu.style.color = 'white'; }
+    if (tabHari)   { tabHari.style.background   = 'white';           tabHari.style.color   = 'var(--muted)'; }
+  }
+}
+
+// ─── KALENDER LIBUR BULAN BERJALAN (HOME) ───────────────────
+
+async function loadHomeLibur() {
+  var now    = new Date();
+  var year   = now.getFullYear();
+  var month  = String(now.getMonth() + 1).padStart(2, '0');
+  var prefix = year + '-' + month;
+
+  var BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
+               'Juli','Agustus','September','Oktober','November','Desember'];
+
+  var elBulan = document.getElementById('home-libur-bulan');
+  var elList  = document.getElementById('home-libur-list');
+  if (elBulan) elBulan.textContent = BULAN[now.getMonth()] + ' ' + year;
+
+  try {
+    var user  = localStorage.getItem('user') || '';
+    var r     = await fetch('/libur');
+    var semua = await r.json();
+
+    var bulanIni = semua.filter(function(h) {
+      var ds = h.dateStart || h.date || '';
+      var de = h.dateEnd   || ds;
+      return ds.startsWith(prefix) || de.startsWith(prefix) ||
+             (ds <= prefix + '-31' && de >= prefix + '-01');
+    }).filter(function(h) {
+      if (h.type === 'nasional') return true;
+      if (Array.isArray(h.anggota) && h.anggota.includes(user)) return true;
+      return false;
+    });
+
+    if (!bulanIni.length) {
+      if (elList) elList.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px;font-size:13px;">Tidak ada hari libur bulan ini</p>';
+      return;
+    }
+
+    bulanIni.sort(function(a, b) {
+      return (a.dateStart || a.date || '').localeCompare(b.dateStart || b.date || '');
+    });
+
+    function fmtTglLibur(d) {
+      if (!d) return '';
+      var parts = d.split('-');
+      return parseInt(parts[2]) + ' ' + BULAN[parseInt(parts[1]) - 1];
+    }
+
+    function fmtDateLibur(ds, de) {
+      if (!de || de === ds) return fmtTglLibur(ds);
+      return fmtTglLibur(ds) + ' - ' + fmtTglLibur(de);
+    }
+
+    var html = '';
+    bulanIni.forEach(function(h) {
+      var ds    = h.dateStart || h.date || '';
+      var de    = h.dateEnd   || ds;
+      var isNas = h.type === 'nasional';
+      var tipe  = isNas
+        ? '<span style="font-size:10px;padding:2px 8px;border-radius:50px;background:#fce4ec;color:#c62828;font-weight:700;">Nasional</span>'
+        : '<span style="font-size:10px;padding:2px 8px;border-radius:50px;background:#e8f5e9;color:#2e7d32;font-weight:700;">Agama</span>';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f5;">' +
+              '<div>' +
+              '<div style="font-size:13px;font-weight:700;color:var(--text);">' + (h.name || '') + '</div>' +
+              '<div style="font-size:11px;color:var(--primary);margin-top:2px;">' + fmtDateLibur(ds, de) + '</div>' +
+              '</div>' + tipe + '</div>';
+    });
+    if (elList) elList.innerHTML = html + '<div style="height:4px;"></div>';
+
+  } catch (e) {
+    console.warn('loadHomeLibur error:', e);
+    if (elList) elList.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px;font-size:13px;">Gagal memuat data libur</p>';
+  }
+}
+
 
 async function getLoc() {
   return new Promise(resolve => {
