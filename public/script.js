@@ -217,6 +217,7 @@ function enterApp(menus, group, level) {
   navTo("home");
   loadStatus();
   loadTodayDetail();
+  loadWeeklyInfo();
   // Jika sudah clock in, mulai tracking ping
   fetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
@@ -471,6 +472,8 @@ async function sendAbsen(type, label) {
       // Update record lokal langsung agar ticker responsif
       updateLocalRecord(type, now);
       loadStatus();
+      // Refresh info mingguan saat clock out
+      if (type === "OUT") loadWeeklyInfo();
       // Tracking: mulai ping saat IN/BREAK_END, stop saat OUT
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
@@ -520,21 +523,57 @@ function updateBtns(status) {
 }
 
 // ─── REALTIME TICKER ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// RULE JAM KERJA
+// ═══════════════════════════════════════════════════════════
+
+// Jam kerja default per hari (dalam jam)
+// Fleksibel: user tetap bisa clock in kapan saja & hari apa saja
+// Ini hanya dipakai sebagai ACUAN PENGGAJIAN & perhitungan overtime
+const JADWAL_DEFAULT = {
+  masuk:         "09:00",
+  keluar:        "17:00",
+  masukSabtu:    "09:00",
+  keluarSabtu:   "15:00",
+  istirahatMulai:"12:00",
+  istirahatAkhir:"13:00",
+  liburMinggu:   true,    // Minggu default libur tapi tetap bisa clock in
+};
+
+// Target jam kerja wajib per minggu (Senin-Minggu)
+const TARGET_JAM_MINGGU = 40;
+
+// Jam kerja bersih normal per hari (sebagai referensi)
+// Senin-Jumat: 09-17 potong istirahat 1j = 7j
+// Sabtu: 09-15 potong istirahat 1j = 5j
+const JAM_NORMAL_PER_HARI = {
+  1: 7,  // Senin
+  2: 7,  // Selasa
+  3: 7,  // Rabu
+  4: 7,  // Kamis
+  5: 7,  // Jumat
+  6: 5,  // Sabtu (09-15, potong istirahat 1j = 5j)
+  0: 0,  // Minggu (default libur, tapi bisa tetap clock in)
+};
+
+// ─── FORMAT & HITUNG ────────────────────────────────────────
+
 let _tickerInterval = null;
 let _todayRec       = null;   // record absensi hari ini (cache)
+let _weeklyInterval = null;   // interval cek minggu untuk auto-overtime
 
 // Format detik → HH:MM:SS
 function fmtDuration(sec) {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
 }
 
-// Format detik → MM:SS (untuk istirahat, biasanya < 1 jam cukup tapi tetap HH:MM:SS)
 function fmtBreak(sec) { return fmtDuration(sec); }
 
-// Hitung total detik istirahat dari array breaks (termasuk break yg masih berjalan)
+// Hitung total detik istirahat dari array breaks (termasuk break yg sedang berjalan)
 function hitungBreakDetik(breaks) {
   const now = Date.now();
   return (breaks || []).reduce((total, b) => {
@@ -544,7 +583,7 @@ function hitungBreakDetik(breaks) {
   }, 0);
 }
 
-// Hitung durasi kerja bersih (detik)
+// Hitung durasi kerja bersih (detik) — realtime jika belum clock out
 function hitungKerjaDetik(rec) {
   if (!rec || !rec.jamMasuk) return 0;
   const now      = Date.now();
@@ -555,12 +594,42 @@ function hitungKerjaDetik(rec) {
   return Math.max(0, totalSec - breakSec);
 }
 
-// Update tampilan kotak Hari Ini
+// Hitung jam kerja bersih dari record (dalam jam, bukan detik)
+function hitungJamKerjaRec(rec) {
+  return hitungKerjaDetik(rec) / 3600;
+}
+
+// Ambil weekKey format "YYYY-Www" (ISO week, Senin = awal minggu)
+function getWeekKey(dateStr) {
+  const d   = new Date(dateStr + "T00:00:00");
+  const day = d.getDay();
+  const diff = (day === 0) ? -6 : 1 - day;
+  const mon  = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  const year = mon.getFullYear();
+  const jan4 = new Date(year, 0, 4);
+  const startW1 = new Date(jan4);
+  startW1.setDate(jan4.getDate() - ((jan4.getDay() || 7) - 1));
+  const weekNum = Math.floor((mon - startW1) / (7 * 86400000)) + 1;
+  return `${year}-W${String(weekNum).padStart(2, "0")}`;
+}
+
+// Cek apakah sekarang adalah Minggu pukul 23:55–23:59 (window untuk proses overtime)
+function isMingguMalam() {
+  const now  = new Date();
+  const hari = now.getDay();      // 0 = Minggu
+  const jam  = now.getHours();
+  const mnt  = now.getMinutes();
+  return hari === 0 && jam === 23 && mnt >= 55;
+}
+
+// ─── UPDATE UI BERANDA ──────────────────────────────────────
+
 function updateTodayUI(rec) {
-  const elIn       = document.getElementById("t-in");
-  const elOut      = document.getElementById("t-out");
-  const elIstirahat= document.getElementById("t-istirahat");
-  const elDur      = document.getElementById("t-dur");
+  const elIn        = document.getElementById("t-in");
+  const elOut       = document.getElementById("t-out");
+  const elIstirahat = document.getElementById("t-istirahat");
+  const elDur       = document.getElementById("t-dur");
 
   if (!rec || !rec.jamMasuk) {
     if (elIn)        elIn.innerText        = "--:--";
@@ -580,24 +649,35 @@ function updateTodayUI(rec) {
   if (elDur)       elDur.innerText       = fmtDuration(kerjaSec);
 }
 
-// Mulai ticker realtime (update setiap detik)
+// ─── TICKER REALTIME ────────────────────────────────────────
+
 function startTicker(rec) {
   stopTicker();
   _todayRec = rec;
   updateTodayUI(rec);
 
-  // Jika sudah clock out, tidak perlu ticker
+  // Jika sudah clock out tidak perlu ticker
   if (rec && rec.jamKeluar) return;
 
   _tickerInterval = setInterval(() => {
-    // Cek reset tengah malam
-    const today = new Date().toISOString().split("T")[0];
+    const now   = new Date();
+    const today = now.toISOString().split("T")[0];
+
+    // Reset tepat tengah malam (00:00:00)
     if (_todayRec && _todayRec.date && _todayRec.date !== today) {
       stopTicker();
       resetTodayUI();
+      // Refresh data hari baru
+      setTimeout(() => loadTodayDetail(), 1000);
       return;
     }
+
     updateTodayUI(_todayRec);
+
+    // Auto-proses overtime setiap Minggu 23:59
+    if (isMingguMalam()) {
+      _doAutoOvertime();
+    }
   }, 1000);
 }
 
@@ -610,7 +690,36 @@ function resetTodayUI() {
   updateTodayUI(null);
 }
 
-// Muat data hari ini dari server lalu mulai ticker
+// ─── AUTO OVERTIME MINGGU 23:59 ─────────────────────────────
+
+let _overtimeProcessedWeek = null;  // agar tidak proses dua kali dalam minggu yang sama
+
+async function _doAutoOvertime() {
+  const thisWeek = getWeekKey(new Date().toISOString().split("T")[0]);
+  if (_overtimeProcessedWeek === thisWeek) return; // sudah diproses minggu ini
+  _overtimeProcessedWeek = thisWeek;
+
+  const user = localStorage.getItem("user");
+  if (!user) return;
+
+  try {
+    // Panggil endpoint server untuk hitung & simpan overtime user ini
+    const tahun = new Date().getFullYear();
+    const r = await fetch(`/kuota-cuti/hitung-overtime/${user}?tahun=${tahun}`, { method: "POST" });
+    const d = await r.json();
+    if (d.status === "OK") {
+      const jam = d.jamOvertime || 0;
+      if (jam > 0) {
+        showToast(`⏱️ Overtime minggu ini: ${jam.toFixed(1)} jam → masuk kuota cuti overtime!`);
+      }
+    }
+  } catch (e) {
+    console.warn("Auto overtime gagal:", e);
+  }
+}
+
+// ─── LOAD DATA HARI INI ─────────────────────────────────────
+
 async function loadTodayDetail() {
   const user  = localStorage.getItem("user");
   const today = new Date().toISOString().split("T")[0];
@@ -624,8 +733,8 @@ async function loadTodayDetail() {
   }
 }
 
-// Saat status absen berubah (clock in/out/break), update record lokal langsung
-// agar ticker tidak perlu nunggu fetch berikutnya
+// ─── UPDATE RECORD LOKAL (tanpa fetch ulang) ────────────────
+
 function updateLocalRecord(type, time) {
   if (!_todayRec) {
     if (type === "IN") {
@@ -643,11 +752,55 @@ function updateLocalRecord(type, time) {
     _todayRec.jamKeluar = time;
     updateTodayUI(_todayRec);
     stopTicker();
+
+    // Hitung jam kerja hari ini untuk info user
+    const jamHariIni = hitungJamKerjaRec(_todayRec).toFixed(1);
+    const hari       = new Date(_todayRec.date + "T00:00:00").getDay();
+    const target     = JAM_NORMAL_PER_HARI[hari] || 0;
+    const lebih      = Math.max(0, parseFloat(jamHariIni) - target);
+    if (lebih > 0) {
+      showToast(`✅ Kerja ${jamHariIni}j hari ini (+${lebih.toFixed(1)}j dari target)`, "success");
+    }
   } else if (type === "BREAK_START") {
     _todayRec.breaks.push({ start: time, end: null });
   } else if (type === "BREAK_END") {
     const lb = _todayRec.breaks.at(-1);
     if (lb && !lb.end) lb.end = time;
+  }
+}
+
+// ─── INFO MINGGU INI (untuk Beranda) ────────────────────────
+
+// Hitung total jam kerja minggu ini dari history
+async function loadWeeklyInfo() {
+  const user  = localStorage.getItem("user");
+  const today = new Date().toISOString().split("T")[0];
+  const week  = getWeekKey(today);
+
+  try {
+    const r   = await fetch("/history/" + user);
+    const all = await r.json();
+
+    // Filter record minggu ini yang sudah clock out
+    const mingguIni = all.filter(d => d.jamKeluar && getWeekKey(d.date) === week);
+    const totalJam  = mingguIni.reduce((sum, d) => sum + hitungJamKerjaRec(d), 0);
+    const overtime  = Math.max(0, totalJam - TARGET_JAM_MINGGU);
+
+    // Update elemen jika ada
+    const elWeek = document.getElementById("t-week");
+    const elOT   = document.getElementById("t-overtime");
+    if (elWeek) elWeek.innerText = totalJam.toFixed(1) + "j";
+    if (elOT)   elOT.innerText  = overtime > 0 ? "+" + overtime.toFixed(1) + "j" : "0j";
+
+    // Warna indikator progress jam
+    const elProgress = document.getElementById("week-progress");
+    if (elProgress) {
+      const pct = Math.min(100, (totalJam / TARGET_JAM_MINGGU) * 100);
+      elProgress.style.width = pct + "%";
+      elProgress.style.background = pct >= 100 ? "#f39c12" : "#27ae60";
+    }
+  } catch (e) {
+    console.warn("loadWeeklyInfo gagal:", e);
   }
 }
 
