@@ -1796,15 +1796,10 @@ function _formatTanggalLibur(dateStart, dateEnd) {
 // ================================================================
 async function loadLibur() {
   try {
-    // Ambil data libur dan data anggota paralel
-    const [rLibur, rAnggota] = await Promise.all([fetch("/libur"), fetch("/anggota")]);
+    // Ambil data libur dan daftar agama unik paralel
+    const [rLibur, rAgama] = await Promise.all([fetch("/libur"), fetch("/libur/agama-list")]);
     _allLiburData  = await rLibur.json();
-    const anggota  = await rAnggota.json();
-
-    // Kumpulkan agama unik dari seluruh anggota
-    const agamaSet = new Set();
-    anggota.forEach(a => { if (a.agama) agamaSet.add(a.agama); });
-    _agamaAnggota = [...agamaSet];
+    _agamaAnggota  = await rAgama.json();
 
     _renderKalenderSubmenu();
     _renderKalenderContent(_activeKalenderKey);

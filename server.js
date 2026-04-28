@@ -535,6 +535,14 @@ app.delete("/areas/:id", (req, res) => {
 // ========================
 const F_KEBIJAKAN_CUTI = path.join(DATA_DIR, "kebijakan_cuti.json");
 
+// Endpoint publik: daftar agama unik dari seluruh anggota (tanpa data sensitif)
+app.get("/libur/agama-list", (req, res) => {
+  const users = load(F.users, {});
+  const agamaSet = new Set();
+  Object.values(users).forEach(u => { if (u.agama) agamaSet.add(u.agama); });
+  res.send([...agamaSet]);
+});
+
 app.get("/libur", (req, res) => res.send(load(F.libur, [])));
 
 app.post("/libur", (req, res) => {
