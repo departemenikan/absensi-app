@@ -1163,13 +1163,76 @@
 <!-- ============================================================ -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja</p></div>
-    <div class="card">
-      <div class="filter-row">
-        <input type="month" id="ts-month" onchange="loadTimesheet()">
-        <input type="text"  id="ts-search" placeholder="Cari nama..." oninput="loadTimesheet()">
+    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p></div>
+
+    <!-- Navigasi minggu -->
+    <div class="card" style="padding:12px 14px;margin-top:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button onclick="tsNavWeek(-1)"
+          style="background:#f0f2f5;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:16px;">‹</button>
+        <div id="ts-week-label"
+          style="flex:1;text-align:center;font-weight:700;font-size:14px;color:var(--text);min-width:120px;"></div>
+        <button onclick="tsNavWeek(1)"
+          style="background:#f0f2f5;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:16px;">›</button>
+        <button onclick="tsGoToday()"
+          style="background:var(--primary);color:white;border:none;border-radius:8px;
+                 padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700;">Minggu Ini</button>
       </div>
-      <div id="ts-content"><p style="color:var(--muted);text-align:center;padding:20px;">Pilih bulan</p></div>
+      <!-- Info 40 jam -->
+      <div style="margin-top:10px;background:#f8f9ff;border-radius:8px;padding:8px 12px;
+                  font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;">
+        <span>📅 <b>Sen–Jum</b> = 7 jam/hari cuti</span>
+        <span>📅 <b>Sabtu</b> = 5 jam/hari cuti</span>
+        <span>⚡ <b>Target</b> 40 jam/minggu</span>
+        <span>🔴 Kerja + Cuti &lt; 40 jam → potensi potong gaji</span>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div style="position:relative;margin-top:8px;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#bbb;">🔍</span>
+      <input id="ts-search" type="text" placeholder="Cari nama anggota..."
+        oninput="tsRender()"
+        style="width:100%;padding:10px 12px 10px 32px;border:1.5px solid #e8ecf0;border-radius:10px;
+               font-size:13px;outline:none;box-sizing:border-box;">
+    </div>
+
+    <!-- Tabel timesheet mingguan -->
+    <div id="ts-content" style="margin-top:8px;overflow-x:auto;">
+      <p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Edit / Buat Absen ===== -->
+<div id="modal-ts-absen-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+            align-items:center;justify-content:center;padding:16px;">
+  <div style="background:white;border-radius:18px;width:100%;max-width:360px;
+              box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .25s ease;">
+    <div style="background:linear-gradient(135deg,#1a237e,#4f8ef7);padding:16px 20px;">
+      <div style="color:white;font-weight:800;font-size:15px;" id="modal-ts-title">Edit Absen</div>
+      <div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;" id="modal-ts-subtitle"></div>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;">Jam Masuk</label>
+        <input id="modal-ts-masuk" type="time"
+          style="width:100%;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;">Jam Keluar</label>
+        <input id="modal-ts-keluar" type="time"
+          style="width:100%;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;">
+      </div>
+    </div>
+    <div style="padding:0 20px 18px;display:flex;gap:8px;">
+      <button onclick="closeTsModal()"
+        style="flex:1;padding:11px;border:1.5px solid #e8eaf0;background:white;border-radius:10px;
+               font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">Batal</button>
+      <button onclick="saveTsAbsen()"
+        style="flex:2;padding:11px;background:linear-gradient(135deg,#27ae60,#2ecc71);border:none;
+               border-radius:10px;color:white;font-size:13px;font-weight:700;cursor:pointer;">💾 Simpan</button>
     </div>
   </div>
 </div>

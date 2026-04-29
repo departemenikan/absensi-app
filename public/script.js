@@ -2860,28 +2860,263 @@ async function loadAktivitas() {
 // ============================================================
 // TIMESHEET
 // ============================================================
+// ================================================================
+// TIMESHEET MINGGUAN
+// ================================================================
+
+let _tsWeekStart  = null;  // "YYYY-MM-DD" (Senin minggu ini)
+let _tsData       = null;  // response dari /timesheet/weekly
+let _tsCurrent    = null;  // {username, date} untuk modal edit
+
+const DOW_LABEL = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const DOW_COLOR = { 0:"#e53935", 6:"#9c27b0" }; // Minggu merah, Sabtu ungu
+
+function tsGetMonday(d = new Date()) {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  return mon.toISOString().split("T")[0];
+}
+
+function tsNavWeek(delta) {
+  const d = new Date(_tsWeekStart + "T00:00:00");
+  d.setDate(d.getDate() + delta * 7);
+  _tsWeekStart = d.toISOString().split("T")[0];
+  loadTimesheet();
+}
+
+function tsGoToday() {
+  _tsWeekStart = tsGetMonday();
+  loadTimesheet();
+}
+
+function fmtJam(jam) {
+  if (!jam || jam <= 0) return "-";
+  const h = Math.floor(jam);
+  const m = Math.round((jam - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function fmtTime(isoStr) {
+  if (!isoStr) return "--:--";
+  // bisa berupa "HH:MM" atau ISO full
+  if (isoStr.includes("T")) return isoStr.slice(11, 16);
+  return isoStr.slice(0, 5);
+}
+
 async function loadTimesheet() {
-  const month  = document.getElementById("ts-month").value;
-  const search = (document.getElementById("ts-search").value||"").toLowerCase();
-  if (!month) return;
+  const me = localStorage.getItem("user");
+  if (!_tsWeekStart) _tsWeekStart = tsGetMonday();
+
+  // Update label minggu
+  const mon = new Date(_tsWeekStart + "T00:00:00");
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = d => `${d.getDate()} ${["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"][d.getMonth()]} ${d.getFullYear()}`;
+  const lbl = document.getElementById("ts-week-label");
+  if (lbl) lbl.textContent = `${fmt(mon)} – ${fmt(sun)}`;
+
+  const el = document.getElementById("ts-content");
+  if (el) el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
+
   try {
-    const r = await fetch("/timesheet?month="+month);
+    const r = await fetch(`/timesheet/weekly?weekStart=${_tsWeekStart}&requester=${me}`);
+    _tsData = await r.json();
+    tsRender();
+  } catch(e) {
+    if (el) el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat</p>`;
+  }
+}
+
+function tsRender() {
+  const el = document.getElementById("ts-content");
+  if (!el || !_tsData) return;
+
+  const q = (document.getElementById("ts-search")?.value || "").toLowerCase();
+  const filtered = (_tsData.users || []).filter(u =>
+    (u.nama || u.username).toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+  );
+
+  if (!filtered.length) {
+    el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada data</p>`;
+    return;
+  }
+
+  const dates = _tsData.weekDates || [];
+  const me    = localStorage.getItem("user");
+
+  // Header tabel
+  const headerCols = dates.map(date => {
+    const d   = new Date(date + "T00:00:00");
+    const dow = d.getDay();
+    const isToday = date === new Date().toISOString().split("T")[0];
+    const color = DOW_COLOR[dow] || "var(--text)";
+    return `<th style="text-align:center;min-width:68px;padding:8px 4px;
+               background:${isToday ? "#e8f5e9" : ""};border-radius:${isToday?"6px":""};
+               color:${isToday?"#2e7d32":color};font-weight:${isToday?"900":"700"};">
+      <div style="font-size:11px;">${DOW_LABEL[dow]}</div>
+      <div style="font-size:10px;font-weight:400;opacity:.7;">${d.getDate()}/${d.getMonth()+1}</div>
+    </th>`;
+  }).join("");
+
+  const rows = filtered.map(u => {
+    const isSelf = u.username === me;
+
+    // Sel data per hari
+    const dayCols = u.days.map(day => {
+      const hasKerja = day.jamKerja > 0;
+      const hasCuti  = day.jamCuti  > 0;
+      const isToday  = day.date === new Date().toISOString().split("T")[0];
+      const dow      = day.dow;
+      const isWeekend = dow === 0; // Minggu
+
+      let cellContent = "";
+      if (isWeekend) {
+        cellContent = `<span style="color:#ddd;font-size:11px;">—</span>`;
+      } else if (hasCuti && hasKerja) {
+        // Kerja + cuti dalam hari sama
+        cellContent = `
+          <div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>
+          <div style="font-size:10px;color:#1565c0;margin-top:2px;">+${fmtJam(day.jamCuti)}</div>
+          <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
+      } else if (hasCuti) {
+        // Cuti murni (tidak ada absen biasa)
+        cellContent = `
+          <div style="font-size:11px;color:#1565c0;font-weight:700;">${fmtJam(day.jamCuti)}</div>
+          <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
+      } else if (hasKerja) {
+        cellContent = `<div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>`;
+      } else {
+        cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
+      }
+
+      // Tombol edit (hanya jika canEdit + bukan weekend)
+      const canEditCell = u.canEdit && !isWeekend;
+      const editBtn = canEditCell ? `
+        <div onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
+          style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;">✏️</div>` : "";
+
+      return `<td style="text-align:center;padding:7px 4px;border-bottom:1px solid #f5f5f5;
+                 background:${isToday?"#f1f8e9":hasCuti&&!hasKerja?"#fafeff":""};
+                 vertical-align:middle;">
+        ${cellContent}${editBtn}
+      </td>`;
+    }).join("");
+
+    // Total kolom
+    const totalEfektif = u.totalEfektif;
+    const kurang = Math.max(0, 40 - totalEfektif);
+    const totalColor = kurang > 0 ? "#e53935" : totalEfektif > 40 ? "#f57f17" : "#2e7d32";
+
+    // Avatar
+    const avatarHtml = u.photo
+      ? `<img src="${u.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+              display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:12px;flex-shrink:0;">
+          ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
+
+    return `
+    <tr style="border-bottom:1px solid #f0f2f5;">
+      <!-- Kolom nama (sticky) -->
+      <td style="padding:8px 12px;min-width:160px;max-width:200px;position:sticky;left:0;background:white;z-index:1;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${avatarHtml}
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.nama||u.username}</div>
+            <div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.jabatan}</div>
+          </div>
+        </div>
+      </td>
+      ${dayCols}
+      <!-- Total -->
+      <td style="text-align:center;padding:8px 10px;font-weight:900;font-size:13px;color:${totalColor};
+                 border-left:2px solid #f0f2f5;min-width:70px;">
+        <div>${fmtJam(totalEfektif)}</div>
+        ${kurang > 0 ? `<div style="font-size:9px;color:#e53935;font-weight:600;">-${fmtJam(kurang)}</div>` : ""}
+        ${totalEfektif > 40 ? `<div style="font-size:9px;color:#f57f17;font-weight:600;">+${fmtJam(totalEfektif-40)}</div>` : ""}
+      </td>
+    </tr>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div style="overflow-x:auto;border-radius:12px;border:1px solid #e8ecf0;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
+        <thead>
+          <tr style="border-bottom:2px solid #e8ecf0;">
+            <th style="text-align:left;padding:10px 12px;font-size:11px;color:var(--muted);
+                       text-transform:uppercase;letter-spacing:.4px;position:sticky;left:0;background:#f8f9ff;min-width:160px;">
+              Anggota
+            </th>
+            ${headerCols}
+            <th style="text-align:center;padding:10px;font-size:11px;color:var(--muted);
+                       text-transform:uppercase;letter-spacing:.4px;border-left:2px solid #e8ecf0;">
+              Total
+            </th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);padding:0 4px;">
+      <span>🟦 Jam kerja biasa</span>
+      <span style="color:#1565c0;">🔵 Jam cuti (termasuk dalam total)</span>
+      <span style="color:#e53935;">🔴 Total &lt; 40 jam = potensi potong gaji</span>
+      <span style="color:#f57f17;">🟠 Total &gt; 40 jam = overtime</span>
+    </div>`;
+}
+
+// ─── Modal Edit / Buat Absen ───
+
+function openTsModal(username, date, jamMasuk, jamKeluar) {
+  _tsCurrent = { username, date };
+  const isNew = !jamMasuk;
+  document.getElementById("modal-ts-title").textContent    = isNew ? "➕ Buat Absen Manual" : "✏️ Edit Absen";
+  document.getElementById("modal-ts-subtitle").textContent = `${username} · ${date}`;
+  document.getElementById("modal-ts-masuk").value  = jamMasuk  ? fmtTime(jamMasuk)  : "";
+  document.getElementById("modal-ts-keluar").value = jamKeluar ? fmtTime(jamKeluar) : "";
+  const overlay = document.getElementById("modal-ts-absen-overlay");
+  overlay.style.display = "flex";
+  overlay.onclick = e => { if (e.target === overlay) closeTsModal(); };
+}
+
+function closeTsModal() {
+  document.getElementById("modal-ts-absen-overlay").style.display = "none";
+  _tsCurrent = null;
+}
+
+async function saveTsAbsen() {
+  const me      = localStorage.getItem("user");
+  const masuk   = document.getElementById("modal-ts-masuk").value;
+  const keluar  = document.getElementById("modal-ts-keluar").value;
+  if (!masuk || !keluar) { showToast("⚠️ Isi jam masuk & keluar", "warning"); return; }
+  if (!_tsCurrent) return;
+
+  const { username, date } = _tsCurrent;
+  // Cek apakah sudah ada record (dari data yg sudah di-fetch)
+  const uData  = _tsData?.users?.find(u => u.username === username);
+  const dayData = uData?.days?.find(d => d.date === date);
+  const isNew  = !dayData?.jamMasuk;
+
+  const endpoint   = isNew ? "/timesheet/absen-manual" : `/timesheet/absen/${username}/${date}`;
+  const method     = isNew ? "POST" : "PUT";
+  const jamMasukFull  = `${date}T${masuk}:00`;
+  const jamKeluarFull = `${date}T${keluar}:00`;
+
+  try {
+    const r = await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requester: me, targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull })
+    });
     const d = await r.json();
-    const filtered = d.filter(x => x.user.toLowerCase().includes(search));
-    const el = document.getElementById("ts-content");
-    if (!filtered.length) { el.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
-    el.innerHTML = `<table class="ts-table">
-      <thead><tr><th>Nama</th><th>Hari</th><th>Jam Kerja</th><th>Lembur</th></tr></thead>
-      <tbody>${filtered.map(x=>`
-        <tr>
-          <td><b>${x.user}</b></td>
-          <td>${x.totalDays}</td>
-          <td>${x.totalJam}j</td>
-          <td style="color:${parseFloat(x.overtime)>0?'var(--warning)':'var(--muted)'};">${x.overtime}j</td>
-        </tr>`).join("")}
-      </tbody>
-    </table>`;
-  } catch {}
+    if (d.status === "OK") {
+      showToast("✅ Absen berhasil disimpan!");
+      closeTsModal();
+      loadTimesheet();
+    } else {
+      showToast("❌ " + (d.msg || "Gagal menyimpan"), "error");
+    }
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
 
 // ============================================================

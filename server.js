@@ -711,11 +711,161 @@ app.get("/aktivitas", (req, res) => {
 // ========================
 // TIMESHEET
 // ========================
+
+// Konversi hari cuti → jam sesuai hari dalam seminggu
+// Senin–Jumat = 8 jam efektif (07.00-15.00 default), Sabtu = 6 jam
+// Sesuai rule: Senin-Jumat = 7 jam, Sabtu = 5 jam (net setelah istirahat 1 jam)
+function cutiHariKeJam(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const dow = d.getDay(); // 0=Sun, 6=Sat
+  if (dow === 0) return 0; // Minggu tidak masuk jam kerja
+  if (dow === 6) return 5; // Sabtu
+  return 7;               // Senin–Jumat
+}
+
+// Hitung kontribusi jam dari satu pengajuan cuti (status disetujui) untuk tanggal tertentu
+function jamCutiUntukTanggal(p, dateStr) {
+  if (p.status !== "disetujui") return 0;
+  const tMulai = p.tanggalMulai, tAkhir = p.tanggalAkhir || p.tanggalMulai;
+  if (!tMulai) return 0;
+  // Cek apakah dateStr masuk rentang
+  if (dateStr < tMulai || dateStr > tAkhir) return 0;
+
+  if (p.satuanDurasi === "jam") {
+    // Cuti satuan jam: hanya pada tanggalMulai
+    return dateStr === tMulai ? parseFloat(p.durasi) : 0;
+  } else {
+    // Cuti satuan hari: konversi ke jam sesuai hari
+    return cutiHariKeJam(dateStr);
+  }
+}
+
+// GET timesheet mingguan — satu baris per user per tanggal dalam rentang minggu
+// Query: ?weekStart=YYYY-MM-DD  (Senin)
+// Response: [{ username, nama, jabatan, divisi, days: [{date, dow, jamKerja, jamCuti, keteranganCuti}], totalJam, totalCuti }]
+app.get("/timesheet/weekly", (req, res) => {
+  const { weekStart, requester } = req.query;
+  if (!weekStart) return res.send({ error: "weekStart required" });
+
+  const monDate = new Date(weekStart + "T00:00:00");
+  const dates = Array.from({length: 7}, (_, i) => {
+    const d = new Date(monDate); d.setDate(monDate.getDate() + i);
+    return d.toISOString().split("T")[0];
+  }); // [Sen, Sel, Rab, Kam, Jum, Sab, Min]
+
+  const data      = load(F.data, []);
+  const users     = load(F.users, {});
+  const pengajuan = load(F.pengajuanCuti, []);
+  const divisiList = load(F.divisi, []);
+
+  const requesterGroup = requester ? getUserGroup(requester) : "anggota";
+  const requesterLevel = requester ? getUserLevel(requester) : 99;
+
+  // Tentukan siapa yang bisa dilihat oleh requester
+  function canViewUser(targetUsername) {
+    if (!requester) return false;
+    if (requester === targetUsername) return true; // lihat diri sendiri
+    if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+    if (requesterGroup === "manager") {
+      // Hanya anggota/koordinator di divisi yang sama
+      const myDivisi = Array.isArray(users[requester]?.divisi)
+        ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
+      const tgtDivisi = Array.isArray(users[targetUsername]?.divisi)
+        ? users[targetUsername].divisi : (users[targetUsername]?.divisi ? [users[targetUsername].divisi] : []);
+      const tgtGroup = getUserGroup(targetUsername);
+      if (tgtGroup === "owner" || tgtGroup === "admin") return false;
+      return myDivisi.some(d => tgtDivisi.includes(d));
+    }
+    if (requesterGroup === "koordinator") {
+      // Koordinator: lihat anggota yang ia koordinir di divisinya
+      const myDivisi = Array.isArray(users[requester]?.divisi)
+        ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
+      const divObjs = divisiList.filter(d => myDivisi.includes(d.nama) && d.koordinator === requester);
+      if (!divObjs.length) return false;
+      const tgtDivisi = Array.isArray(users[targetUsername]?.divisi)
+        ? users[targetUsername].divisi : (users[targetUsername]?.divisi ? [users[targetUsername].divisi] : []);
+      return divObjs.some(d => tgtDivisi.includes(d.nama));
+    }
+    return false; // anggota: hanya diri sendiri (sudah di-handle baris pertama)
+  }
+
+  function canEditUser(targetUsername) {
+    if (requester === targetUsername) return false; // tidak bisa edit diri sendiri
+    if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+    if (requesterGroup === "manager") {
+      const myDivisi = Array.isArray(users[requester]?.divisi)
+        ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
+      const tgtDivisi = Array.isArray(users[targetUsername]?.divisi)
+        ? users[targetUsername].divisi : (users[targetUsername]?.divisi ? [users[targetUsername].divisi] : []);
+      const tgtGroup = getUserGroup(targetUsername);
+      if (tgtGroup === "owner" || tgtGroup === "admin" || tgtGroup === "manager") return false;
+      return myDivisi.some(d => tgtDivisi.includes(d));
+    }
+    return false;
+  }
+
+  const visibleUsers = Object.keys(users).filter(u => canViewUser(u));
+
+  const result = visibleUsers.map(username => {
+    const u = users[username];
+    const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
+
+    const days = dates.map(dateStr => {
+      const rec = data.find(d => d.user === username && d.date === dateStr);
+      let jamKerja = 0;
+      if (rec && rec.jamMasuk && rec.jamKeluar) {
+        const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+        let bt = 0;
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        jamKerja = Math.max(0, work - bt);
+      }
+
+      // Cari semua cuti yang berlaku di tanggal ini
+      const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
+      const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
+      const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
+
+      return {
+        date: dateStr,
+        dow:  new Date(dateStr + "T00:00:00").getDay(), // 0=Min
+        jamKerja: parseFloat(jamKerja.toFixed(2)),
+        jamCuti:  parseFloat(jamCuti.toFixed(2)),
+        keteranganCuti,
+        absenId: rec ? rec.date : null, // untuk edit modal
+        jamMasuk:  rec?.jamMasuk  || null,
+        jamKeluar: rec?.jamKeluar || null,
+      };
+    });
+
+    const totalJamKerja = days.reduce((s, d) => s + d.jamKerja, 0);
+    const totalJamCuti  = days.reduce((s, d) => s + d.jamCuti, 0);
+    const totalEfektif  = totalJamKerja + totalJamCuti; // untuk cek 40 jam
+
+    return {
+      username,
+      nama:    u.namaLengkap || username,
+      jabatan: u.jabatan || "-",
+      divisi:  Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
+      photo:   u.photo || "",
+      group:   u.group || "anggota",
+      days,
+      totalJamKerja: parseFloat(totalJamKerja.toFixed(2)),
+      totalJamCuti:  parseFloat(totalJamCuti.toFixed(2)),
+      totalEfektif:  parseFloat(totalEfektif.toFixed(2)),
+      canEdit:       canEditUser(username),
+    };
+  });
+
+  res.send({ weekDates: dates, users: result });
+});
+
+// GET: summary timesheet bulanan (tetap ada untuk kompatibilitas)
 app.get("/timesheet", (req, res) => {
   const month = req.query.month;
   if (!month) return res.send([]);
   const data  = load(F.data, []);
   const users = load(F.users, {});
+  const pengajuan = load(F.pengajuanCuti, []);
   const result = Object.keys(users).map(username => {
     const recs = data.filter(d => d.user === username && d.date.startsWith(month) && d.jamKeluar);
     let totalJam = 0, overtime = 0;
@@ -727,6 +877,77 @@ app.get("/timesheet", (req, res) => {
     return { user: username, totalDays: recs.length, totalJam: totalJam.toFixed(1), overtime: overtime.toFixed(1) };
   });
   res.send(result);
+});
+
+// POST: admin/manager create absen manual
+app.post("/timesheet/absen-manual", (req, res) => {
+  const { requester, targetUser, date, jamMasuk, jamKeluar } = req.body;
+  if (!requester || !targetUser || !date || !jamMasuk || !jamKeluar)
+    return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
+
+  const requesterGroup = getUserGroup(requester);
+  const targetGroup    = getUserGroup(targetUser);
+
+  let canCreate = false;
+  if (requesterGroup === "owner" || requesterGroup === "admin") canCreate = true;
+  else if (requesterGroup === "manager") {
+    if (targetGroup !== "owner" && targetGroup !== "admin" && targetGroup !== "manager") {
+      const users = load(F.users, {});
+      const myDivisi  = Array.isArray(users[requester]?.divisi) ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
+      const tgtDivisi = Array.isArray(users[targetUser]?.divisi) ? users[targetUser].divisi : (users[targetUser]?.divisi ? [users[targetUser].divisi] : []);
+      canCreate = myDivisi.some(d => tgtDivisi.includes(d));
+    }
+  }
+  if (!canCreate) return res.send({ status: "FORBIDDEN" });
+
+  const data = load(F.data, []);
+  // Cek duplikat (per user per date yang belum closed)
+  const existing = data.find(d => d.user === targetUser && d.date === date);
+  if (existing) {
+    // Update jam jika sudah ada
+    existing.jamMasuk  = jamMasuk;
+    existing.jamKeluar = jamKeluar;
+  } else {
+    data.push({
+      user: targetUser, date, jamMasuk, jamKeluar,
+      lokasi: { lat: 0, lng: 0 }, foto: "", breaks: [],
+      createdManually: true, createdBy: requester,
+      createdAt: new Date().toISOString()
+    });
+  }
+  save(F.data, data);
+  res.send({ status: "OK" });
+});
+
+// PUT: edit jam absen (oleh manager/admin/owner)
+app.put("/timesheet/absen/:user/:date", (req, res) => {
+  const { requester, jamMasuk, jamKeluar } = req.body;
+  const { user: targetUser, date } = req.params;
+
+  const requesterGroup = getUserGroup(requester);
+  const targetGroup    = getUserGroup(targetUser);
+
+  if (requester === targetUser) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa edit absen sendiri" });
+
+  let canEdit = false;
+  if (requesterGroup === "owner" || requesterGroup === "admin") canEdit = true;
+  else if (requesterGroup === "manager") {
+    if (targetGroup !== "owner" && targetGroup !== "admin" && targetGroup !== "manager") {
+      const users = load(F.users, {});
+      const myDivisi  = Array.isArray(users[requester]?.divisi) ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
+      const tgtDivisi = Array.isArray(users[targetUser]?.divisi) ? users[targetUser].divisi : (users[targetUser]?.divisi ? [users[targetUser].divisi] : []);
+      canEdit = myDivisi.some(d => tgtDivisi.includes(d));
+    }
+  }
+  if (!canEdit) return res.send({ status: "FORBIDDEN" });
+
+  const data = load(F.data, []);
+  const rec  = data.find(d => d.user === targetUser && d.date === date);
+  if (!rec) return res.send({ status: "NOT_FOUND" });
+  if (jamMasuk)  rec.jamMasuk  = jamMasuk;
+  if (jamKeluar) rec.jamKeluar = jamKeluar;
+  save(F.data, data);
+  res.send({ status: "OK" });
 });
 
 // ========================
