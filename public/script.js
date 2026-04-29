@@ -20,6 +20,33 @@ function showToast(msg, type = "success", ms = 3000) {
 }
 
 // ============================================================
+// TOGGLE EYE — universal untuk semua input password
+// ============================================================
+// SVG icons (inline, no external dependency)
+const _EYE_OPEN = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+</svg>`;
+const _EYE_SHUT = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+  <line x1="1" y1="1" x2="23" y2="23"/>
+</svg>`;
+
+function toggleEye(inputId, btnId) {
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (!inp) return;
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  if (btn) {
+    btn.innerHTML = show ? _EYE_SHUT : _EYE_OPEN;
+    btn.style.color = show ? "#4f8ef7" : "#bbb";
+  }
+}
+
+// ============================================================
 // NAVIGASI — satu sistem terpusat, tidak ada konflik
 // ============================================================
 function openView(viewId) {
@@ -447,11 +474,11 @@ function uPassword({ title, sub="", onOk }) {
     title, sub,
     `<div class="u-modal-input-wrap">
        <input class="u-modal-input" id="u-pw-new" type="password" placeholder="Password baru" autocomplete="new-password">
-       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-new',this)">👁️</button>
+       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-new',this)" style="color:#bbb;">${_EYE_OPEN}</button>
      </div>
      <div class="u-modal-input-wrap">
        <input class="u-modal-input" id="u-pw-cfm" type="password" placeholder="Konfirmasi password baru" autocomplete="new-password">
-       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-cfm',this)">👁️</button>
+       <button class="u-modal-eye" tabindex="-1" onclick="_uToggleEye('u-pw-cfm',this)" style="color:#bbb;">${_EYE_OPEN}</button>
      </div>`,
     `<button class="u-modal-btn cancel" onclick="_uModal.close()">Batal</button>
      <button class="u-modal-btn primary" onclick="_uPasswordSubmit()">Simpan</button>`
@@ -463,7 +490,8 @@ function _uToggleEye(inputId, btn) {
   if (!inp) return;
   const show = inp.type === "password";
   inp.type = show ? "text" : "password";
-  btn.textContent = show ? "🙈" : "👁️";
+  btn.innerHTML = show ? _EYE_SHUT : _EYE_OPEN;
+  btn.style.color = show ? "#4f8ef7" : "#bbb";
 }
 function _uPasswordSubmit() {
   const pw  = document.getElementById("u-pw-new")?.value  || "";
@@ -2515,8 +2543,85 @@ function getMyLoc() {
       initAreaMap(lat, lng);
     }
     showToast("📍 Lokasi berhasil diambil!");
-  }, null, {enableHighAccuracy:true});
+  }, () => showToast("❌ Gagal ambil lokasi. Izinkan akses lokasi.", "error"), {enableHighAccuracy:true});
 }
+
+// ─── Search lokasi via Nominatim (OpenStreetMap) ───
+let _searchTimeout = null;
+
+async function areaSearchSuggest() {
+  const q = document.getElementById("area-search-input")?.value.trim();
+  const box = document.getElementById("area-search-suggest");
+  if (!box) return;
+  clearTimeout(_searchTimeout);
+  if (q.length < 3) { box.style.display = "none"; return; }
+
+  _searchTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,
+        { headers: { "Accept-Language": "id,en" } }
+      );
+      const data = await res.json();
+      if (!data.length) { box.style.display = "none"; return; }
+      box.innerHTML = data.map((item, i) =>
+        `<div onclick="areaSelectSuggest(${item.lat},${item.lon},${JSON.stringify(item.display_name).replace(/"/g,"'")})"
+          style="padding:10px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid #f5f5f5;
+                 color:var(--text);line-height:1.4;"
+          onmouseenter="this.style.background='#f8f9ff'"
+          onmouseleave="this.style.background=''">
+          <div style="font-weight:600;">${item.name || item.display_name.split(",")[0]}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${item.display_name}
+          </div>
+        </div>`
+      ).join("");
+      box.style.display = "block";
+    } catch { box.style.display = "none"; }
+  }, 400);
+}
+
+function areaSelectSuggest(lat, lng, displayName) {
+  lat = parseFloat(lat); lng = parseFloat(lng);
+  document.getElementById("area-search-input").value = displayName;
+  document.getElementById("area-search-suggest").style.display = "none";
+  if (_areaMap) {
+    _areaMap.setView([lat, lng], 17);
+    _setAreaMarker(lat, lng);
+  } else {
+    initAreaMap(lat, lng);
+  }
+}
+
+async function searchAreaLocation() {
+  const q = document.getElementById("area-search-input")?.value.trim();
+  if (!q) return showToast("⚠️ Masukkan nama lokasi yang ingin dicari", "warning");
+
+  // Cek dulu jika memilih dari suggest
+  const box = document.getElementById("area-search-suggest");
+  if (box) box.style.display = "none";
+
+  showToast("🔍 Mencari lokasi...", "warning", 2000);
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
+      { headers: { "Accept-Language": "id,en" } }
+    );
+    const data = await res.json();
+    if (!data.length) return showToast("❌ Lokasi tidak ditemukan. Coba kata kunci lain.", "error");
+    const { lat, lon, display_name } = data[0];
+    areaSelectSuggest(lat, lon, display_name);
+    showToast("✅ Lokasi ditemukan!");
+  } catch { showToast("❌ Gagal mencari lokasi. Periksa koneksi internet.", "error"); }
+}
+
+// Tutup suggest saat klik di luar
+document.addEventListener("click", e => {
+  if (!e.target.closest("#area-search-input") && !e.target.closest("#area-search-suggest")) {
+    const box = document.getElementById("area-search-suggest");
+    if (box) box.style.display = "none";
+  }
+});
 
 async function saveArea() {
   const name   = document.getElementById("area-name").value.trim();
