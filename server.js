@@ -169,7 +169,7 @@ app.get("/face-descriptor/:username", (req, res) => {
 app.post("/absen", (req, res) => {
   const data = load(F.data, []);
   const areas = load(F.areas, []);
-  const { user, type, time, lat, lng, photo, areaId } = req.body;
+  const { user, type, time, lat, lng, accuracy, photo, areaId } = req.body;
   const today = new Date().toISOString().split("T")[0];
 
   // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
@@ -179,8 +179,6 @@ app.post("/absen", (req, res) => {
 
   // Wajib kirim koordinat valid (bukan 0,0) — jika kosong berarti izin lokasi ditolak
   if ((lat === 0 && lng === 0) || lat == null || lng == null) {
-    // Jika Tugas Luar, boleh lanjut meski koordinat 0 (misal di area sinyal buruk)
-    // tapi tetap harus coba kirim koordinat — tolak jika sama sekali tidak ada izin
     if (!isTugasLuar) {
       return res.status(400).send({ status: "LOCATION_REQUIRED", msg: "Izin lokasi diperlukan untuk absensi" });
     }
@@ -194,13 +192,21 @@ app.post("/absen", (req, res) => {
     }
     const activeAreas = areas.filter(a => a.active !== false);
     if (activeAreas.length > 0) {
-      const inAny = activeAreas.some(a => dist(lat, lng, a.lat, a.lng) <= a.radius);
+      // Perlebar radius validasi sebesar nilai accuracy GPS user (agar tidak false-reject
+      // saat sinyal lemah). Maksimal toleransi accuracy yang ditambahkan: 100 m.
+      const accTolerance = Math.min(accuracy != null ? accuracy : 0, 100);
+      const inAny = activeAreas.some(a => dist(lat, lng, a.lat, a.lng) <= (a.radius + accTolerance));
       if (!inAny) {
         const nearest = activeAreas.reduce((best, a) => {
           const d = dist(lat, lng, a.lat, a.lng);
           return d < best.d ? { d, name: a.name } : best;
         }, { d: Infinity, name: "" });
-        return res.status(400).send({ status: "OUT_OF_AREA", distance: Math.round(nearest.d), area: nearest.name });
+        return res.status(400).send({
+          status:   "OUT_OF_AREA",
+          distance: Math.round(nearest.d),
+          area:     nearest.name,
+          accuracy: accuracy != null ? Math.round(accuracy) : null
+        });
       }
     }
   }
@@ -209,7 +215,7 @@ app.post("/absen", (req, res) => {
 
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
-    data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng }, foto: photo, breaks: [] });
+    data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [] });
   } else if (type === "OUT" && record) {
     record.jamKeluar = time;
     const lb = record.breaks.at(-1);
