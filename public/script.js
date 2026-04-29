@@ -44,8 +44,7 @@ function openView(viewId) {
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-tracking")   loadTracking();
   if (viewId === "view-timesheet")  {
-    const m = document.getElementById("ts-month");
-    if (!m.value) m.value = new Date().toISOString().slice(0, 7);
+    if (!_tsWeekStart) _tsWeekStart = tsGetMonday();
     loadTimesheet();
   }
 }
@@ -3144,11 +3143,13 @@ function tsRender() {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
       }
 
-      // Tombol edit (hanya jika canEdit + bukan weekend)
+      // Tombol edit (hanya jika canEdit + bukan weekend) — tampil saat row di-hover
       const canEditCell = u.canEdit && !isWeekend;
       const editBtn = canEditCell ? `
-        <div onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
-          style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;">✏️</div>` : "";
+        <div class="ts-edit-btn"
+          onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
+          style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
+                 opacity:0;transition:opacity .15s;pointer-events:none;">✏️</div>` : "";
 
       return `<td style="text-align:center;padding:7px 4px;border-bottom:1px solid #f5f5f5;
                  background:${isToday?"#f1f8e9":hasCuti&&!hasKerja?"#fafeff":""};
@@ -3170,7 +3171,7 @@ function tsRender() {
           ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
 
     return `
-    <tr style="border-bottom:1px solid #f0f2f5;">
+    <tr class="ts-row" data-canedit="${u.canEdit ? '1' : '0'}" style="border-bottom:1px solid #f0f2f5;">
       <!-- Kolom nama (sticky) -->
       <td style="padding:8px 12px;min-width:160px;max-width:200px;position:sticky;left:0;background:white;z-index:1;">
         <div style="display:flex;align-items:center;gap:8px;">
@@ -3212,6 +3213,22 @@ function tsRender() {
       </table>
     </div>
 `;  // (legend dihapus per permintaan revisi)
+
+  // Hover listener: tampilkan/sembunyikan ikon pensil hanya untuk baris canEdit
+  el.querySelectorAll("tr.ts-row[data-canedit='1']").forEach(row => {
+    row.addEventListener("mouseenter", () => {
+      row.querySelectorAll(".ts-edit-btn").forEach(btn => {
+        btn.style.opacity       = "1";
+        btn.style.pointerEvents = "auto";
+      });
+    });
+    row.addEventListener("mouseleave", () => {
+      row.querySelectorAll(".ts-edit-btn").forEach(btn => {
+        btn.style.opacity       = "0";
+        btn.style.pointerEvents = "none";
+      });
+    });
+  });
 }
 
 // ─── Modal Entri Waktu Manual ───
