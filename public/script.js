@@ -3569,13 +3569,9 @@ function switchCutiTab(tab) {
 // --- Filter waktu ---
 function setCutiFilter(f) {
   _cutiFilter = f;
-  const ids = ["semua","hari","minggu","bulan","tahun"];
-  ids.forEach(id => {
-    const btn = document.getElementById("cf-" + id);
-    if (!btn) return;
-    btn.style.background = id === f ? "var(--primary)" : "#f0f2f5";
-    btn.style.color      = id === f ? "white" : "var(--muted)";
-  });
+  // Sync dropdown value
+  const sel = document.getElementById("cuti-filter-select");
+  if (sel) sel.value = f;
   loadDaftarCuti();
 }
 
@@ -4027,13 +4023,9 @@ const _origOpenView_cuti = openView;
       const ps = document.getElementById("cuti-panel-saldo");
       if (pd) pd.style.display = "";
       if (ps) ps.style.display = "none";
-      // Reset filter buttons
-      ["semua","hari","minggu","bulan","tahun"].forEach(id => {
-        const btn = document.getElementById("cf-" + id);
-        if (!btn) return;
-        btn.style.background = id === "semua" ? "var(--primary)" : "#f0f2f5";
-        btn.style.color      = id === "semua" ? "white" : "var(--muted)";
-      });
+      // Reset dropdown filter
+      const sel = document.getElementById("cuti-filter-select");
+      if (sel) sel.value = "semua";
       loadDaftarCuti();
     }
   };
