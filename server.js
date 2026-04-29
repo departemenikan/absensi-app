@@ -50,23 +50,48 @@ function initGroups() {
     const defaults = [
       {
         id: "owner", name: "Owner", level: 1, color: "#8e44ad",
-        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet","tracking"]
+        menus: [
+          "home","rekap","admin","setting",
+          "anggota","anggota.daftar","anggota.divisi",
+          "aksesibilitas",
+          "area","area.daftar","area.tambah",
+          "libur","libur.hari-libur","libur.kebijakan-cuti","libur.kuota-cuti",
+          "aktivitas","timesheet","tracking",
+          "cuti","cuti.daftar","cuti.saldo"
+        ]
       },
       {
         id: "admin", name: "Admin", level: 2, color: "#2980b9",
-        menus: ["home","rekap","admin","setting","anggota","aksesibilitas","area","libur","aktivitas","timesheet","tracking"]
+        menus: [
+          "home","rekap","admin","setting",
+          "anggota","anggota.daftar","anggota.divisi",
+          "aksesibilitas",
+          "area","area.daftar","area.tambah",
+          "libur","libur.hari-libur","libur.kebijakan-cuti","libur.kuota-cuti",
+          "aktivitas","timesheet","tracking",
+          "cuti","cuti.daftar","cuti.saldo"
+        ]
       },
       {
         id: "manager", name: "Manager", level: 3, color: "#27ae60",
-        menus: ["home","rekap","admin","aktivitas","timesheet","tracking"]
+        menus: [
+          "home","rekap","admin","aktivitas","timesheet","tracking",
+          "cuti","cuti.daftar","cuti.saldo"
+        ]
       },
       {
         id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
-        menus: ["home","rekap","aktivitas"]
+        menus: [
+          "home","rekap","aktivitas",
+          "cuti","cuti.daftar","cuti.saldo"
+        ]
       },
       {
         id: "anggota", name: "Anggota", level: 5, color: "#7f8c8d",
-        menus: ["home","rekap"]
+        menus: [
+          "home","rekap",
+          "cuti","cuti.daftar","cuti.saldo"
+        ]
       }
     ];
     save(F.groups, defaults);

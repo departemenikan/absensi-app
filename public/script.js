@@ -336,13 +336,7 @@ function enterApp(menus, group, level) {
   document.getElementById("main-nav").classList.remove("hidden");
   stopCam("video-signup");
 
-  // Tampilkan/sembunyikan nav berdasarkan akses
-  // Timesheet & Cuti selalu tampil (seperti Beranda), Setting dikontrol hak akses
-  document.getElementById("nav-timesheet").classList.remove("hidden");
-  document.getElementById("nav-cuti").classList.remove("hidden");
-  document.getElementById("nav-setting").classList.toggle("hidden", !userMenus.includes("setting"));
-
-  // Tampilkan/sembunyikan menu di setting
+  // Terapkan akses menu & submenu berdasarkan group
   applyMenuAccess();
 
   // Update header
@@ -367,7 +361,18 @@ function enterApp(menus, group, level) {
 }
 
 function applyMenuAccess() {
-  const map = {
+  // ── Navbar ──
+  // home selalu tampil (nav-home tidak perlu diatur)
+  const navTimesheet = document.getElementById("nav-timesheet");
+  const navCuti      = document.getElementById("nav-cuti");
+  const navSetting   = document.getElementById("nav-setting");
+  // timesheet & cuti = alwaysOn, tetap tampil
+  if (navTimesheet) navTimesheet.classList.remove("hidden");
+  if (navCuti)      navCuti.classList.remove("hidden");
+  if (navSetting)   navSetting.classList.toggle("hidden", !userMenus.includes("setting"));
+
+  // ── Menu Setting (menu-item di halaman setting) ──
+  const settingMap = {
     "menu-anggota":       "anggota",
     "menu-area":          "area",
     "menu-libur":         "libur",
@@ -375,11 +380,38 @@ function applyMenuAccess() {
     "menu-rekap":         "rekap",
     "menu-aksesibilitas": "aksesibilitas",
     "menu-tracking":      "tracking",
+    "menu-admin":         "admin",
   };
-  Object.entries(map).forEach(([elId, menuKey]) => {
+  Object.entries(settingMap).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
     if (el) el.classList.toggle("hidden", !userMenus.includes(menuKey));
   });
+
+  // ── Submenu: Anggota (tab daftar & divisi) ──
+  const tabDaftar = document.getElementById("tab-daftar");
+  const tabDivisi = document.getElementById("tab-divisi");
+  if (tabDaftar) tabDaftar.classList.toggle("hidden", !userMenus.includes("anggota.daftar") && !userMenus.includes("anggota"));
+  if (tabDivisi) tabDivisi.classList.toggle("hidden", !userMenus.includes("anggota.divisi"));
+
+  // ── Submenu: Area (tab daftar & tambah) ──
+  const areaDaftar = document.getElementById("area-tab-daftar");
+  const areaTambah = document.getElementById("area-tab-tambah");
+  if (areaDaftar) areaDaftar.classList.toggle("hidden", false); // daftar selalu tampil jika area bisa diakses
+  if (areaTambah) areaTambah.classList.toggle("hidden", !userMenus.includes("area.tambah"));
+
+  // ── Submenu: Libur (tab hari-libur, kebijakan-cuti, kuota-cuti) ──
+  const tabHariLibur     = document.getElementById("tab-hari-libur");
+  const tabKebijakanCuti = document.getElementById("tab-kebijakan-cuti");
+  const tabKuotaCuti     = document.getElementById("tab-kuota-cuti");
+  if (tabHariLibur)     tabHariLibur.classList.toggle("hidden",     !userMenus.includes("libur.hari-libur")     && !userMenus.includes("libur"));
+  if (tabKebijakanCuti) tabKebijakanCuti.classList.toggle("hidden", !userMenus.includes("libur.kebijakan-cuti"));
+  if (tabKuotaCuti)     tabKuotaCuti.classList.toggle("hidden",     !userMenus.includes("libur.kuota-cuti"));
+
+  // ── Submenu: Cuti (tab daftar=pengajuan & saldo) ──
+  const cutiDaftar = document.getElementById("cuti-tab-daftar");
+  const cutiSaldo  = document.getElementById("cuti-tab-saldo");
+  if (cutiDaftar) cutiDaftar.classList.toggle("hidden", !userMenus.includes("cuti.daftar") && !userMenus.includes("cuti"));
+  if (cutiSaldo)  cutiSaldo.classList.toggle("hidden",  !userMenus.includes("cuti.saldo"));
 }
 
 function logout() {
@@ -2299,72 +2331,238 @@ async function assignDivisi(username, divisiNama) {
 // ============================================================
 // GROUP & AKSES MENU
 // ============================================================
+// Struktur menu lengkap — parent + children (submenu)
+// key unik digunakan sebagai token akses di group.menus[]
 const ALL_MENUS = [
-  { key:"home",           label:"🏠 Beranda" },
-  { key:"rekap",          label:"📋 Rekap" },
-  { key:"admin",          label:"👑 Admin Panel" },
-  { key:"setting",        label:"⚙️ Pengaturan" },
-  { key:"anggota",        label:"👥 Anggota" },
-  { key:"aksesibilitas",  label:"🔐 Aksesibilitas" },
-  { key:"area",           label:"📍 Area Kantor" },
-  { key:"libur",          label:"📅 Hari Libur & Cuti" },
-  { key:"aktivitas",      label:"📌 Aktivitas" },
-  { key:"timesheet",      label:"🕐 Timesheet" },
+  // ── NAVBAR ──────────────────────────────────
+  {
+    key: "home", label: "🏠 Beranda", section: "Navigasi",
+    alwaysOn: true  // tidak bisa di-toggle, selalu aktif
+  },
+  {
+    key: "timesheet", label: "🕐 Timesheet", section: "Navigasi",
+    alwaysOn: true  // selalu tampil di navbar
+  },
+  {
+    key: "cuti", label: "🌴 Cuti", section: "Navigasi",
+    alwaysOn: true,
+    children: [
+      { key: "cuti.daftar", label: "Pengajuan Cuti", parentKey: "cuti" },
+      { key: "cuti.saldo",  label: "Saldo Cuti",     parentKey: "cuti" },
+    ]
+  },
+  {
+    key: "setting", label: "⚙️ Pengaturan", section: "Navigasi",
+  },
+
+  // ── MENU PENGATURAN ─────────────────────────
+  {
+    key: "anggota", label: "👥 Anggota", section: "Pengaturan",
+    children: [
+      { key: "anggota.daftar",  label: "Daftar Anggota", parentKey: "anggota" },
+      { key: "anggota.divisi",  label: "Divisi",          parentKey: "anggota" },
+    ]
+  },
+  {
+    key: "area", label: "📍 Area Kantor", section: "Pengaturan",
+    children: [
+      { key: "area.daftar",  label: "Daftar Area",   parentKey: "area" },
+      { key: "area.tambah",  label: "Tambah Area",   parentKey: "area" },
+    ]
+  },
+  {
+    key: "libur", label: "📅 Hari Libur & Cuti", section: "Pengaturan",
+    children: [
+      { key: "libur.hari-libur",     label: "Hari Libur",      parentKey: "libur" },
+      { key: "libur.kebijakan-cuti", label: "Kebijakan Cuti",  parentKey: "libur" },
+      { key: "libur.kuota-cuti",     label: "Kuota Cuti",      parentKey: "libur" },
+    ]
+  },
+  {
+    key: "aktivitas",    label: "📌 Aktivitas",    section: "Pengaturan",
+  },
+  {
+    key: "rekap",        label: "📋 Rekap",         section: "Pengaturan",
+  },
+  {
+    key: "aksesibilitas", label: "🔐 Aksesibilitas", section: "Pengaturan",
+  },
+  {
+    key: "tracking",     label: "🗺️ Tracking",       section: "Pengaturan",
+  },
+  {
+    key: "admin",        label: "👑 Admin Panel",    section: "Pengaturan",
+  },
 ];
+
+// Helper: flatten semua key (parent + child) dari ALL_MENUS
+function allMenuKeys() {
+  const keys = [];
+  ALL_MENUS.forEach(m => {
+    keys.push(m.key);
+    (m.children || []).forEach(c => keys.push(c.key));
+  });
+  return keys;
+}
+
+// Group menus by section
+function menusBySection() {
+  const sections = {};
+  ALL_MENUS.forEach(m => {
+    const s = m.section || "Lainnya";
+    if (!sections[s]) sections[s] = [];
+    sections[s].push(m);
+  });
+  return sections;
+}
 
 async function loadGroups() {
   try {
     const r = await fetch("/groups");
     const groups = await r.json();
     const list   = document.getElementById("group-list");
+
+    const sections = menusBySection();
+
     list.innerHTML = groups.map(g => {
-      const isOwner   = g.id === "owner";
-      const menuRows  = ALL_MENUS.map(m => {
-        const checked = g.menus.includes(m.key);
-        const disabled = isOwner || m.key === "home"; // home selalu aktif
-        return `<div class="menu-toggle-row">
-          <span class="menu-toggle-label">${m.label}</span>
-          <label class="toggle-switch">
-            <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
-              onchange="toggleGroupMenu('${g.id}','${m.key}',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>`;
+      const isOwner = g.id === "owner";
+
+      // Hitung jumlah key aktif (parent + child)
+      const allKeys  = allMenuKeys();
+      const activeCount = allKeys.filter(k => g.menus.includes(k)).length;
+      const totalCount  = allKeys.filter(k => {
+        const m = ALL_MENUS.find(x => x.key === k);
+        return !m?.alwaysOn; // jangan hitung yg alwaysOn ke total toggle
+      }).length + ALL_MENUS.filter(m => m.alwaysOn).length;
+
+      // Render per section
+      const sectionHTML = Object.entries(sections).map(([secName, menus]) => {
+        const rows = menus.map(m => {
+          const isAlways  = m.alwaysOn === true;
+          const isChecked = g.menus.includes(m.key) || isAlways;
+          const isDisabled = isOwner || isAlways;
+          const hasChildren = m.children && m.children.length > 0;
+
+          // Parent row
+          const parentRow = `
+            <div class="akses-row akses-parent" style="${hasChildren?'border-bottom:none;':''}">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="akses-label">${m.label}</span>
+                ${isAlways ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 6px;font-weight:700;">Selalu Aktif</span>' : ''}
+              </div>
+              <label class="toggle-switch${isDisabled?' toggle-disabled':''}">
+                <input type="checkbox" ${isChecked?'checked':''} ${isDisabled?'disabled':''}
+                  onchange="toggleGroupMenu('${g.id}','${m.key}',this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>`;
+
+          // Children rows (submenu)
+          const childRows = (m.children || []).map(c => {
+            const cChecked  = g.menus.includes(c.key) || isAlways;
+            const cDisabled = isOwner || isAlways;
+            return `
+            <div class="akses-row akses-child">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="color:#ddd;font-size:12px;margin-left:4px;">└</span>
+                <span class="akses-label akses-label-sub">${c.label}</span>
+              </div>
+              <label class="toggle-switch${cDisabled?' toggle-disabled':''}">
+                <input type="checkbox" ${cChecked?'checked':''} ${cDisabled?'disabled':''}
+                  onchange="toggleGroupMenu('${g.id}','${c.key}',this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>`;
+          }).join("");
+
+          return parentRow + childRows;
+        }).join("");
+
+        return `
+          <div class="akses-section">
+            <div class="akses-section-title">${secName}</div>
+            ${rows}
+          </div>`;
       }).join("");
-      return `<div class="group-item">
+
+      // Count display
+      const visibleCount = allMenuKeys().filter(k => g.menus.includes(k)).length;
+
+      return `
+      <div class="group-item">
         <div class="group-header" style="background:${g.color};" onclick="toggleGroupBody('gbody-${g.id}')">
-          <div>
-            <div class="group-title">${g.name} ${isOwner?'👑':''}</div>
-            <div class="group-level">Level ${g.level} · ${g.menus.length} menu aktif</div>
+          <div style="flex:1;">
+            <div class="group-title">${g.name} ${isOwner?'👑':g.id==='admin'?'🛡️':g.id==='manager'?'💼':g.id==='koordinator'?'🎯':'👤'}</div>
+            <div class="group-level">Level ${g.level} · ${visibleCount} akses aktif</div>
           </div>
-          <span style="color:rgba(255,255,255,.7);font-size:20px;">›</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${isOwner ? '<span style="font-size:10px;background:rgba(255,255,255,.25);border-radius:6px;padding:2px 8px;color:white;">Akses Penuh</span>' : ''}
+            <span class="akses-chevron" id="chev-${g.id}" style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
+          </div>
         </div>
         <div class="group-body" id="gbody-${g.id}">
-          ${isOwner ? '<p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Owner selalu memiliki akses penuh ke semua menu.</p>' : ''}
-          ${menuRows}
+          ${isOwner
+            ? '<div style="font-size:12px;color:var(--muted);padding:10px 4px;text-align:center;">👑 Owner selalu memiliki akses penuh ke semua menu & submenu.</div>'
+            : ''
+          }
+          ${sectionHTML}
         </div>
       </div>`;
     }).join("");
-  } catch { document.getElementById("group-list").innerHTML='<p style="color:var(--muted);text-align:center;">Gagal memuat</p>'; }
+
+  } catch(e) {
+    document.getElementById("group-list").innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat data grup</p>';
+  }
 }
 
 function toggleGroupBody(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.toggle("open");
+  const el   = document.getElementById(id);
+  const chev = document.getElementById("chev-" + id.replace("gbody-", ""));
+  if (!el) return;
+  const isOpen = el.classList.toggle("open");
+  if (chev) chev.style.transform = isOpen ? "rotate(90deg)" : "";
 }
 
 async function toggleGroupMenu(groupId, menuKey, enabled) {
   try {
-    // Ambil group terbaru, ubah menu, simpan
     const r = await fetch("/groups");
     const groups = await r.json();
     const group  = groups.find(g => g.id === groupId);
     if (!group) return;
-    if (enabled && !group.menus.includes(menuKey)) group.menus.push(menuKey);
-    if (!enabled) group.menus = group.menus.filter(m => m !== menuKey);
-    // Pastikan home selalu ada
+
+    // Jika parent di-enable, enable juga semua childnya
+    // Jika parent di-disable, disable juga semua childnya
+    const parentMenu = ALL_MENUS.find(m => m.key === menuKey);
+    if (parentMenu?.children) {
+      parentMenu.children.forEach(c => {
+        if (enabled) {
+          if (!group.menus.includes(c.key)) group.menus.push(c.key);
+        } else {
+          group.menus = group.menus.filter(k => k !== c.key);
+        }
+      });
+    }
+
+    // Toggle key parent/child itu sendiri
+    if (enabled) {
+      if (!group.menus.includes(menuKey)) group.menus.push(menuKey);
+      // Jika child di-enable, pastikan parentnya juga aktif
+      const parentEntry = ALL_MENUS.find(m => (m.children||[]).some(c => c.key === menuKey));
+      if (parentEntry && !group.menus.includes(parentEntry.key)) {
+        group.menus.push(parentEntry.key);
+      }
+    } else {
+      group.menus = group.menus.filter(k => k !== menuKey);
+    }
+
+    // home selalu ada
     if (!group.menus.includes("home")) group.menus.push("home");
-    const rr = await fetch(`/groups/${groupId}/menus`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({menus:group.menus}) });
+
+    const rr = await fetch(`/groups/${groupId}/menus`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ menus: group.menus })
+    });
     const dd = await rr.json();
     if (dd.status === "OK") showToast("✅ Akses diperbarui");
     else if (dd.status === "PROTECTED") showToast("⚠️ Owner tidak bisa diubah", "warning");
