@@ -676,15 +676,21 @@ app.delete("/areas/:id", requireLevel(2), (req, res) => {
 // HARI LIBUR & KEBIJAKAN CUTI
 // ========================
 
-// Endpoint publik: daftar agama unik dari seluruh anggota (tanpa data sensitif)
-app.get("/libur/agama-list", (req, res) => {
+// Daftar agama unik dari seluruh anggota — hanya user yang sudah login
+app.get("/libur/agama-list", requireLevel(99), (req, res) => {
   const users = load(F.users, {});
   const agamaSet = new Set();
   Object.values(users).forEach(u => { if (u.agama) agamaSet.add(u.agama); });
   res.send([...agamaSet]);
 });
 
-app.get("/libur", requireLevel(99), (req, res) => res.send(load(F.libur, [])));
+app.get("/libur", requireLevel(99), (req, res) => {
+  const data = load(F.libur, []);
+  // Admin & owner boleh lihat field anggota[]; user biasa tidak perlu tahu username rekan lain
+  if (req._requesterLevel <= 2) return res.send(data);
+  const safeData = data.map(({ anggota, ...rest }) => rest);
+  res.send(safeData);
+});
 
 app.post("/libur", requireLevel(2), (req, res) => {
   const { name, dateStart, dateEnd, type, agama, date } = req.body;
@@ -1549,15 +1555,17 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
 
 // POST: approve cuti
 app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
-  const { approver } = req.body;
+  // Identitas approver diambil dari middleware (X-User header), bukan dari body
+  const approver = req._requester;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
   const p = pengajuan[idx];
 
+  // User tidak boleh approve cuti miliknya sendiri
+  if (approver === p.username) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menyetujui cuti sendiri" });
+
   // Cek hak approve
-  const approverLevel = getUserLevel(approver);
-  const targetLevel   = getUserLevel(p.username);
   const approverGroup = getUserGroup(approver);
   const targetGroup   = getUserGroup(p.username);
 
@@ -1580,14 +1588,18 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
 
 // POST: reject cuti (kembalikan saldo)
 app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
-  const { approver, reason } = req.body;
+  const { reason } = req.body;
+  // Identitas approver diambil dari middleware (X-User header), bukan dari body
+  const approver = req._requester;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
   const p = pengajuan[idx];
   if (p.status !== "menunggu") return res.send({ status: "ERROR", msg: "Hanya cuti berstatus menunggu yang bisa di-reject" });
 
-  const approverLevel = getUserLevel(approver);
+  // User tidak boleh reject cuti miliknya sendiri
+  if (approver === p.username) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menolak cuti sendiri" });
+
   const approverGroup = getUserGroup(approver);
   const targetGroup   = getUserGroup(p.username);
 
@@ -1625,7 +1637,8 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
 
 // POST: batalkan cuti (hanya pengaju sendiri, jika masih menunggu)
 app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
-  const { username } = req.body;
+  // Identitas pembatal diambil dari middleware (X-User header), bukan dari body
+  const username = req._requester;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
