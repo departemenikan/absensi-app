@@ -93,10 +93,31 @@ async function loadFaceModels() {
 
 async function getFaceDescriptor(videoEl) {
   if (!videoEl) return null;
+  // Pastikan video sudah punya frame sebelum deteksi
+  if (!videoEl.videoWidth || videoEl.readyState < 2) return null;
   const det = await faceapi
     .detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
     .withFaceLandmarks().withFaceDescriptor();
   return det ? det.descriptor : null;
+}
+
+// Ambil rata-rata descriptor dari beberapa sample untuk hasil lebih stabil
+async function getFaceDescriptorMultiSample(videoEl, samples = 4, intervalMs = 400) {
+  const descriptors = [];
+  for (let i = 0; i < samples; i++) {
+    // Jeda antar sample agar frame berbeda
+    if (i > 0) await new Promise(r => setTimeout(r, intervalMs));
+    const d = await getFaceDescriptor(videoEl);
+    if (d) descriptors.push(d);
+  }
+  if (descriptors.length === 0) return null;
+  // Rata-ratakan semua descriptor yang berhasil
+  const len = descriptors[0].length;
+  const avg = new Float32Array(len);
+  for (let i = 0; i < len; i++) {
+    avg[i] = descriptors.reduce((sum, d) => sum + d[i], 0) / descriptors.length;
+  }
+  return avg;
 }
 
 // ============================================================
@@ -113,8 +134,19 @@ function toggleAuthMode() {
   fs.classList.toggle("hidden", isLoginMode);
   const ex = document.getElementById("signup-extra-fields");
   if (ex) ex.classList.toggle("hidden", isLoginMode);
-  if (!isLoginMode) startCam("video-signup");
-  else stopCam("video-signup");
+  if (!isLoginMode) {
+    // Tunggu kamera benar-benar aktif sebelum user mulai scan
+    startCam("video-signup").then(() => {
+      const status = document.getElementById("faceStatus");
+      if (status) {
+        waitVideoReady("video-signup", 8000)
+          .then(() => { status.innerText = "✅ Kamera siap — hadapkan wajah ke kamera"; })
+          .catch(() => { status.innerText = "⚠️ Gagal buka kamera. Izinkan akses kamera."; });
+      }
+    });
+  } else {
+    stopCam("video-signup");
+  }
 }
 
 async function handleAuth() {
@@ -141,22 +173,72 @@ async function doLogin(u, p) {
 }
 
 async function doSignUp(u, p) {
-  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap", "warning");
-  const btn = document.getElementById("btn-auth-main");
-  btn.innerText = "⏳ Scanning..."; btn.disabled = true;
+  if (!faceModelsLoaded) return showToast("⏳ Model wajah belum siap, tunggu sebentar...", "warning");
+  const btn    = document.getElementById("btn-auth-main");
+  const status = document.getElementById("faceStatus");
+  btn.disabled = true;
+
   try {
-    const videoEl    = document.getElementById("video-signup");
-    const descriptor = await getFaceDescriptor(videoEl);
-    if (!descriptor) {
-      showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup", "error");
+    const videoEl = document.getElementById("video-signup");
+
+    // Pastikan kamera sudah benar-benar aktif dan ada frame
+    btn.innerText = "⏳ Menunggu kamera...";
+    if (status) status.innerText = "📷 Menunggu kamera siap...";
+    try {
+      await waitVideoReady("video-signup", 8000);
+    } catch {
+      showToast("❌ Kamera tidak siap. Izinkan akses kamera dan coba lagi.", "error");
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
+
+    // Jeda 600ms agar kamera stabil setelah ready
+    await new Promise(r => setTimeout(r, 600));
+
+    // Scan wajah multi-sample (4x) untuk descriptor berkualitas tinggi
+    btn.innerText = "📸 Scanning wajah (1/4)...";
+    if (status) status.innerText = "🔍 Scanning wajah, hadapkan wajah ke kamera...";
+
+    const descriptors = [];
+    for (let i = 0; i < 4; i++) {
+      if (i > 0) {
+        btn.innerText = `📸 Scanning wajah (${i+1}/4)...`;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      const d = await getFaceDescriptor(videoEl);
+      if (d) {
+        descriptors.push(d);
+        if (status) status.innerText = `✅ Sample ${descriptors.length}/4 berhasil`;
+      } else {
+        if (status) status.innerText = `⚠️ Sample ${i+1} gagal, coba lagi...`;
+      }
+    }
+
+    if (descriptors.length < 2) {
+      showToast("❌ Wajah tidak terdeteksi! Pastikan pencahayaan cukup dan wajah terlihat jelas.", "error");
+      if (status) status.innerText = "❌ Deteksi gagal. Coba ulangi.";
+      btn.innerText = "Sign Up"; btn.disabled = false; return;
+    }
+
+    // Rata-ratakan semua descriptor yang berhasil
+    const len = descriptors[0].length;
+    const avgDescriptor = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      avgDescriptor[i] = descriptors.reduce((sum, d) => sum + d[i], 0) / descriptors.length;
+    }
+
+    if (status) status.innerText = `✅ Wajah terdeteksi (${descriptors.length} sample). Menyimpan...`;
+    btn.innerText = "💾 Menyimpan...";
+
     const namaLengkap = (document.getElementById("signup-nama")?.value || "").trim();
     const agama       = document.getElementById("signup-agama")?.value || "";
-    const r = await fetch("/signup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, faceDescriptor:Array.from(descriptor), namaLengkap, agama}) });
+    const r = await fetch("/signup", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ username:u, password:p, faceDescriptor:Array.from(avgDescriptor), namaLengkap, agama })
+    });
     const d = await r.json();
     if (d.status === "OK") {
       stopCam("video-signup");
+      if (status) status.innerText = "✅ Akun berhasil dibuat!";
       showToast("✅ Akun berhasil dibuat! Silakan login");
       setTimeout(() => toggleAuthMode(), 1500);
     } else if (d.status === "EXIST") {
@@ -371,10 +453,27 @@ function _uPasswordSubmit() {
 // ============================================================
 function startCam(id) {
   const v = document.getElementById(id);
-  if (!v || v.srcObject) return;
-  navigator.mediaDevices.getUserMedia({ video:{facingMode:"user"}, audio:false })
+  if (!v) return Promise.resolve();
+  // Jika stream sudah berjalan, langsung resolve
+  if (v.srcObject && v.srcObject.active) return Promise.resolve();
+  return navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user", width:{ideal:640}, height:{ideal:480} }, audio:false })
     .then(s => { v.srcObject = s; })
     .catch(e => console.warn("Kamera:", e));
+}
+
+// Tunggu video element benar-benar punya frame (videoWidth > 0)
+function waitVideoReady(id, maxMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const v = document.getElementById(id);
+    if (!v) return reject(new Error("Video element tidak ditemukan"));
+    const start = Date.now();
+    const check = () => {
+      if (v.readyState >= 2 && v.videoWidth > 0) return resolve(v);
+      if (Date.now() - start > maxMs) return reject(new Error("Timeout: kamera tidak siap"));
+      setTimeout(check, 100);
+    };
+    check();
+  });
 }
 
 function stopCam(id) {
@@ -415,7 +514,14 @@ async function verifyFace(label) {
   return new Promise(async (resolve) => {
     verifyResolve = resolve;
     showCamModal("🔍 " + label);
-    await new Promise(r => setTimeout(r, 1500));
+    // Tunggu kamera benar-benar ready sebelum scan
+    try {
+      await waitVideoReady("video-modal", 6000);
+    } catch {
+      hideCamModal(); resolve(false);
+      showToast("❌ Kamera tidak siap. Coba lagi.", "error"); return;
+    }
+    await new Promise(r => setTimeout(r, 400));
 
     if (!faceModelsLoaded) { hideCamModal(); resolve(true); return; }
 
