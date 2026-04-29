@@ -790,8 +790,9 @@ app.get("/timesheet/weekly", (req, res) => {
   }
 
   function canEditUser(targetUsername) {
-    if (requester === targetUsername) return false; // tidak bisa edit diri sendiri
+    // Admin & owner bisa edit siapa saja termasuk diri sendiri
     if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+    if (requester === targetUsername) return false; // selain admin/owner tidak bisa edit diri sendiri
     if (requesterGroup === "manager") {
       const myDivisi = Array.isArray(users[requester]?.divisi)
         ? users[requester].divisi : (users[requester]?.divisi ? [users[requester].divisi] : []);
@@ -888,6 +889,7 @@ app.post("/timesheet/absen-manual", (req, res) => {
   const requesterGroup = getUserGroup(requester);
   const targetGroup    = getUserGroup(targetUser);
 
+  // Admin & owner bisa buat absen manual untuk siapa saja termasuk diri sendiri
   let canCreate = false;
   if (requesterGroup === "owner" || requesterGroup === "admin") canCreate = true;
   else if (requesterGroup === "manager") {
@@ -908,9 +910,12 @@ app.post("/timesheet/absen-manual", (req, res) => {
     existing.jamMasuk  = jamMasuk;
     existing.jamKeluar = jamKeluar;
   } else {
+    const { breaks: breaksData, catatan, aktivitas, lokasiNama } = req.body;
     data.push({
       user: targetUser, date, jamMasuk, jamKeluar,
-      lokasi: { lat: 0, lng: 0 }, foto: "", breaks: [],
+      lokasi: { lat: 0, lng: 0 }, lokasiNama: lokasiNama || "",
+      foto: "", breaks: breaksData || [],
+      aktivitas: aktivitas || "", catatan: catatan || "",
       createdManually: true, createdBy: requester,
       createdAt: new Date().toISOString()
     });
@@ -927,7 +932,11 @@ app.put("/timesheet/absen/:user/:date", (req, res) => {
   const requesterGroup = getUserGroup(requester);
   const targetGroup    = getUserGroup(targetUser);
 
-  if (requester === targetUser) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa edit absen sendiri" });
+  // Admin & owner boleh edit absen siapa saja termasuk diri sendiri
+  // Manager & di bawahnya tidak bisa edit diri sendiri
+  if (requester === targetUser && requesterGroup !== "owner" && requesterGroup !== "admin") {
+    return res.send({ status: "FORBIDDEN", msg: "Tidak bisa edit absen sendiri" });
+  }
 
   let canEdit = false;
   if (requesterGroup === "owner" || requesterGroup === "admin") canEdit = true;
@@ -944,8 +953,12 @@ app.put("/timesheet/absen/:user/:date", (req, res) => {
   const data = load(F.data, []);
   const rec  = data.find(d => d.user === targetUser && d.date === date);
   if (!rec) return res.send({ status: "NOT_FOUND" });
-  if (jamMasuk)  rec.jamMasuk  = jamMasuk;
-  if (jamKeluar) rec.jamKeluar = jamKeluar;
+  if (jamMasuk)        rec.jamMasuk  = jamMasuk;
+  if (jamKeluar)       rec.jamKeluar = jamKeluar;
+  if (req.body.breaks !== undefined) rec.breaks = req.body.breaks;
+  if (req.body.catatan !== undefined) rec.catatan = req.body.catatan;
+  if (req.body.aktivitas !== undefined) rec.aktivitas = req.body.aktivitas;
+  if (req.body.lokasiNama !== undefined) rec.lokasiNama = req.body.lokasiNama;
   save(F.data, data);
   res.send({ status: "OK" });
 });

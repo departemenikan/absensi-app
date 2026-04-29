@@ -1178,14 +1178,7 @@
           style="background:var(--primary);color:white;border:none;border-radius:8px;
                  padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700;">Minggu Ini</button>
       </div>
-      <!-- Info 40 jam -->
-      <div style="margin-top:10px;background:#f8f9ff;border-radius:8px;padding:8px 12px;
-                  font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;">
-        <span>📅 <b>Sen–Jum</b> = 7 jam/hari cuti</span>
-        <span>📅 <b>Sabtu</b> = 5 jam/hari cuti</span>
-        <span>⚡ <b>Target</b> 40 jam/minggu</span>
-        <span>🔴 Kerja + Cuti &lt; 40 jam → potensi potong gaji</span>
-      </div>
+
     </div>
 
     <!-- Search -->
@@ -1204,35 +1197,214 @@
   </div>
 </div>
 
-<!-- ===== MODAL: Edit / Buat Absen ===== -->
+<!-- ===== MODAL: Tambahkan Entri Waktu Manual ===== -->
 <div id="modal-ts-absen-overlay"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
-            align-items:center;justify-content:center;padding:16px;">
-  <div style="background:white;border-radius:18px;width:100%;max-width:360px;
-              box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .25s ease;">
-    <div style="background:linear-gradient(135deg,#1a237e,#4f8ef7);padding:16px 20px;">
-      <div style="color:white;font-weight:800;font-size:15px;" id="modal-ts-title">Edit Absen</div>
-      <div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;" id="modal-ts-subtitle"></div>
-    </div>
-    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;
+            align-items:flex-end;justify-content:center;">
+  <div style="background:white;border-radius:20px 20px 0 0;width:100%;max-width:480px;
+              max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.2);
+              animation:slideUp .28s ease;padding-bottom:env(safe-area-inset-bottom,12px);">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:18px 20px 0;position:sticky;top:0;background:white;z-index:2;
+                border-bottom:1px solid #f0f2f5;padding-bottom:14px;">
       <div>
-        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;">Jam Masuk</label>
-        <input id="modal-ts-masuk" type="time"
-          style="width:100%;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;">
+        <div style="font-weight:800;font-size:16px;color:var(--text);" id="modal-ts-title">Tambahkan Entri Waktu Manual</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;" id="modal-ts-subtitle"></div>
       </div>
-      <div>
-        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;">Jam Keluar</label>
-        <input id="modal-ts-keluar" type="time"
-          style="width:100%;padding:10px 12px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;">
-      </div>
-    </div>
-    <div style="padding:0 20px 18px;display:flex;gap:8px;">
       <button onclick="closeTsModal()"
-        style="flex:1;padding:11px;border:1.5px solid #e8eaf0;background:white;border-radius:10px;
+        style="background:#f5f5f5;border:none;border-radius:50%;width:32px;height:32px;
+               font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#888;">✕</button>
+    </div>
+
+    <!-- Tab Entri Waktu / Entri Jam -->
+    <div style="display:flex;padding:14px 20px 0;gap:0;border-bottom:1px solid #f0f2f5;">
+      <button id="ts-mode-waktu" onclick="tsSwitchMode('waktu')"
+        style="flex:1;padding:9px 4px;border:none;border-bottom:2px solid #f57c00;background:none;
+               font-size:13px;font-weight:700;color:#f57c00;cursor:pointer;transition:.15s;">
+        Entri waktu
+      </button>
+      <button id="ts-mode-jam" onclick="tsSwitchMode('jam')"
+        style="flex:1;padding:9px 4px;border:none;border-bottom:2px solid transparent;background:none;
+               font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:.15s;">
+        Entri jam
+      </button>
+    </div>
+
+    <!-- ─── PANEL: Entri Waktu ─── -->
+    <div id="ts-panel-waktu" style="padding:16px 20px;display:flex;flex-direction:column;gap:0;">
+
+      <!-- Sub-tab Masuk / Istirahat / Keluar -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;">
+        <button id="ts-tab-masuk" onclick="tsSwitchTab('masuk')"
+          style="flex:1;padding:8px;border:1.5px solid #f57c00;border-radius:8px;background:#fff8f0;
+                 font-size:12px;font-weight:700;color:#f57c00;cursor:pointer;">Masuk</button>
+        <button id="ts-tab-istirahat" onclick="tsSwitchTab('istirahat')"
+          style="flex:1;padding:8px;border:1.5px solid #e8ecf0;border-radius:8px;background:white;
+                 font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;">Istirahat</button>
+        <button id="ts-tab-keluar" onclick="tsSwitchTab('keluar')"
+          style="flex:1;padding:8px;border:1.5px solid #e8ecf0;border-radius:8px;background:white;
+                 font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;">Keluar</button>
+      </div>
+
+      <!-- Panel Masuk -->
+      <div id="ts-subtab-masuk">
+        <div style="border:1.5px solid #e8ecf0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+            <input id="ts-masuk-time" type="time"
+              style="flex:1;border:none;outline:none;font-size:22px;font-weight:700;color:var(--text);">
+            <span style="font-size:11px;color:var(--muted);background:#f5f5f5;border-radius:6px;padding:3px 7px;">GMT+8</span>
+            <span style="margin-left:8px;font-size:18px;color:#ccc;">🕐</span>
+          </div>
+          <div style="display:flex;align-items:center;padding:11px 14px;">
+            <input id="ts-masuk-date" type="date"
+              style="flex:1;border:none;outline:none;font-size:14px;color:var(--text);">
+            <span style="font-size:16px;color:#ccc;">📅</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Istirahat -->
+      <div id="ts-subtab-istirahat" style="display:none;">
+        <div style="border:1.5px solid #e8ecf0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+            <label style="font-size:11px;font-weight:700;color:var(--muted);width:80px;">Mulai</label>
+            <input id="ts-istirahat-mulai" type="time"
+              style="flex:1;border:none;outline:none;font-size:16px;font-weight:700;color:var(--text);">
+          </div>
+          <div style="display:flex;align-items:center;padding:12px 14px;">
+            <label style="font-size:11px;font-weight:700;color:var(--muted);width:80px;">Selesai</label>
+            <input id="ts-istirahat-selesai" type="time"
+              style="flex:1;border:none;outline:none;font-size:16px;font-weight:700;color:var(--text);">
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Keluar -->
+      <div id="ts-subtab-keluar" style="display:none;">
+        <div style="border:1.5px solid #e8ecf0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+            <input id="ts-keluar-time" type="time"
+              style="flex:1;border:none;outline:none;font-size:22px;font-weight:700;color:var(--text);">
+            <span style="font-size:11px;color:var(--muted);background:#f5f5f5;border-radius:6px;padding:3px 7px;">GMT+8</span>
+            <span style="margin-left:8px;font-size:18px;color:#ccc;">🕐</span>
+          </div>
+          <div style="display:flex;align-items:center;padding:11px 14px;">
+            <input id="ts-keluar-date" type="date"
+              style="flex:1;border:none;outline:none;font-size:14px;color:var(--text);">
+            <span style="font-size:16px;color:#ccc;">📅</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pilih Lokasi (wajib) -->
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">📍 Lokasi <span style="color:#e53935;">*</span></div>
+        <select id="ts-lokasi"
+          style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;appearance:auto;">
+          <option value="">-- Pilih lokasi --</option>
+        </select>
+      </div>
+
+      <!-- Pilih Aktivitas (opsional) -->
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">🏃 Jenis Aktivitas <span style="font-size:10px;">(opsional)</span></div>
+        <select id="ts-aktivitas"
+          style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;appearance:auto;">
+          <option value="">-- Pilih aktivitas --</option>
+          <option value="WFO">WFO (Work From Office)</option>
+          <option value="WFH">WFH (Work From Home)</option>
+          <option value="Tugas Luar">Tugas Luar</option>
+          <option value="Rapat">Rapat / Meeting</option>
+          <option value="Perjalanan Dinas">Perjalanan Dinas</option>
+        </select>
+      </div>
+
+      <!-- Catatan -->
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">📝 Catatan <span style="font-size:10px;">(opsional)</span></div>
+        <textarea id="ts-catatan" rows="3" placeholder="Tambahkan catatan..."
+          style="width:100%;border:none;outline:none;font-size:13px;color:var(--text);
+                 resize:none;font-family:inherit;line-height:1.5;"></textarea>
+      </div>
+    </div>
+
+    <!-- ─── PANEL: Entri Jam ─── -->
+    <div id="ts-panel-jam" style="display:none;padding:16px 20px;flex-direction:column;gap:10px;">
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;overflow:hidden;">
+        <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+          <label style="font-size:12px;font-weight:700;color:var(--muted);width:90px;">Tanggal</label>
+          <input id="ts-jam-date" type="date"
+            style="flex:1;border:none;outline:none;font-size:14px;color:var(--text);">
+        </div>
+        <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+          <label style="font-size:12px;font-weight:700;color:var(--muted);width:90px;">Jam Masuk</label>
+          <input id="ts-jam-masuk" type="time"
+            style="flex:1;border:none;outline:none;font-size:16px;font-weight:700;color:var(--text);">
+        </div>
+        <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+          <label style="font-size:12px;font-weight:700;color:var(--muted);width:90px;">Jam Keluar</label>
+          <input id="ts-jam-keluar" type="time"
+            style="flex:1;border:none;outline:none;font-size:16px;font-weight:700;color:var(--text);">
+        </div>
+        <div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid #f0f2f5;">
+          <label style="font-size:12px;font-weight:700;color:var(--muted);width:90px;">Istirahat</label>
+          <div style="display:flex;align-items:center;gap:8px;flex:1;">
+            <input id="ts-jam-istirahat-mulai" type="time"
+              style="flex:1;border:1.5px solid #e8ecf0;border-radius:8px;padding:6px 8px;font-size:13px;outline:none;">
+            <span style="color:var(--muted);font-size:12px;">→</span>
+            <input id="ts-jam-istirahat-selesai" type="time"
+              style="flex:1;border:1.5px solid #e8ecf0;border-radius:8px;padding:6px 8px;font-size:13px;outline:none;">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;padding:12px 14px;">
+          <label style="font-size:12px;font-weight:700;color:var(--muted);width:90px;">Total jam</label>
+          <div id="ts-jam-preview" style="font-size:14px;font-weight:700;color:var(--primary);">—</div>
+        </div>
+      </div>
+
+      <!-- Lokasi + Aktivitas + Catatan (Entri Jam) -->
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">📍 Lokasi <span style="color:#e53935;">*</span></div>
+        <select id="ts-jam-lokasi"
+          style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;appearance:auto;">
+          <option value="">-- Pilih lokasi --</option>
+        </select>
+      </div>
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">🏃 Aktivitas <span style="font-size:10px;">(opsional)</span></div>
+        <select id="ts-jam-aktivitas"
+          style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;appearance:auto;">
+          <option value="">-- Pilih aktivitas --</option>
+          <option value="WFO">WFO (Work From Office)</option>
+          <option value="WFH">WFH (Work From Home)</option>
+          <option value="Tugas Luar">Tugas Luar</option>
+          <option value="Rapat">Rapat / Meeting</option>
+          <option value="Perjalanan Dinas">Perjalanan Dinas</option>
+        </select>
+      </div>
+      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;">📝 Catatan <span style="font-size:10px;">(opsional)</span></div>
+        <textarea id="ts-jam-catatan" rows="2" placeholder="Tambahkan catatan..."
+          style="width:100%;border:none;outline:none;font-size:13px;resize:none;font-family:inherit;"></textarea>
+      </div>
+    </div>
+
+    <!-- Footer aksi -->
+    <div style="padding:12px 20px 16px;display:flex;gap:8px;border-top:1px solid #f0f2f5;
+                position:sticky;bottom:0;background:white;z-index:2;">
+      <button onclick="tsTambahBaru()"
+        style="flex:0 0 auto;padding:10px 14px;border:1.5px solid #e8ecf0;background:white;
+               border-radius:10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;">
+        + Tambahkan baru
+      </button>
+      <button onclick="closeTsModal()"
+        style="flex:1;padding:10px;border:1.5px solid #e8ecf0;background:white;border-radius:10px;
                font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">Batal</button>
       <button onclick="saveTsAbsen()"
-        style="flex:2;padding:11px;background:linear-gradient(135deg,#27ae60,#2ecc71);border:none;
-               border-radius:10px;color:white;font-size:13px;font-weight:700;cursor:pointer;">💾 Simpan</button>
+        style="flex:2;padding:10px;background:#f57c00;border:none;border-radius:10px;
+               color:white;font-size:13px;font-weight:700;cursor:pointer;">💾 Simpan</button>
     </div>
   </div>
 </div>

@@ -3057,23 +3057,122 @@ function tsRender() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);padding:0 4px;">
-      <span>🟦 Jam kerja biasa</span>
-      <span style="color:#1565c0;">🔵 Jam cuti (termasuk dalam total)</span>
-      <span style="color:#e53935;">🔴 Total &lt; 40 jam = potensi potong gaji</span>
-      <span style="color:#f57f17;">🟠 Total &gt; 40 jam = overtime</span>
-    </div>`;
+`;  // (legend dihapus per permintaan revisi)
 }
 
-// ─── Modal Edit / Buat Absen ───
+// ─── Modal Entri Waktu Manual ───
 
-function openTsModal(username, date, jamMasuk, jamKeluar) {
-  _tsCurrent = { username, date };
+let _tsMode    = "waktu";  // "waktu" | "jam"
+let _tsSubTab  = "masuk";  // "masuk" | "istirahat" | "keluar"
+let _tsEntries = [];       // multi-entry: [{tab, time, date, ...}]
+
+function tsSwitchMode(mode) {
+  _tsMode = mode;
+  const isWaktu = mode === "waktu";
+  document.getElementById("ts-panel-waktu").style.display = isWaktu ? "flex" : "none";
+  document.getElementById("ts-panel-jam").style.display   = isWaktu ? "none" : "flex";
+  document.getElementById("ts-mode-waktu").style.borderBottomColor = isWaktu ? "#f57c00" : "transparent";
+  document.getElementById("ts-mode-waktu").style.color    = isWaktu ? "#f57c00" : "var(--muted)";
+  document.getElementById("ts-mode-waktu").style.fontWeight = isWaktu ? "700" : "600";
+  document.getElementById("ts-mode-jam").style.borderBottomColor = !isWaktu ? "#f57c00" : "transparent";
+  document.getElementById("ts-mode-jam").style.color    = !isWaktu ? "#f57c00" : "var(--muted)";
+  document.getElementById("ts-mode-jam").style.fontWeight = !isWaktu ? "700" : "600";
+}
+
+function tsSwitchTab(tab) {
+  _tsSubTab = tab;
+  ["masuk","istirahat","keluar"].forEach(t => {
+    const btn  = document.getElementById(`ts-tab-${t}`);
+    const pnl  = document.getElementById(`ts-subtab-${t}`);
+    const active = t === tab;
+    btn.style.borderColor  = active ? "#f57c00" : "#e8ecf0";
+    btn.style.background   = active ? "#fff8f0" : "white";
+    btn.style.color        = active ? "#f57c00" : "var(--muted)";
+    btn.style.fontWeight   = active ? "700" : "600";
+    if (pnl) pnl.style.display = active ? "block" : "none";
+  });
+}
+
+async function _tsLoadAreas() {
+  try {
+    const r = await fetch("/areas");
+    const areas = await r.json();
+    ["ts-lokasi","ts-jam-lokasi"].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      // Hapus semua kecuali option pertama
+      while (sel.options.length > 1) sel.remove(1);
+      areas.filter(a => a.active !== false).forEach(a => {
+        const o = document.createElement("option");
+        o.value = a.name; o.textContent = a.name;
+        sel.appendChild(o);
+      });
+    });
+  } catch {}
+}
+
+// Live preview jam total di panel Entri Jam
+function tsUpdateJamPreview() {
+  const masuk   = document.getElementById("ts-jam-masuk")?.value;
+  const keluar  = document.getElementById("ts-jam-keluar")?.value;
+  const bMulai  = document.getElementById("ts-jam-istirahat-mulai")?.value;
+  const bSelesai= document.getElementById("ts-jam-istirahat-selesai")?.value;
+  const el      = document.getElementById("ts-jam-preview");
+  if (!el) return;
+  if (!masuk || !keluar) { el.textContent = "—"; return; }
+  let diff = (toMin(keluar) - toMin(masuk));
+  if (bMulai && bSelesai) diff -= (toMin(bSelesai) - toMin(bMulai));
+  if (diff <= 0) { el.textContent = "—"; return; }
+  const h = Math.floor(diff/60), m = diff % 60;
+  el.textContent = m > 0 ? `${h}j ${m}m` : `${h}j`;
+}
+function toMin(t) { const [h,m] = t.split(":").map(Number); return h*60+m; }
+
+async function openTsModal(username, date, jamMasuk, jamKeluar) {
+  _tsCurrent  = { username, date };
+  _tsEntries  = [];
+  _tsMode     = "waktu";
+  _tsSubTab   = "masuk";
+
   const isNew = !jamMasuk;
-  document.getElementById("modal-ts-title").textContent    = isNew ? "➕ Buat Absen Manual" : "✏️ Edit Absen";
-  document.getElementById("modal-ts-subtitle").textContent = `${username} · ${date}`;
-  document.getElementById("modal-ts-masuk").value  = jamMasuk  ? fmtTime(jamMasuk)  : "";
-  document.getElementById("modal-ts-keluar").value = jamKeluar ? fmtTime(jamKeluar) : "";
+  const u = _tsData?.users?.find(u => u.username === username);
+  const nama = u?.nama || username;
+  document.getElementById("modal-ts-title").textContent    = isNew ? "Tambahkan Entri Waktu Manual" : "Edit Entri Waktu";
+  document.getElementById("modal-ts-subtitle").textContent = `${nama} · ${date}`;
+
+  // Set nilai default
+  const nowTime = new Date().toTimeString().slice(0,5);
+  document.getElementById("ts-masuk-time").value  = jamMasuk ? fmtTime(jamMasuk) : nowTime;
+  document.getElementById("ts-masuk-date").value  = date;
+  document.getElementById("ts-keluar-time").value = jamKeluar ? fmtTime(jamKeluar) : "";
+  document.getElementById("ts-keluar-date").value = date;
+  document.getElementById("ts-istirahat-mulai").value   = "";
+  document.getElementById("ts-istirahat-selesai").value = "";
+
+  // Panel Entri Jam
+  document.getElementById("ts-jam-date").value    = date;
+  document.getElementById("ts-jam-masuk").value   = jamMasuk ? fmtTime(jamMasuk) : "";
+  document.getElementById("ts-jam-keluar").value  = jamKeluar ? fmtTime(jamKeluar) : "";
+  document.getElementById("ts-jam-istirahat-mulai").value   = "";
+  document.getElementById("ts-jam-istirahat-selesai").value = "";
+  document.getElementById("ts-catatan").value     = "";
+  document.getElementById("ts-jam-catatan").value = "";
+  document.getElementById("ts-aktivitas").value   = "";
+  document.getElementById("ts-jam-aktivitas").value = "";
+  document.getElementById("ts-lokasi").value      = "";
+  document.getElementById("ts-jam-lokasi").value  = "";
+  tsUpdateJamPreview();
+
+  // Tambahkan listener live preview
+  ["ts-jam-masuk","ts-jam-keluar","ts-jam-istirahat-mulai","ts-jam-istirahat-selesai"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.oninput = tsUpdateJamPreview;
+  });
+
+  tsSwitchMode("waktu");
+  tsSwitchTab("masuk");
+  await _tsLoadAreas();
+
   const overlay = document.getElementById("modal-ts-absen-overlay");
   overlay.style.display = "flex";
   overlay.onclick = e => { if (e.target === overlay) closeTsModal(); };
@@ -3084,29 +3183,84 @@ function closeTsModal() {
   _tsCurrent = null;
 }
 
+function tsTambahBaru() {
+  // Reset form untuk entri berikutnya (multi-entry)
+  if (_tsMode === "waktu") {
+    const nowTime = new Date().toTimeString().slice(0,5);
+    if (_tsSubTab === "masuk") {
+      document.getElementById("ts-masuk-time").value = nowTime;
+    } else if (_tsSubTab === "istirahat") {
+      document.getElementById("ts-istirahat-mulai").value   = "";
+      document.getElementById("ts-istirahat-selesai").value = "";
+    } else {
+      document.getElementById("ts-keluar-time").value = nowTime;
+    }
+  }
+  showToast("✅ Entri ditambahkan, isi entri berikutnya", "warning");
+}
+
 async function saveTsAbsen() {
-  const me      = localStorage.getItem("user");
-  const masuk   = document.getElementById("modal-ts-masuk").value;
-  const keluar  = document.getElementById("modal-ts-keluar").value;
-  if (!masuk || !keluar) { showToast("⚠️ Isi jam masuk & keluar", "warning"); return; }
   if (!_tsCurrent) return;
-
+  const me = localStorage.getItem("user");
   const { username, date } = _tsCurrent;
-  // Cek apakah sudah ada record (dari data yg sudah di-fetch)
-  const uData  = _tsData?.users?.find(u => u.username === username);
-  const dayData = uData?.days?.find(d => d.date === date);
-  const isNew  = !dayData?.jamMasuk;
 
-  const endpoint   = isNew ? "/timesheet/absen-manual" : `/timesheet/absen/${username}/${date}`;
-  const method     = isNew ? "POST" : "PUT";
-  const jamMasukFull  = `${date}T${masuk}:00`;
-  const jamKeluarFull = `${date}T${keluar}:00`;
+  let jamMasukFull, jamKeluarFull, breaks = [], catatan = "", aktivitas = "", lokasiNama = "";
+
+  if (_tsMode === "waktu") {
+    const tMasuk  = document.getElementById("ts-masuk-time").value;
+    const tKeluar = document.getElementById("ts-keluar-time").value;
+    const dMasuk  = document.getElementById("ts-masuk-date").value || date;
+    const dKeluar = document.getElementById("ts-keluar-date").value || date;
+    lokasiNama = document.getElementById("ts-lokasi").value;
+    aktivitas  = document.getElementById("ts-aktivitas").value;
+    catatan    = document.getElementById("ts-catatan").value.trim();
+
+    if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
+    if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
+    if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
+
+    jamMasukFull  = `${dMasuk}T${tMasuk}:00`;
+    jamKeluarFull = `${dKeluar}T${tKeluar}:00`;
+
+    const isMulai  = document.getElementById("ts-istirahat-mulai").value;
+    const isSelesai= document.getElementById("ts-istirahat-selesai").value;
+    if (isMulai && isSelesai) {
+      breaks = [{ start: `${date}T${isMulai}:00`, end: `${date}T${isSelesai}:00` }];
+    }
+  } else {
+    // Entri jam
+    const tDate   = document.getElementById("ts-jam-date").value || date;
+    const tMasuk  = document.getElementById("ts-jam-masuk").value;
+    const tKeluar = document.getElementById("ts-jam-keluar").value;
+    lokasiNama = document.getElementById("ts-jam-lokasi").value;
+    aktivitas  = document.getElementById("ts-jam-aktivitas").value;
+    catatan    = document.getElementById("ts-jam-catatan").value.trim();
+
+    if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
+    if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
+    if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
+
+    jamMasukFull  = `${tDate}T${tMasuk}:00`;
+    jamKeluarFull = `${tDate}T${tKeluar}:00`;
+
+    const isMulai  = document.getElementById("ts-jam-istirahat-mulai").value;
+    const isSelesai= document.getElementById("ts-jam-istirahat-selesai").value;
+    if (isMulai && isSelesai) {
+      breaks = [{ start: `${tDate}T${isMulai}:00`, end: `${tDate}T${isSelesai}:00` }];
+    }
+  }
+
+  const uData   = _tsData?.users?.find(u => u.username === username);
+  const dayData = uData?.days?.find(d => d.date === date);
+  const isNew   = !dayData?.jamMasuk;
+  const endpoint = isNew ? "/timesheet/absen-manual" : `/timesheet/absen/${username}/${date}`;
+  const method   = isNew ? "POST" : "PUT";
 
   try {
     const r = await fetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requester: me, targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull })
+      body: JSON.stringify({ requester: me, targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama })
     });
     const d = await r.json();
     if (d.status === "OK") {
