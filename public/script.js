@@ -135,10 +135,27 @@ function toggleAuthMode() {
   const ex = document.getElementById("signup-extra-fields");
   if (ex) ex.classList.toggle("hidden", isLoginMode);
   if (!isLoginMode) {
-    // Tunggu kamera benar-benar aktif sebelum user mulai scan
+    const status = document.getElementById("faceStatus");
+    if (status) status.innerText = "🔐 Meminta izin kamera & lokasi...";
+
+    // Tampilkan pesan pop-up browser untuk izin kamera & lokasi
+    requestPermissions().then(perms => {
+      if (!perms.camera || !perms.location) {
+        const missing = [];
+        if (!perms.camera)   missing.push("📷 Kamera");
+        if (!perms.location) missing.push("📍 Lokasi");
+        if (status) status.innerText = `❌ Izin diperlukan: ${missing.join(" & ")}. Aktifkan di pengaturan browser.`;
+        showToast(`⚠️ Izin ${missing.join(" & ")} diperlukan untuk Sign Up`, "warning", 5000);
+        // Tetap tampilkan form tapi beri peringatan
+      } else {
+        if (status) status.innerText = "✅ Izin kamera & lokasi diberikan";
+      }
+    });
+
+    // Mulai kamera untuk scan wajah
     startCam("video-signup").then(() => {
       const status = document.getElementById("faceStatus");
-      if (status) {
+      if (status && status.innerText.startsWith("✅ Izin")) {
         waitVideoReady("video-signup", 8000)
           .then(() => { status.innerText = "✅ Kamera siap — hadapkan wajah ke kamera"; })
           .catch(() => { status.innerText = "⚠️ Gagal buka kamera. Izinkan akses kamera."; });
@@ -179,6 +196,28 @@ async function doSignUp(u, p) {
   btn.disabled = true;
 
   try {
+    // ─── Minta izin kamera & lokasi sebelum proses ───
+    btn.innerText = "🔐 Memeriksa izin...";
+    if (status) status.innerText = "🔐 Meminta izin kamera & lokasi...";
+
+    const perms = await requestPermissions();
+
+    if (!perms.camera && !perms.location) {
+      showToast("❌ Izin kamera dan lokasi diperlukan untuk Sign Up", "error");
+      if (status) status.innerText = "❌ Izin kamera & lokasi ditolak. Aktifkan di pengaturan browser lalu coba lagi.";
+      btn.innerText = "Sign Up"; btn.disabled = false; return;
+    }
+    if (!perms.camera) {
+      showToast("❌ Izin kamera diperlukan untuk Sign Up", "error");
+      if (status) status.innerText = "❌ Izin kamera ditolak. Buka pengaturan browser → izinkan akses kamera.";
+      btn.innerText = "Sign Up"; btn.disabled = false; return;
+    }
+    if (!perms.location) {
+      showToast("❌ Izin lokasi diperlukan untuk Sign Up", "error");
+      if (status) status.innerText = "❌ Izin lokasi ditolak. Buka pengaturan browser → izinkan akses lokasi.";
+      btn.innerText = "Sign Up"; btn.disabled = false; return;
+    }
+
     const videoEl = document.getElementById("video-signup");
 
     // Pastikan kamera sudah benar-benar aktif dan ada frame
@@ -564,10 +603,32 @@ async function verifyFace(label) {
 async function sendAbsen(type, label) {
   const user = localStorage.getItem("user");
   if (!user) return checkLoginStatus();
+
+  // ─── Cek izin kamera ───
+  let camOk = false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    stream.getTracks().forEach(t => t.stop());
+    camOk = true;
+  } catch {
+    camOk = false;
+  }
+  if (!camOk) {
+    showToast("❌ Izin kamera diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
+    return;
+  }
+
+  // ─── Cek izin lokasi ───
+  const loc = await getLoc();
+  if (loc.denied) {
+    showToast("❌ Izin lokasi diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
+    return;
+  }
+
   const ok = await verifyFace(label);
   if (!ok) return;
   const photo = takePhoto();
-  const loc   = await getLoc();
+
   try {
     const now = new Date().toISOString();
     const r = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -576,16 +637,15 @@ async function sendAbsen(type, label) {
     if (d.status === "OK") {
       const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
       showToast(msgs[type] || "✅ Berhasil!");
-      // Update record lokal langsung agar ticker responsif
       updateLocalRecord(type, now);
       loadStatus();
-      // Refresh info mingguan saat clock out
       if (type === "OUT") loadWeeklyInfo();
-      // Tracking: mulai ping saat IN/BREAK_END, stop saat OUT
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
     } else if (d.status === "OUT_OF_AREA") {
-      showToast(`❌ Di luar area kantor (${d.distance}m dari ${d.area||"kantor"})`, "error");
+      showToast(`❌ Di luar area kantor! Jarak ${d.distance}m dari ${d.area||"kantor"}. Gunakan status "Tugas Luar" jika bekerja di luar kantor.`, "error", 6000);
+    } else if (d.status === "LOCATION_REQUIRED") {
+      showToast("❌ Aktifkan layanan lokasi di perangkat Anda untuk Clock In", "error", 5000);
     } else if (d.status === "ALREADY_IN") {
       showToast("⚠️ Sudah Clock In hari ini", "warning"); loadStatus();
     }
@@ -1000,12 +1060,44 @@ async function loadHomeLibur() {
 }
 
 
+// ─── Minta izin kamera + lokasi sekaligus, return {camera, location} ───
+async function requestPermissions() {
+  const result = { camera: false, location: false };
+
+  // Kamera
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    result.camera = true;
+    // Langsung stop — hanya untuk trigger permission
+    stream.getTracks().forEach(t => t.stop());
+  } catch {
+    result.camera = false;
+  }
+
+  // Lokasi
+  result.location = await new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(false);
+    navigator.geolocation.getCurrentPosition(
+      () => resolve(true),
+      () => resolve(false),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+
+  return result;
+}
+
+// ─── Ambil koordinat — return null jika izin ditolak (jangan silent fallback ke 0,0) ───
 async function getLoc() {
   return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({lat:0,lng:0});
+    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, denied: true });
     navigator.geolocation.getCurrentPosition(
-      p => resolve({lat:p.coords.latitude,lng:p.coords.longitude}),
-      () => resolve({lat:0,lng:0}), {enableHighAccuracy:true,timeout:8000}
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, denied: false }),
+      err => {
+        // code 1 = PERMISSION_DENIED
+        resolve({ lat: 0, lng: 0, denied: err.code === 1 });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   });
 }

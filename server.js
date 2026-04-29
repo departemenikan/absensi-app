@@ -172,14 +172,31 @@ app.post("/absen", (req, res) => {
   const { user, type, time, lat, lng, photo, areaId } = req.body;
   const today = new Date().toISOString().split("T")[0];
 
-  // Validasi area — cek semua area aktif jika ada koordinat
-  if (lat !== 0 && lng !== 0 && areas.length > 0) {
-    const targetArea = areaId ? areas.find(a => a.id === areaId) : null;
-    const checkAreas = targetArea ? [targetArea] : areas.filter(a => a.active);
-    if (checkAreas.length > 0) {
-      const inAny = checkAreas.some(a => dist(lat, lng, a.lat, a.lng) <= a.radius);
+  // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
+  const users    = load(F.users, {});
+  const userData = users[user] || {};
+  const isTugasLuar = userData.statusKerja === "Tugas Luar";
+
+  // Wajib kirim koordinat valid (bukan 0,0) — jika kosong berarti izin lokasi ditolak
+  if ((lat === 0 && lng === 0) || lat == null || lng == null) {
+    // Jika Tugas Luar, boleh lanjut meski koordinat 0 (misal di area sinyal buruk)
+    // tapi tetap harus coba kirim koordinat — tolak jika sama sekali tidak ada izin
+    if (!isTugasLuar) {
+      return res.status(400).send({ status: "LOCATION_REQUIRED", msg: "Izin lokasi diperlukan untuk absensi" });
+    }
+  }
+
+  // Validasi area — hanya untuk clock IN, dan hanya jika ada area aktif
+  // Clock OUT/BREAK tidak perlu validasi area (bisa di luar kantor saat pulang)
+  if (type === "IN" && areas.length > 0 && !isTugasLuar) {
+    if (lat === 0 && lng === 0) {
+      return res.status(400).send({ status: "LOCATION_REQUIRED", msg: "Aktifkan lokasi untuk Clock In" });
+    }
+    const activeAreas = areas.filter(a => a.active !== false);
+    if (activeAreas.length > 0) {
+      const inAny = activeAreas.some(a => dist(lat, lng, a.lat, a.lng) <= a.radius);
       if (!inAny) {
-        const nearest = checkAreas.reduce((best, a) => {
+        const nearest = activeAreas.reduce((best, a) => {
           const d = dist(lat, lng, a.lat, a.lng);
           return d < best.d ? { d, name: a.name } : best;
         }, { d: Infinity, name: "" });
