@@ -635,7 +635,15 @@ app.put("/anggota/:username/divisi", requireLevel(2), (req, res) => {
 // ========================
 // AREA (multi-area)
 // ========================
-app.get("/areas", requireLevel(99), (req, res) => res.send(load(F.areas, [])));
+// GET /areas — data lengkap (nama, lat, lng, radius, id) hanya untuk Owner/Admin
+app.get("/areas", requireLevel(2), (req, res) => res.send(load(F.areas, [])));
+
+// GET /areas/info — hanya jumlah area aktif, tanpa koordinat. Aman untuk semua user login.
+app.get("/areas/info", requireLevel(99), (req, res) => {
+  const areas = load(F.areas, []);
+  const active = areas.filter(a => a.active !== false);
+  res.send({ total: areas.length, activeCount: active.length });
+});
 
 app.post("/areas", requireLevel(2), (req, res) => {
   const { name, lat, lng, radius } = req.body;
