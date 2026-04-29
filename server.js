@@ -1,7 +1,10 @@
 const express = require("express");
 const fs      = require("fs");
 const path    = require("path");
+const bcrypt  = require("bcrypt");
 const app     = express();
+
+const BCRYPT_ROUNDS = 10;
 
 const PORT     = process.env.PORT || 3000;
 const IS_CLOUD = process.env.RAILWAY_ENVIRONMENT !== undefined;
@@ -185,14 +188,15 @@ initKebijakanCutiDefault();
 // ========================
 // AUTH
 // ========================
-app.post("/signup", (req, res) => {
+app.post("/signup", async (req, res) => {
   const { username, password, faceDescriptor, namaLengkap, agama } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
   const isFirst = Object.keys(users).length === 0;
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
   users[username] = {
-    password,
+    password: hashedPassword,
     faceDescriptor: faceDescriptor || [],
     group:       isFirst ? "owner"   : "anggota",
     peran:       isFirst ? "Owner"   : "Anggota",
@@ -209,11 +213,25 @@ app.post("/signup", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   const users  = load(F.users, {});
   const user   = users[username];
-  if (!user || user.password !== password) return res.send({ status: "FAIL" });
+  if (!user) return res.send({ status: "FAIL" });
+  // Support password lama (plaintext) yang belum di-migrate — hash otomatis saat login
+  let valid = false;
+  if (user.password.startsWith("$2")) {
+    valid = await bcrypt.compare(password, user.password);
+  } else {
+    // Password lama plaintext: bandingkan langsung, lalu upgrade ke hash
+    valid = user.password === password;
+    if (valid) {
+      user.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      users[username] = user;
+      save(F.users, users);
+    }
+  }
+  if (!valid) return res.send({ status: "FAIL" });
   const groups = load(F.groups, []);
   const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
   res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level });
@@ -237,10 +255,13 @@ app.get("/face-descriptor/:username", (req, res) => {
 // ========================
 // ABSENSI
 // ========================
-app.post("/absen", (req, res) => {
+app.post("/absen", requireLevel(99), (req, res) => {
   const data = load(F.data, []);
   const areas = load(F.areas, []);
-  const { user, type, time, lat, lng, accuracy, photo, areaId } = req.body;
+  // Identitas user diambil dari header X-User (sudah diverifikasi middleware), bukan dari body
+  const user = req._requester;
+  const { type, time, lat, lng, accuracy, photo } = req.body;
+  if (!user) return res.status(401).send({ status: "UNAUTHORIZED" });
   const today = new Date().toISOString().split("T")[0];
 
   // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
@@ -359,7 +380,8 @@ app.get("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   const user   = users[req.params.username];
   if (!user) return res.send({ status: "NOT_FOUND" });
   const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
-  res.send({
+  const isAdminOrOwner = req._requesterLevel <= 2;
+  const response = {
     username:    req.params.username,
     namaLengkap: user.namaLengkap  || "",
     agama:       user.agama        || "",
@@ -370,17 +392,25 @@ app.get("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
     groupColor:  group?.color      || "#7f8c8d",
     divisi:      Array.isArray(user.divisi) ? user.divisi : (user.divisi ? [user.divisi] : []),
     statusKerja: user.statusKerja  || "",
-    nominalGaji: user.nominalGaji  || "",
     photo:       user.photo        || "",
-    faceDescriptor: user.faceDescriptor || [],
-  });
+    // nominalGaji hanya dikirim ke Owner/Admin
+    ...(isAdminOrOwner ? { nominalGaji: user.nominalGaji || "" } : {}),
+    // faceDescriptor TIDAK dikirim di sini — gunakan /face-descriptor/:username
+  };
+  res.send(response);
 });
 
 app.put("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  const allowed = ["namaLengkap","agama","jabatan","divisi","statusKerja","nominalGaji"];
-  allowed.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
+  // Field yang boleh diedit oleh siapa saja (termasuk user sendiri)
+  const allowedSelf  = ["namaLengkap", "agama"];
+  // Field yang hanya boleh diedit oleh Owner/Admin (level <= 2)
+  const allowedAdmin = ["jabatan", "divisi", "statusKerja", "nominalGaji"];
+  allowedSelf.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
+  if (req._requesterLevel <= 2) {
+    allowedAdmin.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
+  }
   save(F.users, users);
   res.send({ status: "OK" });
 });
@@ -401,12 +431,12 @@ app.put("/profile/:username/face", requireSelfOrLevel("username", 2), (req, res)
   res.send({ status: "OK" });
 });
 
-app.put("/profile/:username/password", requireSelfOrLevel("username", 2), (req, res) => {
+app.put("/profile/:username/password", requireSelfOrLevel("username", 2), async (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 6) return res.send({ status: "INVALID" });
-  users[req.params.username].password = newPassword;
+  users[req.params.username].password = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   save(F.users, users);
   res.send({ status: "OK" });
 });

@@ -728,8 +728,8 @@ async function sendAbsen(type, label) {
 
   try {
     const now = new Date().toISOString();
-    const r = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user, type, time: now, lat:loc.lat, lng:loc.lng, photo}) });
+    const r = await authFetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({type, time: now, lat:loc.lat, lng:loc.lng, photo}) });
     const d = await r.json();
     if (d.status === "OK") {
       const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
@@ -1602,7 +1602,7 @@ function timeAgo(iso) {
 async function loadAnggota() {
   try {
     const [anggotaRes, groupsRes, divisiRes] = await Promise.all([
-      fetch("/anggota"), fetch("/groups"), fetch("/divisi")
+      authFetch("/anggota"), authFetch("/groups"), authFetch("/divisi")
     ]);
     _anggotaData   = await anggotaRes.json();
     _anggotaGroups = await groupsRes.json();
@@ -1781,7 +1781,7 @@ async function openDetailAnggota(username) {
   // Refresh data dulu agar selalu up-to-date
   try {
     const [anggotaRes, groupsRes, divisiRes] = await Promise.all([
-      fetch("/anggota"), fetch("/groups"), fetch("/divisi")
+      authFetch("/anggota"), authFetch("/groups"), authFetch("/divisi")
     ]);
     _anggotaData   = await anggotaRes.json();
     _anggotaGroups = await groupsRes.json();
@@ -1891,15 +1891,15 @@ async function saveDetailAnggota() {
 
   try {
     await Promise.all([
-      fetch(`/anggota/${_detailUsername}/group`, {
+      authFetch(`/anggota/${_detailUsername}/group`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ group: groupId })
       }),
-      fetch(`/anggota/${_detailUsername}/divisi`, {
+      authFetch(`/anggota/${_detailUsername}/divisi`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", divisiList })
       }),
-      fetch(`/anggota/${_detailUsername}/status`, {
+      authFetch(`/anggota/${_detailUsername}/status`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ statusKerja })
       }),
@@ -1967,7 +1967,7 @@ let _anggotaAll  = [];
 
 async function loadDivisi() {
   try {
-    const [divisiRes, usersRes] = await Promise.all([fetch("/divisi"), fetch("/anggota")]);
+    const [divisiRes, usersRes] = await Promise.all([authFetch("/divisi"), authFetch("/anggota")]);
     _divisiList  = await divisiRes.json();
     _anggotaAll  = await usersRes.json();
     renderDivisiTable(_divisiList);
@@ -2191,7 +2191,7 @@ async function saveBuatGrup() {
 
     // Assign semua anggota dengan action "add" → TIDAK menghapus divisi sebelumnya (multi-divisi)
     await Promise.all(checked.map(u =>
-      fetch(`/anggota/${u}/divisi`, {
+      authFetch(`/anggota/${u}/divisi`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ divisi: nama, action: "add" })
       })
@@ -2211,7 +2211,7 @@ let _detailDivisiId = null;
 async function openDetailDivisi(id) {
   // Refresh data terbaru
   try {
-    const [divisiRes, usersRes] = await Promise.all([fetch("/divisi"), fetch("/anggota")]);
+    const [divisiRes, usersRes] = await Promise.all([authFetch("/divisi"), authFetch("/anggota")]);
     _divisiList = await divisiRes.json();
     _anggotaAll = await usersRes.json();
   } catch(e) { console.warn("openDetailDivisi: gagal refresh data", e); /* pakai cache */ }
@@ -2325,7 +2325,7 @@ async function saveDetailDivisi() {
     });
 
     // Add anggota yang dicentang (action "add" → tidak hapus divisi lain)
-    await Promise.all(allToAdd.map(u => fetch(`/anggota/${u}/divisi`, {
+    await Promise.all(allToAdd.map(u => authFetch(`/anggota/${u}/divisi`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ divisi: namaBaru, action: "add" })
     })));
@@ -2337,7 +2337,7 @@ async function saveDetailDivisi() {
         const ang = _anggotaAll.find(a => a.username === u);
         const arr = Array.isArray(ang?.divisi) ? ang.divisi : (ang?.divisi ? [ang.divisi] : []);
         if (arr.includes(d.nama)) {
-          return fetch(`/anggota/${u}/divisi`, {
+          return authFetch(`/anggota/${u}/divisi`, {
             method: "PUT", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ divisi: d.nama, action: "remove" })
           });
