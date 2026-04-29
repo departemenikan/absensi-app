@@ -36,8 +36,23 @@ function openView(viewId) {
   if (viewId === "view-aktivitas")      loadAktivitas();
   if (viewId === "view-aksesibilitas")  loadGroups();
   if (viewId === "view-area") {
-    switchAreaTab("daftar");  // selalu buka di tab Daftar
     loadAreas();
+    setTimeout(() => {
+      if (!_areaMap) {
+        const defLat = -8.6500000, defLng = 115.2200000;
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            p => initAreaMap(p.coords.latitude, p.coords.longitude),
+            () => initAreaMap(defLat, defLng),
+            { enableHighAccuracy: true, timeout: 5000 }
+          );
+        } else {
+          initAreaMap(defLat, defLng);
+        }
+      } else {
+        _areaMap.invalidateSize();
+      }
+    }, 200);
   }
   if (viewId === "view-libur")      loadLibur();
   if (viewId === "view-anggota")    { loadAnggota(); }
@@ -2041,49 +2056,64 @@ async function loadAreas() {
     const list = document.getElementById("area-list");
     if (!data.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p>'; return; }
     list.innerHTML = data.map(a => `
-      <div class="area-item">
-        <div>
-          <div class="area-name">📍 ${a.name}</div>
-          <div class="area-detail">Radius: ${a.radius}m · ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</div>
+      <div class="area-item" style="flex-direction:column;align-items:stretch;padding:0;">
+        <!-- Baris utama: nama + tombol aksi -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;"
+             onclick="toggleAreaMap('${a.id}')" style="cursor:pointer;">
+          <div style="cursor:pointer;flex:1;">
+            <div class="area-name">📍 ${a.name}
+              <span id="area-chevron-${a.id}" style="font-size:11px;color:var(--muted);margin-left:6px;transition:transform .2s;">▼</span>
+            </div>
+            <div class="area-detail">Radius: ${a.radius}m · ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
+            <span class="area-active ${a.active?'on':'off'}" onclick="toggleArea('${a.id}',${!a.active})" style="cursor:pointer;">
+              ${a.active?'✅ Aktif':'❌ Nonaktif'}
+            </span>
+            <button onclick="deleteArea('${a.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="area-active ${a.active?'on':'off'}" onclick="toggleArea('${a.id}',${!a.active})" style="cursor:pointer;">
-            ${a.active?'✅ Aktif':'❌ Nonaktif'}
-          </span>
-          <button onclick="deleteArea('${a.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
+        <!-- Peta mini (tersembunyi default) -->
+        <div id="area-map-wrap-${a.id}" style="display:none;padding:0 12px 12px;">
+          <div id="area-map-mini-${a.id}" style="width:100%;height:200px;border-radius:10px;border:1.5px solid #e8ecf0;z-index:1;"></div>
         </div>
       </div>`).join("");
   } catch {}
 }
 
-// ---- TAB SWITCHER AREA ----
-function switchAreaTab(tab) {
-  const isTambah = tab === "tambah";
-  document.getElementById("area-panel-daftar").style.display = isTambah ? "none" : "block";
-  document.getElementById("area-panel-tambah").style.display = isTambah ? "block" : "none";
-  document.getElementById("area-tab-daftar").style.background  = isTambah ? "white" : "var(--primary)";
-  document.getElementById("area-tab-daftar").style.color       = isTambah ? "var(--muted)" : "white";
-  document.getElementById("area-tab-tambah").style.background  = isTambah ? "var(--primary)" : "white";
-  document.getElementById("area-tab-tambah").style.color       = isTambah ? "white" : "var(--muted)";
+// Objek simpan instance peta mini agar tidak double-init
+const _areaMiniMaps = {};
 
-  // Init peta saat tab Tambah dibuka
-  if (isTambah) {
-    setTimeout(() => {
-      if (!_areaMap) {
-        const defLat = -8.6500000, defLng = 115.2200000;
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            p => initAreaMap(p.coords.latitude, p.coords.longitude),
-            () => initAreaMap(defLat, defLng),
-            { enableHighAccuracy: true, timeout: 5000 }
-          );
-        } else {
-          initAreaMap(defLat, defLng);
-        }
-      } else {
-        _areaMap.invalidateSize();
-      }
-    }, 200);
+function toggleAreaMap(id) {
+  const wrap     = document.getElementById(`area-map-wrap-${id}`);
+  const chevron  = document.getElementById(`area-chevron-${id}`);
+  const isOpen   = wrap.style.display !== "none";
+
+  wrap.style.display = isOpen ? "none" : "block";
+  chevron.style.transform = isOpen ? "" : "rotate(180deg)";
+
+  if (!isOpen && !_areaMiniMaps[id]) {
+    // Ambil data area dari server lalu init peta
+    fetch("/areas").then(r => r.json()).then(data => {
+      const a = data.find(x => x.id === id);
+      if (!a) return;
+      const mapEl = document.getElementById(`area-map-mini-${id}`);
+      if (!mapEl) return;
+      const m = L.map(`area-map-mini-${id}`, { zoomControl: true, dragging: true })
+                 .setView([a.lat, a.lng], 17);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors", maxZoom: 19
+      }).addTo(m);
+      L.marker([a.lat, a.lng]).addTo(m)
+       .bindPopup(`📍 ${a.name}<br><small>Radius: ${a.radius}m</small>`).openPopup();
+      L.circle([a.lat, a.lng], {
+        radius: a.radius, color: "#4f8ef7", fillColor: "#4f8ef7", fillOpacity: 0.15
+      }).addTo(m);
+      _areaMiniMaps[id] = m;
+      setTimeout(() => m.invalidateSize(), 150);
+    });
+  } else if (!isOpen && _areaMiniMaps[id]) {
+    setTimeout(() => _areaMiniMaps[id].invalidateSize(), 150);
   }
 }
 
@@ -2178,7 +2208,6 @@ async function saveArea() {
       if (_areaMarker) { _areaMap.removeLayer(_areaMarker); _areaMarker = null; }
       if (_areaCircle) { _areaMap.removeLayer(_areaCircle); _areaCircle = null; }
       loadAreas();
-      switchAreaTab("daftar");  // balik ke tab Daftar setelah simpan
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
