@@ -975,10 +975,12 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
 // GET /rekap/monthly?month=YYYY-MM&requester=username
 // ========================
 app.get("/rekap/monthly", requireLevel(99), (req, res) => {
-  const { month, requester } = req.query;
+  const { month } = req.query;
   if (!month) return res.send({ error: "month required" });
 
-  const rGroup = requester ? getUserGroup(requester) : "anggota";
+  // Identitas requester diambil dari middleware (X-User header), bukan dari query string
+  const requester = req._requester;
+  const rGroup    = getUserGroup(requester);
   if (rGroup !== "owner" && rGroup !== "admin") {
     return res.status(403).send({ error: "Forbidden" });
   }
@@ -1075,8 +1077,7 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
       nama:       u.namaLengkap || username,
       jabatan:    u.jabatan || "-",
       divisi:     Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
-      photo:      u.photo || "",
-      group:      u.group || "anggota",
+      // photo & group tidak disertakan — tidak dibutuhkan untuk rekap jam kerja
       days,
       weekTotals,
       totalBulan,

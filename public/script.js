@@ -1243,7 +1243,7 @@ async function loadRekap() {
   el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:32px;">⏳ Memuat rekap...</p>`;
 
   try {
-    const r = await authFetch(`/rekap/monthly?month=${_rekapMonth}&requester=${me}`);
+    const r = await authFetch(`/rekap/monthly?month=${_rekapMonth}`);
     _rekapData = await r.json();
 
     // Isi dropdown filter minggu
@@ -1339,12 +1339,10 @@ function rekapRender() {
 
   // ─── BANGUN BARIS ─────────────────────────────────────────────
   const rows = filtered.map(u => {
-    // Avatar
-    const avatarHtml = u.photo
-      ? `<img src="${u.photo}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-      : `<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
-            display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:10px;flex-shrink:0;">
-          ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
+    // Avatar — photo tidak disertakan di response rekap, gunakan inisial
+    const avatarHtml = `<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+          display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:10px;flex-shrink:0;">
+        ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
 
     let rowHtml = `<tr style="border-bottom:1px solid #f0f2f5;">
       <td style="padding:6px 10px;position:sticky;left:0;background:white;z-index:1;border-right:1px solid #e8ecf0;">
