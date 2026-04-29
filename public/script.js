@@ -36,31 +36,16 @@ function openView(viewId) {
   if (viewId === "view-aktivitas")      loadAktivitas();
   if (viewId === "view-aksesibilitas")  loadGroups();
   if (viewId === "view-area") {
+    switchAreaTab("daftar");  // selalu buka di tab Daftar
     loadAreas();
-    setTimeout(() => {
-      if (!_areaMap) {
-        const defLat = -8.6500000, defLng = 115.2200000;
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            p => initAreaMap(p.coords.latitude, p.coords.longitude),
-            () => initAreaMap(defLat, defLng),
-            { enableHighAccuracy: true, timeout: 5000 }
-          );
-        } else {
-          initAreaMap(defLat, defLng);
-        }
-      } else {
-        _areaMap.invalidateSize();
-      }
-    }, 200);
   }
   if (viewId === "view-libur")      loadLibur();
   if (viewId === "view-anggota")    { loadAnggota(); }
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-tracking")   loadTracking();
   if (viewId === "view-timesheet")  {
-    // Selalu reset ke minggu berjalan saat tab dibuka
-    _tsWeekStart = tsGetMonday();
+    const m = document.getElementById("ts-month");
+    if (!m.value) m.value = new Date().toISOString().slice(0, 7);
     loadTimesheet();
   }
 }
@@ -2071,6 +2056,37 @@ async function loadAreas() {
   } catch {}
 }
 
+// ---- TAB SWITCHER AREA ----
+function switchAreaTab(tab) {
+  const isTambah = tab === "tambah";
+  document.getElementById("area-panel-daftar").style.display = isTambah ? "none" : "block";
+  document.getElementById("area-panel-tambah").style.display = isTambah ? "block" : "none";
+  document.getElementById("area-tab-daftar").style.background  = isTambah ? "white" : "var(--primary)";
+  document.getElementById("area-tab-daftar").style.color       = isTambah ? "var(--muted)" : "white";
+  document.getElementById("area-tab-tambah").style.background  = isTambah ? "var(--primary)" : "white";
+  document.getElementById("area-tab-tambah").style.color       = isTambah ? "white" : "var(--muted)";
+
+  // Init peta saat tab Tambah dibuka
+  if (isTambah) {
+    setTimeout(() => {
+      if (!_areaMap) {
+        const defLat = -8.6500000, defLng = 115.2200000;
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            p => initAreaMap(p.coords.latitude, p.coords.longitude),
+            () => initAreaMap(defLat, defLng),
+            { enableHighAccuracy: true, timeout: 5000 }
+          );
+        } else {
+          initAreaMap(defLat, defLng);
+        }
+      } else {
+        _areaMap.invalidateSize();
+      }
+    }, 200);
+  }
+}
+
 // ---- MAP AREA KANTOR ----
 let _areaMap = null;
 let _areaMarker = null;
@@ -2162,6 +2178,7 @@ async function saveArea() {
       if (_areaMarker) { _areaMap.removeLayer(_areaMarker); _areaMarker = null; }
       if (_areaCircle) { _areaMap.removeLayer(_areaCircle); _areaCircle = null; }
       loadAreas();
+      switchAreaTab("daftar");  // balik ke tab Daftar setelah simpan
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
