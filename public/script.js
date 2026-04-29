@@ -76,6 +76,9 @@ function openView(viewId) {
   if (viewId === "view-aktivitas")      loadAktivitas();
   if (viewId === "view-aksesibilitas")  loadGroups();
   if (viewId === "view-area") {
+    if (!userMenus.includes("area") && !userMenus.includes("area.daftar")) {
+      showToast("⛔ Akses ditolak", "error"); return;
+    }
     switchAreaTab("daftar");
     loadAreas();
   }
@@ -2642,10 +2645,15 @@ async function loadAreas() {
             <div class="area-detail">Radius: ${a.radius}m · ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
-            <span class="area-active ${a.active?'on':'off'}" onclick="toggleArea('${a.id}',${!a.active})" style="cursor:pointer;">
-              ${a.active?'✅ Aktif':'❌ Nonaktif'}
-            </span>
-            <button onclick="deleteArea('${a.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>
+            ${userLevel <= 2
+              ? `<span class="area-active ${a.active?'on':'off'}" onclick="toggleArea('${a.id}',${!a.active})" style="cursor:pointer;">
+                  ${a.active?'✅ Aktif':'❌ Nonaktif'}
+                 </span>
+                 <button onclick="deleteArea('${a.id}')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;">🗑</button>`
+              : `<span class="area-active ${a.active?'on':'off'}" style="pointer-events:none;opacity:.8;">
+                  ${a.active?'✅ Aktif':'❌ Nonaktif'}
+                 </span>`
+            }
           </div>
         </div>
         <!-- Peta mini (tersembunyi default) -->
@@ -2669,7 +2677,7 @@ function toggleAreaMap(id) {
 
   if (!isOpen && !_areaMiniMaps[id]) {
     // Ambil data area dari server lalu init peta
-    fetch("/areas").then(r => r.json()).then(data => {
+    authFetch("/areas").then(r => r.json()).then(data => {
       const a = data.find(x => x.id === id);
       if (!a) return;
       const mapEl = document.getElementById(`area-map-mini-${id}`);
@@ -2694,6 +2702,10 @@ function toggleAreaMap(id) {
 
 // ---- TAB SWITCHER AREA ----
 function switchAreaTab(tab) {
+  // Non-admin tidak boleh akses tab tambah meski dipanggil langsung
+  if (tab === "tambah" && userLevel > 2) {
+    showToast("⛔ Hanya Owner/Admin yang bisa menambah area", "error"); return;
+  }
   const isTambah = tab === "tambah";
   document.getElementById("area-panel-daftar").style.display = isTambah ? "none" : "block";
   document.getElementById("area-panel-tambah").style.display = isTambah ? "block" : "none";
@@ -2873,6 +2885,7 @@ document.addEventListener("click", e => {
 });
 
 async function saveArea() {
+  if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa menambah area", "error"); return; }
   const name   = document.getElementById("area-name").value.trim();
   const lat    = document.getElementById("area-lat").value;
   const lng    = document.getElementById("area-lng").value;
@@ -2896,6 +2909,7 @@ async function saveArea() {
 }
 
 async function toggleArea(id, active) {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   try {
     await authFetch(`/areas/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({active}) });
     showToast(active ? "✅ Area diaktifkan" : "❌ Area dinonaktifkan");
@@ -2904,6 +2918,7 @@ async function toggleArea(id, active) {
 }
 
 async function deleteArea(id) {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   uConfirm({
     icon: "📍",
     title: "Hapus Area",
