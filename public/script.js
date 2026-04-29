@@ -4511,10 +4511,11 @@ async function sendTrackPing() {
   try {
     const loc = await getLoc();
     if (!loc.lat && !loc.lng) return;
-    await fetch("/tracking/ping", {
+    // Gunakan authFetch agar X-User header disertakan; identitas user divalidasi di server
+    await authFetch("/tracking/ping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user, lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 0 })
+      body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 0 })
     });
   } catch {}
 }

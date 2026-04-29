@@ -1679,7 +1679,9 @@ app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ===
 
 // POST lokasi dari anggota (dipanggil periodik saat sedang kerja)
 app.post("/tracking/ping", requireLevel(99), (req, res) => {
-  const { user, lat, lng, accuracy } = req.body;
+  const { lat, lng, accuracy } = req.body;
+  // Identitas user diambil dari middleware (X-User header), bukan dari body
+  const user = req._requester;
   if (!user || lat == null || lng == null) return res.send({ status: "ERROR" });
 
   const tracking = load(F.tracking, {});
@@ -1719,27 +1721,55 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
   const today    = new Date().toISOString().split("T")[0];
   const todayData = (tracking[today] || {});
 
-  const result = Object.keys(users).map(username => {
-    const points  = todayData[username] || [];
-    const last    = points.length ? points[points.length - 1] : null;
-    const rec     = data.find(d => d.user === username && d.date === today);
-    let status    = "OUT";
-    if (rec && !rec.jamKeluar) {
-      const lb = rec.breaks.at(-1);
-      status   = (lb && !lb.end) ? "BREAK" : "IN";
-    } else if (rec && rec.jamKeluar) status = "DONE";
+  const requester      = req._requester;
+  const requesterGroup = getUserGroup(requester);
 
-    return {
-      username,
-      namaLengkap: users[username].namaLengkap || username,
-      photo:       users[username].photo || "",
-      jabatan:     users[username].jabatan || "",
-      divisi:      users[username].divisi || "",
-      status,
-      last,
-      totalPoints: points.length,
-    };
-  });
+  // Tentukan divisi requester jika manager
+  const requesterDivisi = (() => {
+    const u = users[requester];
+    if (!u) return [];
+    return Array.isArray(u.divisi) ? u.divisi : (u.divisi ? [u.divisi] : []);
+  })();
+
+  const result = Object.keys(users)
+    .filter(username => {
+      // Owner & admin bisa lihat semua kecuali diri sendiri tidak perlu disembunyikan
+      if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+      // Manager: hanya bisa lihat anggota & koordinator di divisinya sendiri
+      // Tidak bisa lihat owner, admin, atau sesama manager
+      if (requesterGroup === "manager") {
+        const targetGroup  = getUserGroup(username);
+        if (targetGroup === "owner" || targetGroup === "admin" || targetGroup === "manager") return false;
+        const targetUser   = users[username];
+        const targetDivisi = Array.isArray(targetUser?.divisi)
+          ? targetUser.divisi
+          : (targetUser?.divisi ? [targetUser.divisi] : []);
+        return requesterDivisi.some(d => targetDivisi.includes(d));
+      }
+      return false;
+    })
+    .map(username => {
+      const points  = todayData[username] || [];
+      const last    = points.length ? points[points.length - 1] : null;
+      const rec     = data.find(d => d.user === username && d.date === today);
+      let status    = "OUT";
+      if (rec && !rec.jamKeluar) {
+        const lb = rec.breaks.at(-1);
+        status   = (lb && !lb.end) ? "BREAK" : "IN";
+      } else if (rec && rec.jamKeluar) status = "DONE";
+
+      return {
+        username,
+        namaLengkap: users[username].namaLengkap || username,
+        photo:       users[username].photo || "",
+        jabatan:     users[username].jabatan || "",
+        divisi:      users[username].divisi || "",
+        status,
+        last,
+        totalPoints: points.length,
+      };
+    });
+
   res.send(result);
 });
 
