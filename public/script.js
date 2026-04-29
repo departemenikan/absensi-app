@@ -49,6 +49,15 @@ function toggleEye(inputId, btnId) {
 // ============================================================
 // NAVIGASI — satu sistem terpusat, tidak ada konflik
 // ============================================================
+// ============================================================
+// AUTH FETCH — semua request ke server wajib sertakan X-User header
+// ============================================================
+function authFetch(url, options = {}) {
+  const user = localStorage.getItem("user") || "";
+  options.headers = Object.assign({}, options.headers || {}, { "X-User": user });
+  return fetch(url, options);
+}
+
 function openView(viewId) {
   // Sembunyikan semua view
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -71,7 +80,12 @@ function openView(viewId) {
     loadAreas();
   }
   if (viewId === "view-libur")      loadLibur();
-  if (viewId === "view-anggota")    { loadAnggota(); }
+  if (viewId === "view-anggota") {
+    if (!userMenus.includes("anggota") && !userMenus.includes("anggota.daftar")) {
+      showToast("⛔ Akses ditolak", "error"); return;
+    }
+    loadAnggota();
+  }
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-tracking")   loadTracking();
   if (viewId === "view-timesheet")  {
@@ -367,7 +381,7 @@ async function updateHeaderAvatar() {
   const me = localStorage.getItem("user");
   if (!me) return;
   try {
-    const r = await fetch("/profile/" + me + "?requester=" + encodeURIComponent(me));
+    const r = await authFetch("/profile/" + me + "?requester=" + encodeURIComponent(me));
     const d = await r.json();
     const avatarIds = [
       "hdr-avatar-home","hdr-avatar-rekap","hdr-avatar-admin",
@@ -947,7 +961,7 @@ async function _doAutoOvertime() {
   try {
     // Panggil endpoint server untuk hitung & simpan overtime user ini
     const tahun = new Date().getFullYear();
-    const r = await fetch(`/kuota-cuti/hitung-overtime/${user}?tahun=${tahun}`, { method: "POST" });
+    const r = await authFetch(`/kuota-cuti/hitung-overtime/${user}?tahun=${tahun}`, { method: "POST" });
     const d = await r.json();
     if (d.status === "OK") {
       const jam = d.jamOvertime || 0;
@@ -966,7 +980,7 @@ async function loadTodayDetail() {
   const user  = localStorage.getItem("user");
   const today = new Date().toISOString().split("T")[0];
   try {
-    const r   = await fetch("/history/" + user);
+    const r   = await authFetch("/history/" + user);
     const d   = await r.json();
     const rec = d.find(x => x.date === today) || null;
     startTicker(rec);
@@ -1020,7 +1034,7 @@ async function loadWeeklyInfo() {
   const week  = getWeekKey(today);
 
   try {
-    const r   = await fetch("/history/" + user);
+    const r   = await authFetch("/history/" + user);
     const all = await r.json();
 
     // Filter record minggu ini yang sudah clock out
@@ -1078,7 +1092,7 @@ async function loadHomeLibur() {
 
   try {
     var user  = localStorage.getItem('user') || '';
-    var r     = await fetch('/libur');
+    var r     = await authFetch('/libur');
     var semua = await r.json();
 
     var bulanIni = semua.filter(function(h) {
@@ -1221,7 +1235,7 @@ async function loadRekap() {
   el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:32px;">⏳ Memuat rekap...</p>`;
 
   try {
-    const r = await fetch(`/rekap/monthly?month=${_rekapMonth}&requester=${me}`);
+    const r = await authFetch(`/rekap/monthly?month=${_rekapMonth}&requester=${me}`);
     _rekapData = await r.json();
 
     // Isi dropdown filter minggu
@@ -1524,7 +1538,7 @@ async function loadAdmin() {
   const date   = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
   const search = (document.getElementById("adm-search").value||"").toLowerCase();
   try {
-    const r = await fetch("/admin/today?date="+date);
+    const r = await authFetch("/admin/today?date="+date);
     const d = await r.json();
     document.getElementById("adm-total").innerText = d.totalUsers;
     document.getElementById("adm-hadir").innerText = d.records.filter(x=>x.status!=="OUT").length;
@@ -1601,9 +1615,14 @@ async function loadAnggota() {
       selDiv.innerHTML = '<option value="">Grup ▾</option>' +
         _anggotaDivisi.map(d => `<option value="${d.nama}">${d.nama}</option>`).join('');
     }
+    // Filter Peran & Divisi — tampilkan hanya untuk owner/admin
+    const isAdmin = userLevel <= 2;
+    if (selPeran)  selPeran.style.display  = isAdmin ? "inline-block" : "none";
+    if (selDiv)    selDiv.style.display    = isAdmin ? "inline-block" : "none";
+
     // Tombol Tambahkan Anggota — hanya owner/admin
     const btnTambah = document.getElementById("btn-tambah-anggota");
-    if (btnTambah) btnTambah.style.display = userLevel <= 2 ? "inline-block" : "none";
+    if (btnTambah) btnTambah.style.display = isAdmin ? "inline-block" : "none";
 
     renderAnggotaTable(_anggotaData);
   } catch {
@@ -1719,6 +1738,7 @@ function _taToggleEye() {
 }
 
 async function saveTambahAnggota() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const username    = (document.getElementById("ta-username")?.value || "").trim();
   const password    = document.getElementById("ta-password")?.value  || "";
   const namaLengkap = (document.getElementById("ta-nama")?.value    || "").trim();
@@ -1851,6 +1871,7 @@ function onToggleTugasLuar(cb) {
 }
 
 async function saveDetailAnggota() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   if (!_detailUsername) return;
   const groupId   = document.getElementById("da-select-group").value;
   const tugasLuar = document.getElementById("da-chk-tugasluar").checked;
@@ -1884,6 +1905,7 @@ async function saveDetailAnggota() {
 }
 
 async function deleteAnggotaFromModal() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const username = _detailUsername;
   if (!username) return;
   uConfirm({
@@ -1892,7 +1914,7 @@ async function deleteAnggotaFromModal() {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/anggota/${username}`, { method: "DELETE" });
+        const r = await authFetch(`/anggota/${username}`, { method: "DELETE" });
         if ((await r.json()).status === "OK") {
           showToast("🗑 Anggota dihapus");
           closeDetailAnggota();
@@ -1906,7 +1928,7 @@ async function deleteAnggotaFromModal() {
 // Tetap ada untuk backward-compat (dipanggil dari tempat lain)
 async function changeGroup(username, groupId) {
   try {
-    const r = await fetch(`/anggota/${username}/group`, {
+    const r = await authFetch(`/anggota/${username}/group`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ group: groupId })
     });
@@ -1923,7 +1945,7 @@ async function deleteAnggota(username) {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/anggota/${username}`, { method: "DELETE" });
+        const r = await authFetch(`/anggota/${username}`, { method: "DELETE" });
         if ((await r.json()).status === "OK") { showToast("🗑 Anggota dihapus"); loadAnggota(); }
       } catch { showToast("❌ Gagal menghapus", "error"); }
     }
@@ -1999,7 +2021,7 @@ let _bgSelectedAnggota = []; // array username
 async function openBuatGrup() {
   if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa membuat divisi", "error"); return; }
   if (!_anggotaAll.length) {
-    const r = await fetch("/anggota"); _anggotaAll = await r.json();
+    const r = await authFetch("/anggota"); _anggotaAll = await r.json();
   }
 
   // Reset state
@@ -2153,7 +2175,7 @@ async function saveBuatGrup() {
   }
 
   try {
-    const r = await fetch("/divisi", {
+    const r = await authFetch("/divisi", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nama, owner, manager, koordinator, deskripsi: "" })
     });
@@ -2275,6 +2297,7 @@ function closeDetailDivisi() {
 }
 
 async function saveDetailDivisi() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const d = _divisiList.find(x => x.id === _detailDivisiId);
   if (!d) return;
   const namaBaru    = document.getElementById("dd-nama").value.trim();
@@ -2290,7 +2313,7 @@ async function saveDetailDivisi() {
   const allToAdd = [...new Set([...checked, ownerBaru, managerBaru, koordBaru].filter(Boolean))];
 
   try {
-    await fetch(`/divisi/${_detailDivisiId}`, {
+    await authFetch(`/divisi/${_detailDivisiId}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nama: namaBaru, owner: ownerBaru, manager: managerBaru, koordinator: koordBaru, deskripsi: d.deskripsi || "" })
     });
@@ -2325,6 +2348,7 @@ async function saveDetailDivisi() {
 }
 
 function deleteDetailDivisi() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const d = _divisiList.find(x => x.id === _detailDivisiId);
   if (!d) return;
   uConfirm({
@@ -2333,7 +2357,7 @@ function deleteDetailDivisi() {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/divisi/${_detailDivisiId}`, { method: "DELETE" });
+        const r = await authFetch(`/divisi/${_detailDivisiId}`, { method: "DELETE" });
         const res = await r.json();
         if (res.status === "OK") { showToast("🗑 Divisi dihapus"); closeDetailDivisi(); loadDivisi(); }
         else showToast("❌ Gagal menghapus", "error");
@@ -2344,7 +2368,7 @@ function deleteDetailDivisi() {
 
 async function assignDivisi(username, divisiNama) {
   try {
-    const r = await fetch(`/anggota/${username}/divisi`, {
+    const r = await authFetch(`/anggota/${username}/divisi`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ divisi: divisiNama })
@@ -2445,7 +2469,7 @@ function menusBySection() {
 
 async function loadGroups() {
   try {
-    const r = await fetch("/groups");
+    const r = await authFetch("/groups");
     const groups = await r.json();
     const list   = document.getElementById("group-list");
 
@@ -2552,7 +2576,7 @@ function toggleGroupBody(id) {
 
 async function toggleGroupMenu(groupId, menuKey, enabled) {
   try {
-    const r = await fetch("/groups");
+    const r = await authFetch("/groups");
     const groups = await r.json();
     const group  = groups.find(g => g.id === groupId);
     if (!group) return;
@@ -2585,7 +2609,7 @@ async function toggleGroupMenu(groupId, menuKey, enabled) {
     // home selalu ada
     if (!group.menus.includes("home")) group.menus.push("home");
 
-    const rr = await fetch(`/groups/${groupId}/menus`, {
+    const rr = await authFetch(`/groups/${groupId}/menus`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ menus: group.menus })
@@ -2602,7 +2626,7 @@ async function toggleGroupMenu(groupId, menuKey, enabled) {
 // ============================================================
 async function loadAreas() {
   try {
-    const r    = await fetch("/areas");
+    const r    = await authFetch("/areas");
     const data = await r.json();
     const list = document.getElementById("area-list");
     if (!data.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada area</p>'; return; }
@@ -2783,7 +2807,7 @@ async function areaSearchSuggest() {
 
   _searchTimeout = setTimeout(async () => {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,
         { headers: { "Accept-Language": "id,en" } }
       );
@@ -2828,7 +2852,7 @@ async function searchAreaLocation() {
 
   showToast("🔍 Mencari lokasi...", "warning", 2000);
   try {
-    const res = await fetch(
+    const res = await authFetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
       { headers: { "Accept-Language": "id,en" } }
     );
@@ -2855,7 +2879,7 @@ async function saveArea() {
   const radius = document.getElementById("area-radius").value;
   if (!name || !lat || !lng) return showToast("⚠️ Isi nama area dan tentukan titik di peta!", "warning");
   try {
-    const r = await fetch("/areas", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name,lat,lng,radius}) });
+    const r = await authFetch("/areas", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name,lat,lng,radius}) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Area berhasil ditambahkan!");
       document.getElementById("area-name").value = "";
@@ -2873,7 +2897,7 @@ async function saveArea() {
 
 async function toggleArea(id, active) {
   try {
-    await fetch(`/areas/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({active}) });
+    await authFetch(`/areas/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({active}) });
     showToast(active ? "✅ Area diaktifkan" : "❌ Area dinonaktifkan");
     loadAreas();
   } catch {}
@@ -2887,7 +2911,7 @@ async function deleteArea(id) {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/areas/${id}`, {method:"DELETE"});
+        const r = await authFetch(`/areas/${id}`, {method:"DELETE"});
         if ((await r.json()).status === "OK") { showToast("🗑 Area dihapus"); loadAreas(); }
       } catch { showToast("❌ Gagal menghapus", "error"); }
     }
@@ -3119,7 +3143,7 @@ async function saveLiburFromModal() {
 
   try {
     const payload = { name, dateStart, dateEnd: dateEnd || dateStart, type, agama, date: dateStart };
-    const r = await fetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+    const r = await authFetch("/libur", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Hari libur berhasil ditambahkan!");
       closeLiburModal();
@@ -3140,7 +3164,7 @@ async function deleteLibur(id) {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/libur/${id}`, {method:"DELETE"});
+        const r = await authFetch(`/libur/${id}`, {method:"DELETE"});
         if ((await r.json()).status === "OK") {
           showToast("🗑 Berhasil dihapus");
           await loadLibur();
@@ -3417,7 +3441,7 @@ async function doImport() {
   _setImportBtnState(false);
 
   try {
-    const r = await fetch("/libur/import", {
+    const r = await authFetch("/libur/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rows: _importParsedRows, type, agama: agama || null })
@@ -3499,7 +3523,7 @@ function closeKebijakanCutiModal() {
 
 async function loadKebijakanCuti() {
   try {
-    const r = await fetch("/kebijakan-cuti");
+    const r = await authFetch("/kebijakan-cuti");
     const d = await r.json();
     const list = document.getElementById("kebijakan-cuti-list");
     if (!d.length) {
@@ -3582,7 +3606,7 @@ async function saveKebijakanCuti() {
   };
 
   try {
-    const r = await fetch("/kebijakan-cuti", {
+    const r = await authFetch("/kebijakan-cuti", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
@@ -3602,7 +3626,7 @@ async function deleteKebijakanCuti(id) {
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/kebijakan-cuti/${id}`, {method:"DELETE"});
+        const r = await authFetch(`/kebijakan-cuti/${id}`, {method:"DELETE"});
         const res = await r.json();
         if (res.status === "OK") { showToast("🗑 Berhasil dihapus"); loadKebijakanCuti(); }
         else if (res.status === "LOCKED") showToast("🔒 " + (res.msg || "Kebijakan default tidak dapat dihapus"), "warning");
@@ -3639,7 +3663,7 @@ function konversiCutiHariKeJam(tanggalCuti) {
 // ============================================================
 async function loadAktivitas() {
   try {
-    const r = await fetch("/aktivitas");
+    const r = await authFetch("/aktivitas");
     const d = await r.json();
     const list = document.getElementById("aktivitas-list");
     if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada aktivitas</p>'; return; }
@@ -3717,7 +3741,7 @@ async function loadTimesheet() {
   if (el) el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
 
   try {
-    const r = await fetch(`/timesheet/weekly?weekStart=${_tsWeekStart}&requester=${me}`);
+    const r = await authFetch(`/timesheet/weekly?weekStart=${_tsWeekStart}&requester=${me}`);
     _tsData = await r.json();
     tsRender();
   } catch(e) {
@@ -3910,7 +3934,7 @@ function tsSwitchTab(tab) {
 
 async function _tsLoadAreas() {
   try {
-    const r = await fetch("/areas");
+    const r = await authFetch("/areas");
     const areas = await r.json();
     ["ts-lokasi","ts-jam-lokasi"].forEach(id => {
       const sel = document.getElementById(id);
@@ -4072,7 +4096,7 @@ async function saveTsAbsen() {
   const method   = isNew ? "POST" : "PUT";
 
   try {
-    const r = await fetch(endpoint, {
+    const r = await authFetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requester: me, targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama })
@@ -4099,7 +4123,7 @@ async function loadProfil() {
   const me = localStorage.getItem("user");
   switchProfilTab("profil"); // reset ke tab profil
   try {
-    const r = await fetch("/profile/" + me);
+    const r = await authFetch("/profile/" + me);
     _profilData = await r.json();
     renderProfil();
   } catch { showToast("❌ Gagal memuat profil", "error"); }
@@ -4183,7 +4207,7 @@ function renderProfil() {
 async function populateHapusSelect() {
   try {
     const me  = localStorage.getItem("user");
-    const r   = await fetch("/anggota");
+    const r   = await authFetch("/anggota");
     const all = await r.json();
     const sel = document.getElementById("hapus-target-select");
     sel.innerHTML = '<option value="">— Pilih akun yang akan dihapus —</option>';
@@ -4274,7 +4298,7 @@ async function profilSavePhoto() {
   if (!_profilNewPhoto) return showToast("⚠️ Belum ada foto baru", "warning");
   const me = localStorage.getItem("user");
   try {
-    const r = await fetch(`/profile/${me}/photo`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({photo:_profilNewPhoto}) });
+    const r = await authFetch(`/profile/${me}/photo`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({photo:_profilNewPhoto}) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Foto profil berhasil disimpan!");
       _profilNewPhoto = null;
@@ -4310,7 +4334,7 @@ async function profilEditAgama() {
 async function profilSaveField(field, value) {
   const me = localStorage.getItem("user");
   try {
-    const r = await fetch(`/profile/${me}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({[field]:value}) });
+    const r = await authFetch(`/profile/${me}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({[field]:value}) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Berhasil disimpan!");
       loadProfil();
@@ -4326,7 +4350,7 @@ async function profilChangePassword() {
     sub: "Masukkan password baru untuk akun ini",
     onOk: async (newPw) => {
       try {
-        const r = await fetch(`/profile/${me}/password`, {
+        const r = await authFetch(`/profile/${me}/password`, {
           method:"PUT", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({ newPassword: newPw })
         });
@@ -4379,7 +4403,7 @@ async function profilSaveFace() {
   if (!_profilNewFaceDesc) return showToast("⚠️ Belum ada data wajah baru. Klik 'Perbarui Data Wajah' dulu.", "warning");
   const me = localStorage.getItem("user");
   try {
-    const r = await fetch(`/profile/${me}/face`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({faceDescriptor:Array.from(_profilNewFaceDesc)}) });
+    const r = await authFetch(`/profile/${me}/face`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({faceDescriptor:Array.from(_profilNewFaceDesc)}) });
     if ((await r.json()).status === "OK") {
       showToast("✅ Data wajah berhasil diperbarui!");
       _profilNewFaceDesc = null;
@@ -4401,7 +4425,7 @@ async function profilHapusAkun() {
     btnOk: "Hapus Permanen", btnOkClass: "danger",
     onOk: async () => {
       try {
-        const r = await fetch(`/anggota/${target}`, {method:"DELETE"});
+        const r = await authFetch(`/anggota/${target}`, {method:"DELETE"});
         if ((await r.json()).status === "OK") {
           showToast(`🗑 Akun "${target}" berhasil dihapus`);
           populateHapusSelect();
@@ -4467,7 +4491,7 @@ async function loadTracking() {
   // Load daftar anggota untuk dropdown riwayat
   try {
     if (!_anggotaAll.length) {
-      const r = await fetch("/anggota"); _anggotaAll = await r.json();
+      const r = await authFetch("/anggota"); _anggotaAll = await r.json();
     }
     const sel = document.getElementById("trk-pilih-user");
     sel.innerHTML = '<option value="">— Pilih Anggota —</option>' +
@@ -4479,7 +4503,7 @@ async function loadTracking() {
 // --- Live map ---
 async function refreshLiveTracking() {
   try {
-    const r    = await fetch("/tracking/live/all");
+    const r    = await authFetch("/tracking/live/all");
     const list = await r.json();
     renderLiveList(list);
     renderLiveMap(list);
@@ -4572,7 +4596,7 @@ async function openTrkDetail(username) {
   document.getElementById("trkd-nama").textContent = "👤 " + nama;
   // Ambil data live
   try {
-    const r    = await fetch("/tracking/live/all");
+    const r    = await authFetch("/tracking/live/all");
     const list = await r.json();
     const info = list.find(x => x.username === username);
     if (info) {
@@ -4635,7 +4659,7 @@ async function loadRiwayatRute() {
   tl.innerHTML     = '<p style="color:var(--muted);text-align:center;padding:16px;">Memuat...</p>';
 
   try {
-    const r   = await fetch(`/tracking/${user}?date=${date}`);
+    const r   = await authFetch(`/tracking/${user}?date=${date}`);
     const d   = await r.json();
     const pts = d.points || [];
 
@@ -4726,7 +4750,7 @@ async function loadKuotaCuti() {
   if (listEl) listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
 
   try {
-    const r = await fetch(`/kuota-cuti?tahun=${tahun}`);
+    const r = await authFetch(`/kuota-cuti?tahun=${tahun}`);
     _kuotaData = await r.json();
     renderKuotaList();
   } catch {
@@ -4841,7 +4865,7 @@ async function hitungOvertimeSemua() {
   const tahun   = tahunEl ? tahunEl.value : new Date().getFullYear();
   showToast("🔄 Menghitung overtime semua anggota...", "warning");
   try {
-    const r = await fetch(`/kuota-cuti/hitung-overtime-semua?tahun=${tahun}`, { method: "POST" });
+    const r = await authFetch(`/kuota-cuti/hitung-overtime-semua?tahun=${tahun}`, { method: "POST" });
     const d = await r.json();
     if (d.status === "OK") {
       showToast("✅ Overtime berhasil dihitung ulang!");
@@ -4893,7 +4917,7 @@ async function loadDaftarCuti() {
   el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
   const user = localStorage.getItem("user") || "";
   try {
-    const r = await fetch(`/pengajuan-cuti?requester=${user}&filter=${_cutiFilter}`);
+    const r = await authFetch(`/pengajuan-cuti?requester=${user}&filter=${_cutiFilter}`);
     const list = await r.json();
     renderDaftarCuti(list, user);
   } catch {
@@ -5016,7 +5040,7 @@ function fmtWaktuSingkat(iso) {
 async function doApproveCuti(id) {
   const user = localStorage.getItem("user") || "";
   try {
-    const r = await fetch(`/pengajuan-cuti/${id}/approve`, {
+    const r = await authFetch(`/pengajuan-cuti/${id}/approve`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approver: user })
     });
@@ -5041,7 +5065,7 @@ async function doRejectCuti() {
   const reason = document.getElementById("reject-alasan").value.trim();
   const user   = localStorage.getItem("user") || "";
   try {
-    const r = await fetch(`/pengajuan-cuti/${id}/reject`, {
+    const r = await authFetch(`/pengajuan-cuti/${id}/reject`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approver: user, reason })
     });
@@ -5056,7 +5080,7 @@ async function doCancelCuti(id) {
   const user = localStorage.getItem("user") || "";
   if (!confirm("Batalkan pengajuan cuti ini? Saldo cuti akan dikembalikan.")) return;
   try {
-    const r = await fetch(`/pengajuan-cuti/${id}/cancel`, {
+    const r = await authFetch(`/pengajuan-cuti/${id}/cancel`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: user })
     });
@@ -5073,7 +5097,7 @@ async function loadSaldoCuti() {
   const user  = localStorage.getItem("user") || "";
   const tahun = new Date().getFullYear();
   try {
-    const r = await fetch(`/kuota-cuti/${user}?tahun=${tahun}`);
+    const r = await authFetch(`/kuota-cuti/${user}?tahun=${tahun}`);
     const k = await r.json();
     renderSaldoCuti(k, user);
   } catch {
@@ -5177,7 +5201,7 @@ async function loadRiwayatCutiSaya(user) {
   const el = document.getElementById("cuti-saldo-riwayat");
   if (!el) return;
   try {
-    const r = await fetch(`/pengajuan-cuti?requester=${user}&filter=semua`);
+    const r = await authFetch(`/pengajuan-cuti?requester=${user}&filter=semua`);
     const list = await r.json();
     const mine = list.filter(p => p.username === user).slice(0, 10);
     if (!mine.length) {
@@ -5212,7 +5236,7 @@ async function loadRiwayatCutiSaya(user) {
 async function openTambahCutiModal() {
   // Load kebijakan
   try {
-    const r = await fetch("/kebijakan-cuti");
+    const r = await authFetch("/kebijakan-cuti");
     _kebijakanList = await r.json();
   } catch { _kebijakanList = []; }
 
@@ -5237,7 +5261,7 @@ async function openTambahCutiModal() {
   const user  = localStorage.getItem("user") || "";
   const tahun = new Date().getFullYear();
   try {
-    const rk = await fetch(`/kuota-cuti/${user}?tahun=${tahun}`);
+    const rk = await authFetch(`/kuota-cuti/${user}?tahun=${tahun}`);
     _kuotaSaya = await rk.json();
   } catch { _kuotaSaya = null; }
 
@@ -5297,7 +5321,7 @@ async function saveTambahCuti() {
 
   const user = localStorage.getItem("user") || "";
   try {
-    const r = await fetch("/pengajuan-cuti", {
+    const r = await authFetch("/pengajuan-cuti", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: user, kebijakanId, kebijakanNama, kuotaKey,
         durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir })

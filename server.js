@@ -30,6 +30,52 @@ function load(file, def) {
 }
 function save(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
 
+// ========================
+// AUTH HELPER
+// ========================
+
+/** Ambil level user dari users.json + groups.json */
+function getRequesterLevel(username) {
+  if (!username) return 99;
+  const users  = load(F.users, {});
+  const groups = load(F.groups, []);
+  const u = users[username];
+  if (!u) return 99;
+  const g = groups.find(g => g.id === (u.group || "anggota"));
+  return g ? g.level : 99;
+}
+
+/** Middleware: hanya izinkan requester dengan level <= maxLevel.
+ *  Requester dibaca dari header X-User atau body._requester */
+function requireLevel(maxLevel) {
+  return (req, res, next) => {
+    const requester = req.headers["x-user"] || (req.body && req.body._requester) || req.query._requester || "";
+    const level = getRequesterLevel(requester);
+    if (level > maxLevel) {
+      return res.status(403).send({ status: "FORBIDDEN", msg: "Akses ditolak" });
+    }
+    req._requester = requester;
+    req._requesterLevel = level;
+    next();
+  };
+}
+
+/** Middleware: boleh akses jika requester == target user ATAU level <= maxLevel */
+function requireSelfOrLevel(paramField, maxLevel) {
+  return (req, res, next) => {
+    const requester = req.headers["x-user"] || (req.body && req.body._requester) || req.query._requester || "";
+    const level  = getRequesterLevel(requester);
+    const target = req.params[paramField] || "";
+    if (level > maxLevel && requester !== target) {
+      return res.status(403).send({ status: "FORBIDDEN", msg: "Akses ditolak" });
+    }
+    req._requester = requester;
+    req._requesterLevel = level;
+    next();
+  };
+}
+
+
 function dist(lat1, lon1, lat2, lon2) {
   const R = 6371000, r = x => x * Math.PI / 180;
   const dLat = r(lat2-lat1), dLon = r(lon2-lon1);
@@ -257,7 +303,7 @@ app.post("/absen", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.get("/status/:user", (req, res) => {
+app.get("/status/:user", requireLevel(99), (req, res) => {
   const data  = load(F.data, []);
   const today = new Date().toISOString().split("T")[0];
   const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
@@ -270,7 +316,7 @@ app.get("/status/:user", (req, res) => {
 // ========================
 // REPORT & HISTORY
 // ========================
-app.get("/report/:user", (req, res) => {
+app.get("/report/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data = load(F.data, []);
   let totalKerja = 0, totalBreak = 0;
   data.filter(d => d.user === req.params.user && d.jamKeluar).forEach(d => {
@@ -282,7 +328,7 @@ app.get("/report/:user", (req, res) => {
   res.send({ totalKerja: totalKerja.toFixed(1)+"h", totalBreak: totalBreak.toFixed(1)+"h", overtime: Math.max(0, totalKerja-8).toFixed(1)+"h" });
 });
 
-app.get("/history/:user", (req, res) => {
+app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data = load(F.data, []);
   res.send(data.filter(d => d.user === req.params.user).slice(-30).reverse());
 });
@@ -290,7 +336,7 @@ app.get("/history/:user", (req, res) => {
 // ========================
 // ADMIN
 // ========================
-app.get("/admin/today", (req, res) => {
+app.get("/admin/today", requireLevel(3), (req, res) => {
   const data  = load(F.data, []);
   const users = load(F.users, {});
   const date  = req.query.date || new Date().toISOString().split("T")[0];
@@ -307,7 +353,7 @@ app.get("/admin/today", (req, res) => {
 // ========================
 // PROFIL
 // ========================
-app.get("/profile/:username", (req, res) => {
+app.get("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   const users  = load(F.users, {});
   const groups = load(F.groups, []);
   const user   = users[req.params.username];
@@ -330,7 +376,7 @@ app.get("/profile/:username", (req, res) => {
   });
 });
 
-app.put("/profile/:username", (req, res) => {
+app.put("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   const allowed = ["namaLengkap","agama","jabatan","divisi","statusKerja","nominalGaji"];
@@ -339,7 +385,7 @@ app.put("/profile/:username", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.put("/profile/:username/photo", (req, res) => {
+app.put("/profile/:username/photo", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   users[req.params.username].photo = req.body.photo || "";
@@ -347,7 +393,7 @@ app.put("/profile/:username/photo", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.put("/profile/:username/face", (req, res) => {
+app.put("/profile/:username/face", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   users[req.params.username].faceDescriptor = req.body.faceDescriptor || [];
@@ -355,7 +401,7 @@ app.put("/profile/:username/face", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.put("/profile/:username/password", (req, res) => {
+app.put("/profile/:username/password", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   const { newPassword } = req.body;
@@ -368,7 +414,7 @@ app.put("/profile/:username/password", (req, res) => {
 // ========================
 // ANGGOTA
 // ========================
-app.get("/anggota", (req, res) => {
+app.get("/anggota", requireLevel(99), (req, res) => {
   const users  = load(F.users, {});
   const groups = load(F.groups, []);
   const absen  = load(F.data, []);
@@ -404,7 +450,7 @@ app.get("/anggota", (req, res) => {
   res.send(list);
 });
 
-app.put("/anggota/:username/group", (req, res) => {
+app.put("/anggota/:username/group", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   const newGroup = req.body.group;
@@ -421,7 +467,7 @@ app.put("/anggota/:username/group", (req, res) => {
 });
 
 // Update statusKerja (Tugas Luar / kosong)
-app.put("/anggota/:username/status", (req, res) => {
+app.put("/anggota/:username/status", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   users[req.params.username].statusKerja = req.body.statusKerja || "";
@@ -429,7 +475,7 @@ app.put("/anggota/:username/status", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.delete("/anggota/:username", (req, res) => {
+app.delete("/anggota/:username", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   delete users[req.params.username];
@@ -440,9 +486,9 @@ app.delete("/anggota/:username", (req, res) => {
 // ========================
 // GROUP / ROLE
 // ========================
-app.get("/groups", (req, res) => res.send(load(F.groups, [])));
+app.get("/groups", requireLevel(99), (req, res) => res.send(load(F.groups, [])));
 
-app.put("/groups/:id/menus", (req, res) => {
+app.put("/groups/:id/menus", requireLevel(2), (req, res) => {
   const groups = load(F.groups, []);
   const group  = groups.find(g => g.id === req.params.id);
   if (!group) return res.send({ status: "NOT_FOUND" });
@@ -455,9 +501,9 @@ app.put("/groups/:id/menus", (req, res) => {
 // ========================
 // DIVISI
 // ========================
-app.get("/divisi", (req, res) => res.send(load(F.divisi, [])));
+app.get("/divisi", requireLevel(99), (req, res) => res.send(load(F.divisi, [])));
 
-app.post("/divisi", (req, res) => {
+app.post("/divisi", requireLevel(2), (req, res) => {
   const { nama, deskripsi, owner, manager, koordinator } = req.body;
   if (!nama || !nama.trim()) return res.send({ status: "ERROR", msg: "Nama divisi wajib diisi" });
   const list = load(F.divisi, []);
@@ -476,7 +522,7 @@ app.post("/divisi", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.put("/divisi/:id", (req, res) => {
+app.put("/divisi/:id", requireLevel(2), (req, res) => {
   const list = load(F.divisi, []);
   const item = list.find(d => d.id === req.params.id);
   if (!item) return res.send({ status: "NOT_FOUND" });
@@ -517,7 +563,7 @@ app.put("/divisi/:id", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.delete("/divisi/:id", (req, res) => {
+app.delete("/divisi/:id", requireLevel(2), (req, res) => {
   const list = load(F.divisi, []);
   const idx  = list.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
@@ -535,7 +581,7 @@ app.delete("/divisi/:id", (req, res) => {
 });
 
 // Assign anggota ke divisi — jabatan otomatis dari posisi divisi, support multi-divisi
-app.put("/anggota/:username/divisi", (req, res) => {
+app.put("/anggota/:username/divisi", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   const u = req.params.username;
@@ -589,9 +635,9 @@ app.put("/anggota/:username/divisi", (req, res) => {
 // ========================
 // AREA (multi-area)
 // ========================
-app.get("/areas", (req, res) => res.send(load(F.areas, [])));
+app.get("/areas", requireLevel(99), (req, res) => res.send(load(F.areas, [])));
 
-app.post("/areas", (req, res) => {
+app.post("/areas", requireLevel(2), (req, res) => {
   const { name, lat, lng, radius } = req.body;
   if (!name || !lat || !lng) return res.send({ status: "ERROR" });
   const areas = load(F.areas, []);
@@ -600,7 +646,7 @@ app.post("/areas", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.put("/areas/:id", (req, res) => {
+app.put("/areas/:id", requireLevel(2), (req, res) => {
   const areas = load(F.areas, []);
   const area  = areas.find(a => a.id === req.params.id);
   if (!area) return res.send({ status: "NOT_FOUND" });
@@ -609,7 +655,7 @@ app.put("/areas/:id", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.delete("/areas/:id", (req, res) => {
+app.delete("/areas/:id", requireLevel(2), (req, res) => {
   const areas = load(F.areas, []);
   const idx   = areas.findIndex(a => a.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
@@ -630,9 +676,9 @@ app.get("/libur/agama-list", (req, res) => {
   res.send([...agamaSet]);
 });
 
-app.get("/libur", (req, res) => res.send(load(F.libur, [])));
+app.get("/libur", requireLevel(99), (req, res) => res.send(load(F.libur, [])));
 
-app.post("/libur", (req, res) => {
+app.post("/libur", requireLevel(2), (req, res) => {
   const { name, dateStart, dateEnd, type, agama, date } = req.body;
   if (!name || (!dateStart && !date)) return res.send({ status: "ERROR" });
 
@@ -665,7 +711,7 @@ app.post("/libur", (req, res) => {
 });
 
 // ── Import bulk libur dari CSV/XLSX (data sudah diparse di frontend) ──
-app.post("/libur/import", (req, res) => {
+app.post("/libur/import", requireLevel(2), (req, res) => {
   const { rows, type, agama } = req.body;
   if (!Array.isArray(rows) || rows.length === 0) return res.send({ status: "ERROR", msg: "Tidak ada data" });
 
@@ -712,7 +758,7 @@ app.post("/libur/import", (req, res) => {
   res.send({ status: "OK", imported, errors });
 });
 
-app.delete("/libur/:id", (req, res) => {
+app.delete("/libur/:id", requireLevel(2), (req, res) => {
   const data = load(F.libur, []);
   const idx  = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
@@ -720,9 +766,9 @@ app.delete("/libur/:id", (req, res) => {
 });
 
 // Kebijakan Cuti
-app.get("/kebijakan-cuti", (req, res) => res.send(load(F.kebijakanCuti, [])));
+app.get("/kebijakan-cuti", requireLevel(99), (req, res) => res.send(load(F.kebijakanCuti, [])));
 
-app.post("/kebijakan-cuti", (req, res) => {
+app.post("/kebijakan-cuti", requireLevel(2), (req, res) => {
   const { nama, jenis, hari, periode, berlaku, keterangan } = req.body;
   if (!nama || !jenis) return res.send({ status: "ERROR" });
   const data = load(F.kebijakanCuti, []);
@@ -740,7 +786,7 @@ app.post("/kebijakan-cuti", (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.delete("/kebijakan-cuti/:id", (req, res) => {
+app.delete("/kebijakan-cuti/:id", requireLevel(2), (req, res) => {
   const data = load(F.kebijakanCuti, []);
   const idx  = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
@@ -751,7 +797,7 @@ app.delete("/kebijakan-cuti/:id", (req, res) => {
 // ========================
 // AKTIVITAS
 // ========================
-app.get("/aktivitas", (req, res) => {
+app.get("/aktivitas", requireLevel(3), (req, res) => {
   const data = load(F.aktivitas, []);
   res.send(data.slice(-100).reverse());
 });
@@ -791,7 +837,7 @@ function jamCutiUntukTanggal(p, dateStr) {
 // GET timesheet mingguan — satu baris per user per tanggal dalam rentang minggu
 // Query: ?weekStart=YYYY-MM-DD  (Senin)
 // Response: [{ username, nama, jabatan, divisi, days: [{date, dow, jamKerja, jamCuti, keteranganCuti}], totalJam, totalCuti }]
-app.get("/timesheet/weekly", (req, res) => {
+app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
   const { weekStart, requester } = req.query;
   if (!weekStart) return res.send({ error: "weekStart required" });
 
@@ -912,7 +958,7 @@ app.get("/timesheet/weekly", (req, res) => {
 // REKAP BULANAN (Admin/Owner only)
 // GET /rekap/monthly?month=YYYY-MM&requester=username
 // ========================
-app.get("/rekap/monthly", (req, res) => {
+app.get("/rekap/monthly", requireLevel(99), (req, res) => {
   const { month, requester } = req.query;
   if (!month) return res.send({ error: "month required" });
 
@@ -1025,7 +1071,7 @@ app.get("/rekap/monthly", (req, res) => {
 });
 
 // GET: summary timesheet bulanan (tetap ada untuk kompatibilitas)
-app.get("/timesheet", (req, res) => {
+app.get("/timesheet", requireLevel(2), (req, res) => {
   const month = req.query.month;
   if (!month) return res.send([]);
   const data  = load(F.data, []);
@@ -1045,7 +1091,7 @@ app.get("/timesheet", (req, res) => {
 });
 
 // POST: admin/manager create absen manual
-app.post("/timesheet/absen-manual", (req, res) => {
+app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
   const { requester, targetUser, date, jamMasuk, jamKeluar } = req.body;
   if (!requester || !targetUser || !date || !jamMasuk || !jamKeluar)
     return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
@@ -1089,7 +1135,7 @@ app.post("/timesheet/absen-manual", (req, res) => {
 });
 
 // PUT: edit jam absen (oleh manager/admin/owner)
-app.put("/timesheet/absen/:user/:date", (req, res) => {
+app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   const { requester, jamMasuk, jamKeluar } = req.body;
   const { user: targetUser, date } = req.params;
 
@@ -1171,7 +1217,7 @@ function initKuotaUser(kuota, username, tahun) {
 }
 
 // GET kuota semua user (admin view)
-app.get("/kuota-cuti", (req, res) => {
+app.get("/kuota-cuti", requireLevel(2), (req, res) => {
   const users  = load(F.users, {});
   const kuota  = load(F.kuotaCuti, {});
   const tahun  = parseInt(req.query.tahun) || new Date().getFullYear();
@@ -1192,7 +1238,7 @@ app.get("/kuota-cuti", (req, res) => {
 });
 
 // GET kuota milik user sendiri
-app.get("/kuota-cuti/:user", (req, res) => {
+app.get("/kuota-cuti/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const tahun = parseInt(req.query.tahun) || new Date().getFullYear();
   const k = initKuotaUser(kuota, req.params.user, tahun);
@@ -1201,7 +1247,7 @@ app.get("/kuota-cuti/:user", (req, res) => {
 });
 
 // POST: hitung ulang overtime satu user berdasarkan data absensi (per-minggu)
-app.post("/kuota-cuti/hitung-overtime/:user", (req, res) => {
+app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const username = req.params.user;
   const tahun    = parseInt(req.query.tahun) || new Date().getFullYear();
   const data     = load(F.data, []);
@@ -1229,7 +1275,7 @@ app.post("/kuota-cuti/hitung-overtime/:user", (req, res) => {
 });
 
 // POST: hitung overtime semua user sekaligus (bisa dipanggil cron/manual)
-app.post("/kuota-cuti/hitung-overtime-semua", (req, res) => {
+app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
   const tahun = parseInt(req.query.tahun) || new Date().getFullYear();
   const users = load(F.users, {});
   const data  = load(F.data, []);
@@ -1253,7 +1299,7 @@ app.post("/kuota-cuti/hitung-overtime-semua", (req, res) => {
 });
 
 // POST: catat pengambilan cuti tahunan (kurangi saldo)
-app.post("/kuota-cuti/ambil-tahunan/:user", (req, res) => {
+app.post("/kuota-cuti/ambil-tahunan/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const { hari } = req.body;
   if (!hari || hari < 1) return res.send({ status: "ERROR", msg: "Jumlah hari tidak valid" });
   const tahun = new Date().getFullYear();
@@ -1267,7 +1313,7 @@ app.post("/kuota-cuti/ambil-tahunan/:user", (req, res) => {
 });
 
 // POST: catat pengambilan cuti overtime (kurangi jam akumulasi)
-app.post("/kuota-cuti/ambil-overtime/:user", (req, res) => {
+app.post("/kuota-cuti/ambil-overtime/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const { hari } = req.body;  // 1 hari overtime = 8 jam
   if (!hari || hari < 1) return res.send({ status: "ERROR", msg: "Jumlah hari tidak valid" });
   const tahun = new Date().getFullYear();
@@ -1283,7 +1329,7 @@ app.post("/kuota-cuti/ambil-overtime/:user", (req, res) => {
 });
 
 // POST: reset cuti tahunan semua user (dipanggil tiap 31 Des → 1 Jan)
-app.post("/kuota-cuti/reset-tahunan", (req, res) => {
+app.post("/kuota-cuti/reset-tahunan", requireLevel(2), (req, res) => {
   const tahunBaru = new Date().getFullYear();
   const users = load(F.users, {});
   const kuota = load(F.kuotaCuti, {});
@@ -1315,7 +1361,7 @@ function getUserGroup(username) {
 }
 
 // GET semua pengajuan cuti (admin/owner/manager bisa lihat semua, lainnya hanya miliknya)
-app.get("/pengajuan-cuti", (req, res) => {
+app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {
   const { requester, filter } = req.query;
   const pengajuan = load(F.pengajuanCuti, []);
   const requesterLevel = getUserLevel(requester);
@@ -1376,7 +1422,7 @@ app.get("/pengajuan-cuti", (req, res) => {
 });
 
 // POST: ajukan cuti baru
-app.post("/pengajuan-cuti", (req, res) => {
+app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
   const { username, kebijakanId, kebijakanNama, kuotaKey, durasi, satuanDurasi,
           tanggalMulai, tanggalAkhir, jamMulai, jamAkhir } = req.body;
   if (!username || !kebijakanId || !durasi) return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
@@ -1418,7 +1464,7 @@ app.post("/pengajuan-cuti", (req, res) => {
 });
 
 // POST: approve cuti
-app.post("/pengajuan-cuti/:id/approve", (req, res) => {
+app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
   const { approver } = req.body;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
@@ -1449,7 +1495,7 @@ app.post("/pengajuan-cuti/:id/approve", (req, res) => {
 });
 
 // POST: reject cuti (kembalikan saldo)
-app.post("/pengajuan-cuti/:id/reject", (req, res) => {
+app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const { approver, reason } = req.body;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
@@ -1490,7 +1536,7 @@ app.post("/pengajuan-cuti/:id/reject", (req, res) => {
 });
 
 // POST: batalkan cuti (hanya pengaju sendiri, jika masih menunggu)
-app.post("/pengajuan-cuti/:id/cancel", (req, res) => {
+app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   const { username } = req.body;
   const pengajuan = load(F.pengajuanCuti, []);
   const idx = pengajuan.findIndex(p => p.id === req.params.id);
@@ -1526,7 +1572,7 @@ app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ===
 // ========================
 
 // POST lokasi dari anggota (dipanggil periodik saat sedang kerja)
-app.post("/tracking/ping", (req, res) => {
+app.post("/tracking/ping", requireLevel(99), (req, res) => {
   const { user, lat, lng, accuracy } = req.body;
   if (!user || lat == null || lng == null) return res.send({ status: "ERROR" });
 
@@ -1552,7 +1598,7 @@ app.post("/tracking/ping", (req, res) => {
 });
 
 // GET rute anggota tertentu untuk tanggal tertentu
-app.get("/tracking/:user", (req, res) => {
+app.get("/tracking/:user", requireSelfOrLevel("user", 3), (req, res) => {
   const date     = req.query.date || new Date().toISOString().split("T")[0];
   const tracking = load(F.tracking, {});
   const points   = (tracking[date] || {})[req.params.user] || [];
@@ -1560,7 +1606,7 @@ app.get("/tracking/:user", (req, res) => {
 });
 
 // GET posisi terakhir semua anggota (live map)
-app.get("/tracking/live/all", (req, res) => {
+app.get("/tracking/live/all", requireLevel(3), (req, res) => {
   const tracking = load(F.tracking, {});
   const users    = load(F.users, {});
   const data     = load(F.data, []);
