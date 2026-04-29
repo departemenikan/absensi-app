@@ -3546,8 +3546,9 @@ const JAM_KERJA_SEMINGGU = 40;
 function openKebijakanCutiModal() {
   const overlay = document.getElementById("kebijakan-cuti-modal-overlay");
   overlay.style.display = "flex";
-  document.getElementById("modal-cuti-nama").value  = "";
-  document.getElementById("modal-cuti-jenis").value = "";
+  document.getElementById("modal-cuti-nama").value    = "";
+  document.getElementById("modal-cuti-jenis").value   = "";
+  document.getElementById("modal-cuti-satuan").value  = "";
   setTimeout(() => document.getElementById("modal-cuti-nama").focus(), 100);
   // Tutup overlay jika klik di luar modal
   overlay.onclick = e => { if (e.target === overlay) closeKebijakanCutiModal(); };
@@ -3581,6 +3582,16 @@ async function loadKebijakanCuti() {
         ? "background:#e8f5e9;color:#2e7d32;"
         : "background:#e3f2fd;color:#1565c0;";
 
+      // Badge satuan durasi (hanya untuk kebijakan custom)
+      let satuanBadge = "";
+      if (!isDefault && x.satuanDurasi) {
+        const sc = x.satuanDurasi === "hari"
+          ? "background:#f3e5f5;color:#6a1b9a;"
+          : "background:#e0f7fa;color:#006064;";
+        const sl = x.satuanDurasi === "hari" ? "📅 Hari" : "⏱ Jam";
+        satuanBadge = `<span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;${sc}">${sl}</span>`;
+      }
+
       // Label koneksi ke kuota cuti
       let kuotaBadge = "";
       if (isDefault && x.kuotaKey === "tahunan") {
@@ -3589,6 +3600,9 @@ async function loadKebijakanCuti() {
       } else if (isDefault && x.kuotaKey === "overtime") {
         kuotaBadge = `<span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;
           background:#fff8e1;color:#e65100;margin-left:6px;">🔗 Kuota Cuti Overtime</span>`;
+      } else if (!isDefault && isKuota) {
+        kuotaBadge = `<span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;
+          background:#e8f5e9;color:#1b5e20;margin-left:6px;">🔗 Terhubung ke Kuota Cuti</span>`;
       }
 
       // Tombol hapus: sembunyikan jika locked atau bukan admin
@@ -3620,6 +3634,7 @@ async function loadKebijakanCuti() {
             <span style="font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700;${badgeColor}">
               ${jenisLabel}
             </span>
+            ${satuanBadge}
             ${kuotaBadge}
           </div>
           ${keteranganEl}
@@ -3632,15 +3647,18 @@ async function loadKebijakanCuti() {
 
 async function saveKebijakanCuti() {
   if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
-  const nama  = document.getElementById("modal-cuti-nama").value.trim();
-  const jenis = document.getElementById("modal-cuti-jenis").value;
+  const nama        = document.getElementById("modal-cuti-nama").value.trim();
+  const jenis       = document.getElementById("modal-cuti-jenis").value;
+  const satuanDurasi = document.getElementById("modal-cuti-satuan").value;
 
-  if (!nama)  return showToast("⚠️ Isi nama cuti!", "warning");
-  if (!jenis) return showToast("⚠️ Pilih jenis cuti!", "warning");
+  if (!nama)         return showToast("⚠️ Isi nama cuti!", "warning");
+  if (!jenis)        return showToast("⚠️ Pilih jenis cuti!", "warning");
+  if (!satuanDurasi) return showToast("⚠️ Pilih satuan durasi!", "warning");
 
   const payload = {
     nama,
     jenis,          // "kuota" | "non-kuota"
+    satuanDurasi,   // "hari" | "jam"
     berlaku: "semua",
   };
 
@@ -3653,6 +3671,8 @@ async function saveKebijakanCuti() {
       showToast("✅ Kebijakan cuti berhasil ditambahkan!");
       closeKebijakanCutiModal();
       loadKebijakanCuti();
+      // Reload kuota cuti jika jenis kuota (supaya entry baru muncul)
+      if (jenis === "kuota") loadKuotaCuti();
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
@@ -4772,6 +4792,7 @@ window.onload = async function () {
 // ================================================================
 
 let _kuotaData = []; // cache hasil load
+let _customKebijakanKuota = []; // cache kebijakan custom jenis kuota
 
 async function loadKuotaCuti() {
   // Isi dropdown tahun (5 tahun ke belakang + tahun ini)
@@ -4796,12 +4817,80 @@ async function loadKuotaCuti() {
     return;
   }
   try {
-    const r = await authFetch(`/kuota-cuti?tahun=${tahun}`);
+    const [r, rk] = await Promise.all([
+      authFetch(`/kuota-cuti?tahun=${tahun}`),
+      authFetch("/kebijakan-cuti")
+    ]);
     _kuotaData = await r.json();
+    const allKebijakan = await rk.json();
+    // Filter kebijakan custom (bukan default) dengan jenis kuota
+    _customKebijakanKuota = allKebijakan.filter(k => !k._default && k.jenis === "kuota");
     renderKuotaList();
+    renderCustomKuotaSection();
   } catch {
     if (listEl) listEl.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat data</p>`;
   }
+}
+
+// Render section kuota kebijakan custom (nama + input kuota + simpan)
+function renderCustomKuotaSection() {
+  const section = document.getElementById("custom-kuota-section");
+  const listEl  = document.getElementById("custom-kuota-list");
+  if (!section || !listEl) return;
+
+  if (!_customKebijakanKuota.length) {
+    section.style.display = "none";
+    return;
+  }
+  section.style.display = "";
+
+  listEl.innerHTML = _customKebijakanKuota.map(k => {
+    const satuanLabel = k.satuanDurasi === "jam" ? "jam" : "hari";
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px 16px;border-bottom:1px solid #f5f5f5;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:13px;color:var(--text);">${k.nama}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+          Satuan: <b>${satuanLabel}</b>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <input type="number" min="0" placeholder="0" id="custom-kuota-input-${k.id}"
+          style="width:70px;padding:7px 10px;border:1.5px solid #e8eaf0;border-radius:8px;
+                 font-size:13px;font-weight:700;text-align:center;outline:none;"
+          onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
+        <span style="font-size:12px;color:var(--muted);">${satuanLabel}</span>
+        <button onclick="saveCustomKuota('${k.id}', '${k.nama}')"
+          style="padding:7px 14px;background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;
+                 border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+          💾 Simpan
+        </button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function saveCustomKuota(kebijakanId, kebijakanNama) {
+  const inputEl = document.getElementById(`custom-kuota-input-${kebijakanId}`);
+  const kuota   = parseFloat(inputEl?.value);
+  if (!kuota || kuota < 0) return showToast("⚠️ Isi jumlah kuota yang valid!", "warning");
+  const tahunEl = document.getElementById("kuota-filter-tahun");
+  const tahun   = (tahunEl && tahunEl.value) || new Date().getFullYear();
+  try {
+    const r = await authFetch("/kuota-cuti/set-custom", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kebijakanId, kebijakanNama, kuota, tahun })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast(`✅ Kuota "${kebijakanNama}" berhasil disimpan!`);
+      inputEl.value = "";
+      loadKuotaCuti();
+    } else {
+      showToast("❌ " + (d.msg || "Gagal menyimpan kuota"), "error");
+    }
+  } catch { showToast("❌ Gagal menyimpan kuota", "error"); }
 }
 
 function renderKuotaList() {
@@ -5290,7 +5379,7 @@ async function openTambahCutiModal() {
   const sel = document.getElementById("tc-kebijakan");
   sel.innerHTML = `<option value="">— Pilih Kebijakan Cuti —</option>`;
   _kebijakanList.forEach(k => {
-    sel.innerHTML += `<option value="${k.id}" data-kuota="${k.kuotaKey||""}" data-nama="${k.nama}">${k.nama}</option>`;
+    sel.innerHTML += `<option value="${k.id}" data-kuota="${k.kuotaKey||""}" data-nama="${k.nama}" data-satuan="${k.satuanDurasi||""}">${k.nama}</option>`;
   });
 
   // Reset fields
@@ -5337,6 +5426,7 @@ function onTcKebijakanChange() {
   const sel      = document.getElementById("tc-kebijakan");
   const opt      = sel.options[sel.selectedIndex];
   const kuotaKey = opt?.getAttribute("data-kuota") || "";
+  const satuan   = opt?.getAttribute("data-satuan") || "";
   const infoEl   = document.getElementById("tc-saldo-info");
 
   // Sembunyikan semua section form dulu
@@ -5348,7 +5438,7 @@ function onTcKebijakanChange() {
   document.getElementById("tc-info-kalkulasi").style.display     = "none";
   infoEl.style.display = "none";
 
-  if (!kuotaKey) return;
+  if (!sel.value) return;
 
   if (kuotaKey === "tahunan") {
     // ── Cuti Tahunan: input tanggal mulai & akhir, durasi jam dihitung otomatis
@@ -5372,10 +5462,26 @@ function onTcKebijakanChange() {
     }
 
   } else {
-    // ── Kebijakan lain: tampilkan input durasi + satuan + tanggal/jam sesuai satuan
-    document.getElementById("tc-wrap-durasi").style.display  = "";
-    document.getElementById("tc-wrap-satuan").style.display  = "";
-    document.getElementById("tc-wrap-tanggal").style.display = "";
+    // ── Kebijakan custom: form sesuai satuanDurasi yang ditentukan saat buat kebijakan
+    if (satuan === "jam") {
+      // Form seperti cuti overtime: tanggal + jam mulai + jam akhir
+      document.getElementById("tc-wrap-tanggal-ot").style.display = "";
+      document.getElementById("tc-wrap-jam").style.display        = "";
+    } else {
+      // Form seperti cuti tahunan: tanggal mulai + tanggal akhir
+      document.getElementById("tc-wrap-tanggal").style.display = "";
+    }
+    // Tampilkan saldo jika ada custom kuota
+    if (_kuotaSaya && _kuotaSaya.customKuota) {
+      const kebijakanId = sel.value;
+      const ck = _kuotaSaya.customKuota[kebijakanId];
+      if (ck) {
+        const sisa = ck.total - ck.terpakai;
+        const unit = satuan === "jam" ? "jam" : "hari";
+        infoEl.innerHTML = `📋 Saldo tersedia: <b>${sisa} ${unit}</b> dari ${ck.total} ${unit}`;
+        infoEl.style.display = "";
+      }
+    }
   }
 }
 
@@ -5465,6 +5571,7 @@ async function saveTambahCuti() {
   const opt          = kebijakanEl.options[kebijakanEl.selectedIndex];
   const kuotaKey     = opt?.getAttribute("data-kuota") || null;
   const kebijakanNama = opt?.getAttribute("data-nama") || "";
+  const satuanKebijakan = opt?.getAttribute("data-satuan") || "";
 
   let durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir;
 
@@ -5499,17 +5606,36 @@ async function saveTambahCuti() {
     satuanDurasi = "jam";
     tanggalAkhir = null;
 
-  } else {
-    // ── Kebijakan lainnya: input manual durasi + satuan ───────────────────────
-    durasi = parseFloat(document.getElementById("tc-durasi").value);
-    if (!durasi || durasi <= 0)
-      return showToast("⚠️ Isi durasi dengan benar!", "warning");
+  } else if (satuanKebijakan === "jam") {
+    // ── Kebijakan custom satuan JAM: form seperti overtime ───────────────────
+    tanggalMulai = document.getElementById("tc-tgl-ot").value || null;
+    if (!tanggalMulai) return showToast("⚠️ Pilih tanggal cuti!", "warning");
 
-    satuanDurasi = document.getElementById("tc-satuan").value;
+    jamMulai = document.getElementById("tc-jam-mulai").value || null;
+    jamAkhir = document.getElementById("tc-jam-akhir").value || null;
+    if (!jamMulai || !jamAkhir)
+      return showToast("⚠️ Isi jam mulai dan jam akhir!", "warning");
+
+    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    if (!durasi || durasi <= 0)
+      return showToast("⚠️ Durasi tidak valid. Pastikan jam akhir > jam mulai!", "warning");
+
+    satuanDurasi = "jam";
+    tanggalAkhir = null;
+
+  } else {
+    // ── Kebijakan custom satuan HARI: form seperti cuti tahunan ─────────────
     tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
     tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
-    jamMulai     = document.getElementById("tc-jam-mulai").value || null;
-    jamAkhir     = document.getElementById("tc-jam-akhir").value || null;
+    if (!tanggalMulai) return showToast("⚠️ Pilih tanggal mulai cuti!", "warning");
+
+    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    if (!durasi || durasi <= 0)
+      return showToast("⚠️ Tidak ada hari kerja dalam rentang tanggal yang dipilih!", "warning");
+
+    satuanDurasi = "jam";
+    jamMulai     = null;
+    jamAkhir     = null;
   }
 
   const user = localStorage.getItem("user") || "";

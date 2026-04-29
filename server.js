@@ -777,21 +777,23 @@ app.delete("/libur/:id", requireLevel(2), (req, res) => {
 app.get("/kebijakan-cuti", requireLevel(99), (req, res) => res.send(load(F.kebijakanCuti, [])));
 
 app.post("/kebijakan-cuti", requireLevel(2), (req, res) => {
-  const { nama, jenis, hari, periode, berlaku, keterangan } = req.body;
+  const { nama, jenis, hari, periode, berlaku, keterangan, satuanDurasi } = req.body;
   if (!nama || !jenis) return res.send({ status: "ERROR" });
   const data = load(F.kebijakanCuti, []);
-  data.push({
+  const newKebijakan = {
     id:          Date.now().toString(),
     nama,
     jenis:       jenis,
+    satuanDurasi: satuanDurasi || "hari", // "hari" | "jam"
     hari:        hari ? parseInt(hari) : null,
     periode:     periode || "tahunan",
     berlaku:     berlaku || "semua",
     keterangan:  keterangan || "",
     createdAt:   new Date().toISOString()
-  });
+  };
+  data.push(newKebijakan);
   save(F.kebijakanCuti, data);
-  res.send({ status: "OK" });
+  res.send({ status: "OK", id: newKebijakan.id });
 });
 
 app.delete("/kebijakan-cuti/:id", requireLevel(2), (req, res) => {
@@ -1228,16 +1230,31 @@ function initKuotaUser(kuota, username, tahun) {
 app.get("/kuota-cuti", requireLevel(2), (req, res) => {
   const users  = load(F.users, {});
   const kuota  = load(F.kuotaCuti, {});
+  const kebijakan = load(F.kebijakanCuti, []);
   const tahun  = parseInt(req.query.tahun) || new Date().getFullYear();
+  // Kebijakan custom jenis kuota
+  const customKebijakan = kebijakan.filter(k => !k._default && k.jenis === "kuota");
+
   const result = Object.keys(users).map(username => {
     const k = initKuotaUser(kuota, username, tahun);
     const u = users[username];
+    // Attach custom kuota
+    if (!k.customKuota) k.customKuota = {};
+    customKebijakan.forEach(ck => {
+      if (!k.customKuota[ck.id]) {
+        k.customKuota[ck.id] = { nama: ck.nama, total: 0, terpakai: 0, satuanDurasi: ck.satuanDurasi || "hari" };
+      } else {
+        k.customKuota[ck.id].nama = ck.nama;
+        k.customKuota[ck.id].satuanDurasi = ck.satuanDurasi || "hari";
+      }
+    });
     return {
       username,
       nama: u.namaLengkap || username,
       divisi: u.divisi || "-",
       tahunan:  k.tahunan,
-      overtime: k.overtime
+      overtime: k.overtime,
+      customKuota: k.customKuota
     };
   });
   // Simpan jika ada inisialisasi baru
@@ -1248,10 +1265,51 @@ app.get("/kuota-cuti", requireLevel(2), (req, res) => {
 // GET kuota milik user sendiri
 app.get("/kuota-cuti/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
+  const kebijakan = load(F.kebijakanCuti, []);
   const tahun = parseInt(req.query.tahun) || new Date().getFullYear();
   const k = initKuotaUser(kuota, req.params.user, tahun);
+  // Attach custom kuota
+  const customKebijakan = kebijakan.filter(ck => !ck._default && ck.jenis === "kuota");
+  if (!k.customKuota) k.customKuota = {};
+  customKebijakan.forEach(ck => {
+    if (!k.customKuota[ck.id]) {
+      k.customKuota[ck.id] = { nama: ck.nama, total: 0, terpakai: 0, satuanDurasi: ck.satuanDurasi || "hari" };
+    } else {
+      k.customKuota[ck.id].nama = ck.nama;
+      k.customKuota[ck.id].satuanDurasi = ck.satuanDurasi || "hari";
+    }
+  });
   save(F.kuotaCuti, kuota);
   res.send(k);
+});
+
+// POST: set custom kuota untuk kebijakan kustom (oleh admin/owner)
+app.post("/kuota-cuti/set-custom", requireLevel(2), (req, res) => {
+  const { kebijakanId, kebijakanNama, kuota: kuotaJumlah, tahun } = req.body;
+  if (!kebijakanId || kuotaJumlah == null) return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
+
+  const kuotaData = load(F.kuotaCuti, {});
+  const users = load(F.users, {});
+  const kebijakan = load(F.kebijakanCuti, []);
+  const ck = kebijakan.find(k => k.id === kebijakanId);
+  if (!ck) return res.send({ status: "NOT_FOUND", msg: "Kebijakan tidak ditemukan" });
+
+  const thn = parseInt(tahun) || new Date().getFullYear();
+
+  // Set kuota untuk SEMUA user
+  Object.keys(users).forEach(username => {
+    const k = initKuotaUser(kuotaData, username, thn);
+    if (!k.customKuota) k.customKuota = {};
+    if (!k.customKuota[kebijakanId]) {
+      k.customKuota[kebijakanId] = { nama: ck.nama, total: parseFloat(kuotaJumlah), terpakai: 0, satuanDurasi: ck.satuanDurasi || "hari" };
+    } else {
+      k.customKuota[kebijakanId].total = parseFloat(kuotaJumlah);
+      k.customKuota[kebijakanId].nama  = ck.nama;
+      k.customKuota[kebijakanId].satuanDurasi = ck.satuanDurasi || "hari";
+    }
+  });
+  save(F.kuotaCuti, kuotaData);
+  res.send({ status: "OK" });
 });
 
 // POST: hitung ulang overtime satu user berdasarkan data absensi (per-minggu)
@@ -1439,6 +1497,11 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, username, tahun);
 
+  // Cek apakah ini kebijakan custom jenis kuota
+  const kebijakan = load(F.kebijakanCuti, []);
+  const kb = kebijakan.find(x => x.id === kebijakanId);
+  const isCustomKuota = kb && !kb._default && kb.jenis === "kuota";
+
   // Validasi & kurangi saldo
   if (kuotaKey === "tahunan") {
     const sisa = k.tahunan.total - k.tahunan.terpakai;
@@ -1449,7 +1512,20 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     if (satuanJam > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: `Jam overtime tidak cukup (sisa: ${k.overtime.jamAkumulasi.toFixed(1)} jam)` });
     k.overtime.jamAkumulasi -= satuanJam;
     k.overtime.hariDiambil  += satuanDurasi === "hari" ? parseFloat(durasi) : 0;
+  } else if (isCustomKuota) {
+    // Custom kuota: catat saldo
+    if (!k.customKuota) k.customKuota = {};
+    if (!k.customKuota[kebijakanId]) {
+      k.customKuota[kebijakanId] = { nama: kb.nama, total: 0, terpakai: 0, satuanDurasi: kb.satuanDurasi || "hari" };
+    }
+    const ck = k.customKuota[kebijakanId];
+    const sisa = ck.total - ck.terpakai;
+    if (parseFloat(durasi) > sisa) {
+      return res.send({ status: "ERROR", msg: `Saldo cuti "${kb.nama}" tidak cukup (sisa: ${sisa} ${ck.satuanDurasi || "hari"})` });
+    }
+    ck.terpakai += parseFloat(durasi);
   }
+  // Jika Non-Kuota, tidak perlu catat saldo sama sekali
   save(F.kuotaCuti, kuota);
 
   const pengajuan = load(F.pengajuanCuti, []);
@@ -1531,6 +1607,10 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
     k.overtime.jamAkumulasi += jamKembali;
     k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
     if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
+  } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
+    // Kembalikan saldo custom kuota
+    const ck = k.customKuota[p.kebijakanId];
+    ck.terpakai = Math.max(0, ck.terpakai - p.durasi);
   }
   save(F.kuotaCuti, kuota);
 
@@ -1564,6 +1644,10 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
     k.overtime.jamAkumulasi += jamKembali;
     k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
     if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
+  } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
+    // Kembalikan saldo custom kuota
+    const ck = k.customKuota[p.kebijakanId];
+    ck.terpakai = Math.max(0, ck.terpakai - p.durasi);
   }
   save(F.kuotaCuti, kuota);
 

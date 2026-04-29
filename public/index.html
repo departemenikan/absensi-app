@@ -1068,9 +1068,7 @@
         <div class="card" style="margin-top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
           <div>
             <div style="font-weight:700;font-size:15px;color:var(--text);">🌴 Kebijakan Cuti</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px;">
-              2 kebijakan default (⭐) sudah terhubung ke Kuota Cuti. Tambah kebijakan Non-Kuota di bawah.
-            </div>
+
           </div>
           <button onclick="openKebijakanCutiModal()"
             style="background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;border:none;
@@ -1135,6 +1133,20 @@
               </select>
             </div>
 
+            <!-- Satuan Durasi -->
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Satuan Durasi</label>
+              <select id="modal-cuti-satuan"
+                style="width:100%;padding:10px 14px;border:1.5px solid #e8eaf0;border-radius:10px;
+                       font-size:14px;outline:none;box-sizing:border-box;background:white;appearance:auto;
+                       transition:border .2s;cursor:pointer;"
+                onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e8eaf0'">
+                <option value="">-- Pilih Satuan Durasi --</option>
+                <option value="hari">📅 Hari</option>
+                <option value="jam">⏱ Jam</option>
+              </select>
+            </div>
+
           </div>
 
           <!-- Modal footer -->
@@ -1172,24 +1184,7 @@
             </button>
           </div>
 
-          <!-- Info chips -->
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-            <div style="background:#e8f5e9;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
-              <div style="font-size:10px;color:#388e3c;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">📅 Cuti Tahunan</div>
-              <div style="font-size:13px;font-weight:800;color:#2e7d32;margin-top:2px;">12 hari / tahun</div>
-              <div style="font-size:10px;color:#66bb6a;margin-top:1px;">Reset 1 Januari</div>
-            </div>
-            <div style="background:#fff8e1;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
-              <div style="font-size:10px;color:#f57f17;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">⏱ Overtime</div>
-              <div style="font-size:13px;font-weight:800;color:#e65100;margin-top:2px;">Akumulasi otomatis</div>
-              <div style="font-size:10px;color:#ffa726;margin-top:1px;">Kelebihan > 40 jam/minggu</div>
-            </div>
-            <div style="background:#f3e5f5;border-radius:8px;padding:8px 12px;flex:1;min-width:120px;">
-              <div style="font-size:10px;color:#7b1fa2;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">⚡ Jam Kerja</div>
-              <div style="font-size:13px;font-weight:800;color:#6a1b9a;margin-top:2px;">40 jam / minggu</div>
-              <div style="font-size:10px;color:#ab47bc;margin-top:1px;">Senin – Minggu, fleksibel</div>
-            </div>
-          </div>
+
         </div>
 
         <!-- Filter tahun + search -->
@@ -1203,6 +1198,16 @@
               oninput="renderKuotaList()"
               style="width:100%;padding:9px 12px 9px 30px;border:1.5px solid #e8ecf0;border-radius:10px;
                      font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+
+        <!-- Kuota kebijakan custom (jenis=kuota yang bukan default) -->
+        <div id="custom-kuota-section" style="display:none;margin-top:12px;">
+          <div class="card" style="padding:0;overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid #f0f2f5;display:flex;align-items:center;gap:8px;">
+              <span style="font-size:14px;font-weight:700;">📋 Kuota Kebijakan Kustom</span>
+            </div>
+            <div id="custom-kuota-list"></div>
           </div>
         </div>
 
