@@ -3538,3 +3538,511 @@ async function hitungOvertimeSemua() {
     }
   } catch { showToast("❌ Gagal menghitung overtime", "error"); }
 }
+
+// ============================================================
+// SEGMEN CUTI — Tab, Daftar Cuti, Saldo Cuti
+// ============================================================
+
+let _cutiFilter = "semua";   // filter aktif: semua|hari|minggu|bulan|tahun
+let _cutiTab    = "daftar";  // tab aktif: daftar|saldo
+let _kebijakanList = [];     // cache kebijakan cuti
+let _kuotaSaya  = null;      // cache kuota user saat ini
+
+// --- Navigasi tab ---
+function switchCutiTab(tab) {
+  _cutiTab = tab;
+  const isDaftar = tab === "daftar";
+  document.getElementById("cuti-panel-daftar").style.display = isDaftar ? "" : "none";
+  document.getElementById("cuti-panel-saldo").style.display  = isDaftar ? "none" : "";
+
+  const tDaftar = document.getElementById("cuti-tab-daftar");
+  const tSaldo  = document.getElementById("cuti-tab-saldo");
+  tDaftar.style.background = isDaftar ? "var(--primary)" : "white";
+  tDaftar.style.color      = isDaftar ? "white" : "var(--muted)";
+  tSaldo.style.background  = isDaftar ? "white" : "var(--primary)";
+  tSaldo.style.color       = isDaftar ? "var(--muted)" : "white";
+
+  if (isDaftar) loadDaftarCuti();
+  else          loadSaldoCuti();
+}
+
+// --- Filter waktu ---
+function setCutiFilter(f) {
+  _cutiFilter = f;
+  const ids = ["semua","hari","minggu","bulan","tahun"];
+  ids.forEach(id => {
+    const btn = document.getElementById("cf-" + id);
+    if (!btn) return;
+    btn.style.background = id === f ? "var(--primary)" : "#f0f2f5";
+    btn.style.color      = id === f ? "white" : "var(--muted)";
+  });
+  loadDaftarCuti();
+}
+
+// Load daftar pengajuan cuti
+async function loadDaftarCuti() {
+  const el = document.getElementById("cuti-daftar-list");
+  if (!el) return;
+  el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
+  const user = localStorage.getItem("user") || "";
+  try {
+    const r = await fetch(`/pengajuan-cuti?requester=${user}&filter=${_cutiFilter}`);
+    const list = await r.json();
+    renderDaftarCuti(list, user);
+  } catch {
+    el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:28px;">Gagal memuat data</p>`;
+  }
+}
+
+function renderDaftarCuti(list, currentUser) {
+  const el = document.getElementById("cuti-daftar-list");
+  if (!list || list.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:32px;">
+      <div style="font-size:36px;margin-bottom:8px;">🌴</div>
+      <div style="color:var(--muted);font-size:14px;">Belum ada pengajuan cuti</div>
+    </div>`;
+    return;
+  }
+
+  const myGroup = userGroup || "";
+  const myLevel = userLevel || 99;
+
+  el.innerHTML = list.map(p => {
+    const statusColor = {
+      menunggu: "#f39c12", disetujui: "#27ae60", ditolak: "#e74c3c", dibatalkan: "#95a5a6"
+    }[p.status] || "#95a5a6";
+    const statusLabel = {
+      menunggu: "⏳ Menunggu", disetujui: "✅ Disetujui", ditolak: "❌ Ditolak", dibatalkan: "🚫 Dibatalkan"
+    }[p.status] || p.status;
+
+    const tglInfo = p.satuanDurasi === "jam"
+      ? `${p.jamMulai || "--"} – ${p.jamAkhir || "--"}`
+      : `${fmtTanggal(p.tanggalMulai)}${p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? " – " + fmtTanggal(p.tanggalAkhir) : ""}`;
+
+    const durInfo = `${p.durasi} ${p.satuanDurasi}`;
+
+    // Tombol berdasarkan hak akses
+    let btns = "";
+    const isOwner   = myGroup === "owner";
+    const isAdmin   = myGroup === "admin";
+    const isManager = myGroup === "manager";
+    const targetGroup = p.groupTarget || "anggota";
+    const isMine    = p.username === currentUser;
+
+    // Dapat approve/reject?
+    let canApproveReject = false;
+    if ((isOwner || isAdmin) && p.username !== currentUser) canApproveReject = true;
+    if (isManager && (targetGroup === "anggota" || targetGroup === "koordinator")) canApproveReject = true;
+
+    if (p.status === "menunggu") {
+      if (canApproveReject) {
+        btns += `<button onclick="doApproveCuti('${p.id}')"
+          style="padding:6px 14px;border:none;border-radius:8px;background:#e8f5e9;color:#27ae60;
+            font-weight:700;font-size:12px;cursor:pointer;">✅ Setujui</button>`;
+        btns += `<button onclick="openRejectCutiModal('${p.id}')"
+          style="padding:6px 14px;border:none;border-radius:8px;background:#fce4ec;color:#e74c3c;
+            font-weight:700;font-size:12px;cursor:pointer;margin-left:6px;">❌ Tolak</button>`;
+      }
+      if (isMine) {
+        btns += `<button onclick="doCancelCuti('${p.id}')"
+          style="padding:6px 14px;border:none;border-radius:8px;background:#f0f2f5;color:#95a5a6;
+            font-weight:700;font-size:12px;cursor:pointer;margin-left:6px;">🚫 Batalkan</button>`;
+      }
+    } else if (p.status === "disetujui" && isMine) {
+      btns += `<button onclick="doCancelCuti('${p.id}')"
+        style="padding:6px 14px;border:none;border-radius:8px;background:#f0f2f5;color:#95a5a6;
+          font-weight:700;font-size:12px;cursor:pointer;">🚫 Batalkan</button>`;
+    }
+
+    return `<div style="padding:14px 16px;border-bottom:1px solid #f0f2f5;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#1a237e);
+              display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">
+              ${(p.namaLengkap || p.username).charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:700;">${p.namaLengkap || p.username}</div>
+              <div style="font-size:11px;color:var(--muted);">${p.jabatan || ""}</div>
+            </div>
+          </div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;">
+            🌴 ${p.kebijakanNama}
+          </div>
+          <div style="font-size:12px;color:var(--muted);">
+            📅 ${tglInfo} &nbsp;|&nbsp; ⏱ ${durInfo}
+          </div>
+          ${p.rejectedReason ? `<div style="font-size:11px;color:#e74c3c;margin-top:3px;">Alasan: ${p.rejectedReason}</div>` : ""}
+        </div>
+        <div style="flex-shrink:0;text-align:right;">
+          <span style="display:inline-block;padding:4px 12px;border-radius:50px;font-size:11px;font-weight:700;
+            background:${statusColor}20;color:${statusColor};">${statusLabel}</span>
+          <div style="font-size:10px;color:#b2bec3;margin-top:4px;">${fmtWaktuSingkat(p.createdAt)}</div>
+        </div>
+      </div>
+      ${btns ? `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">${btns}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function fmtTanggal(d) {
+  if (!d) return "—";
+  const dt = new Date(d + "T00:00:00");
+  const days = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+  const months = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]}`;
+}
+
+function fmtWaktuSingkat(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 60000)    return "Baru saja";
+  if (diff < 3600000)  return Math.floor(diff/60000) + " mnt lalu";
+  if (diff < 86400000) return Math.floor(diff/3600000) + " jam lalu";
+  return fmtTanggal(iso.split("T")[0]);
+}
+
+// --- Approve ---
+async function doApproveCuti(id) {
+  const user = localStorage.getItem("user") || "";
+  try {
+    const r = await fetch(`/pengajuan-cuti/${id}/approve`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approver: user })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("✅ Cuti berhasil disetujui!"); loadDaftarCuti(); }
+    else showToast(d.msg || "Gagal menyetujui", "error");
+  } catch { showToast("❌ Gagal", "error"); }
+}
+
+// --- Reject modal ---
+function openRejectCutiModal(id) {
+  document.getElementById("reject-target-id").value = id;
+  document.getElementById("reject-alasan").value = "";
+  const m = document.getElementById("modal-reject-cuti");
+  m.style.display = "flex";
+}
+function closeRejectCutiModal() {
+  document.getElementById("modal-reject-cuti").style.display = "none";
+}
+async function doRejectCuti() {
+  const id     = document.getElementById("reject-target-id").value;
+  const reason = document.getElementById("reject-alasan").value.trim();
+  const user   = localStorage.getItem("user") || "";
+  try {
+    const r = await fetch(`/pengajuan-cuti/${id}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approver: user, reason })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("❌ Cuti berhasil ditolak"); closeRejectCutiModal(); loadDaftarCuti(); }
+    else showToast(d.msg || "Gagal menolak", "error");
+  } catch { showToast("❌ Gagal", "error"); }
+}
+
+// --- Cancel ---
+async function doCancelCuti(id) {
+  const user = localStorage.getItem("user") || "";
+  if (!confirm("Batalkan pengajuan cuti ini? Saldo cuti akan dikembalikan.")) return;
+  try {
+    const r = await fetch(`/pengajuan-cuti/${id}/cancel`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user })
+    });
+    const d = await r.json();
+    if (d.status === "OK") { showToast("🚫 Pengajuan berhasil dibatalkan"); loadDaftarCuti(); }
+    else showToast(d.msg || "Gagal membatalkan", "error");
+  } catch { showToast("❌ Gagal", "error"); }
+}
+
+// --- Saldo Cuti ---
+async function loadSaldoCuti() {
+  const el = document.getElementById("cuti-saldo-content");
+  if (!el) return;
+  const user  = localStorage.getItem("user") || "";
+  const tahun = new Date().getFullYear();
+  try {
+    const r = await fetch(`/kuota-cuti/${user}?tahun=${tahun}`);
+    const k = await r.json();
+    renderSaldoCuti(k, user);
+  } catch {
+    el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:28px;">Gagal memuat saldo</p>`;
+  }
+}
+
+function renderSaldoCuti(k, user) {
+  const el = document.getElementById("cuti-saldo-content");
+  if (!el) return;
+
+  const tahunanSisa    = k.tahunan.total - k.tahunan.terpakai;
+  const tahunanPct     = k.tahunan.total > 0 ? Math.round((k.tahunan.terpakai / k.tahunan.total) * 100) : 0;
+  const otHariSetara   = Math.floor(k.overtime.jamAkumulasi / 8);
+  const otJamSisa      = parseFloat((k.overtime.jamAkumulasi % 8).toFixed(1));
+  const otPct          = k.overtime.jamAkumulasi > 0
+    ? Math.min(100, Math.round((k.overtime.hariDiambil * 8 / (k.overtime.jamAkumulasi + k.overtime.hariDiambil * 8)) * 100))
+    : 0;
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:0;padding:18px 18px 14px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+          display:flex;align-items:center;justify-content:center;color:white;font-size:18px;">🌴</div>
+        <div>
+          <div style="font-weight:800;font-size:15px;">Saldo Cuti Saya</div>
+          <div style="font-size:12px;color:var(--muted);">Tahun ${new Date().getFullYear()}</div>
+        </div>
+      </div>
+
+      <!-- Cuti Tahunan -->
+      <div style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border-radius:14px;padding:16px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-weight:800;font-size:14px;color:#2e7d32;">📅 Cuti Tahunan</span>
+          <span style="font-size:11px;color:#66bb6a;font-weight:700;">Reset setiap 1 Januari</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#2e7d32;">${k.tahunan.total}</div>
+            <div style="font-size:10px;color:#81c784;font-weight:700;margin-top:2px;">Total</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#e57373;">${k.tahunan.terpakai}</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;
+            box-shadow:0 2px 8px rgba(46,125,50,.15);">
+            <div style="font-size:26px;font-weight:900;color:#1565c0;">${tahunanSisa}</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa</div>
+          </div>
+        </div>
+        <div style="background:#c8e6c9;border-radius:50px;height:8px;overflow:hidden;">
+          <div style="height:100%;background:linear-gradient(90deg,#43a047,#66bb6a);border-radius:50px;
+            width:${tahunanPct}%;transition:width .5s;"></div>
+        </div>
+        <div style="font-size:11px;color:#388e3c;margin-top:5px;text-align:right;">${tahunanPct}% terpakai</div>
+      </div>
+
+      <!-- Cuti Overtime -->
+      <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-weight:800;font-size:14px;color:#e65100;">⏱ Cuti Overtime</span>
+          <span style="font-size:11px;color:#ffa726;font-weight:700;">1 hari = 8 jam akumulasi</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:22px;font-weight:900;color:#e65100;">${k.overtime.jamAkumulasi.toFixed(1)}</div>
+            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Jam Sisa</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;
+            box-shadow:0 2px 8px rgba(230,81,0,.15);">
+            <div style="font-size:22px;font-weight:900;color:#2e7d32;">${otHariSetara}</div>
+            <div style="font-size:10px;color:#81c784;font-weight:700;margin-top:2px;">Setara Hari</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:22px;font-weight:900;color:#7b1fa2;">${k.overtime.hariDiambil}</div>
+            <div style="font-size:10px;color:#ba68c8;font-weight:700;margin-top:2px;">Hari Diambil</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#f57f17;text-align:center;padding:8px;background:rgba(255,152,0,.08);border-radius:8px;">
+          💡 Kamu punya <b>${otHariSetara} hari${otJamSisa > 0 ? " + " + otJamSisa + " jam" : ""}</b> cuti overtime tersedia
+        </div>
+      </div>
+    </div>
+
+    <!-- Riwayat cuti saya -->
+    <div class="card" style="margin-top:12px;padding:0;overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #f0f2f5;">
+        <span style="font-size:14px;font-weight:700;">📋 Riwayat Pengajuan Saya</span>
+      </div>
+      <div id="cuti-saldo-riwayat">
+        <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
+      </div>
+    </div>`;
+
+  // Load riwayat pengajuan user ini
+  loadRiwayatCutiSaya(user);
+}
+
+async function loadRiwayatCutiSaya(user) {
+  const el = document.getElementById("cuti-saldo-riwayat");
+  if (!el) return;
+  try {
+    const r = await fetch(`/pengajuan-cuti?requester=${user}&filter=semua`);
+    const list = await r.json();
+    const mine = list.filter(p => p.username === user).slice(0, 10);
+    if (!mine.length) {
+      el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada pengajuan</p>`;
+      return;
+    }
+    const statusColor = { menunggu:"#f39c12", disetujui:"#27ae60", ditolak:"#e74c3c", dibatalkan:"#95a5a6" };
+    const statusLabel = { menunggu:"⏳ Menunggu", disetujui:"✅ Disetujui", ditolak:"❌ Ditolak", dibatalkan:"🚫 Dibatalkan" };
+    el.innerHTML = mine.map(p => {
+      const sc = statusColor[p.status] || "#95a5a6";
+      const sl = statusLabel[p.status] || p.status;
+      const tgl = p.satuanDurasi === "jam"
+        ? `${p.jamMulai||"--"} – ${p.jamAkhir||"--"}`
+        : fmtTanggal(p.tanggalMulai);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #f0f2f5;">
+        <div>
+          <div style="font-size:13px;font-weight:700;">${p.kebijakanNama}</div>
+          <div style="font-size:11px;color:var(--muted);">📅 ${tgl} &nbsp;|&nbsp; ${p.durasi} ${p.satuanDurasi}</div>
+        </div>
+        <span style="padding:4px 12px;border-radius:50px;font-size:11px;font-weight:700;background:${sc}20;color:${sc};">${sl}</span>
+      </div>`;
+    }).join("");
+  } catch {
+    el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">Gagal memuat riwayat</p>`;
+  }
+}
+
+// ============================================================
+// MODAL TAMBAH CUTI
+// ============================================================
+
+async function openTambahCutiModal() {
+  // Load kebijakan
+  try {
+    const r = await fetch("/kebijakan-cuti");
+    _kebijakanList = await r.json();
+  } catch { _kebijakanList = []; }
+
+  const sel = document.getElementById("tc-kebijakan");
+  sel.innerHTML = `<option value="">— Pilih Kebijakan Cuti —</option>`;
+  _kebijakanList.forEach(k => {
+    sel.innerHTML += `<option value="${k.id}" data-kuota="${k.kuotaKey||""}" data-nama="${k.nama}">${k.nama}</option>`;
+  });
+
+  // Reset fields
+  document.getElementById("tc-durasi").value   = "";
+  document.getElementById("tc-satuan").value   = "hari";
+  document.getElementById("tc-tgl-mulai").value = "";
+  document.getElementById("tc-tgl-akhir").value = "";
+  document.getElementById("tc-jam-mulai").value = "";
+  document.getElementById("tc-jam-akhir").value = "";
+  document.getElementById("tc-saldo-info").style.display = "none";
+  document.getElementById("tc-wrap-tanggal").style.display = "";
+  document.getElementById("tc-wrap-jam").style.display = "none";
+
+  // Load kuota saya
+  const user  = localStorage.getItem("user") || "";
+  const tahun = new Date().getFullYear();
+  try {
+    const rk = await fetch(`/kuota-cuti/${user}?tahun=${tahun}`);
+    _kuotaSaya = await rk.json();
+  } catch { _kuotaSaya = null; }
+
+  const m = document.getElementById("modal-tambah-cuti");
+  m.style.display = "flex";
+  setTimeout(() => sel.focus(), 100);
+}
+
+function closeTambahCutiModal() {
+  document.getElementById("modal-tambah-cuti").style.display = "none";
+}
+
+function onTcKebijakanChange() {
+  const sel = document.getElementById("tc-kebijakan");
+  const opt = sel.options[sel.selectedIndex];
+  const kuotaKey = opt?.getAttribute("data-kuota") || "";
+  const infoEl   = document.getElementById("tc-saldo-info");
+
+  if (!kuotaKey || !_kuotaSaya) { infoEl.style.display = "none"; return; }
+
+  let info = "";
+  if (kuotaKey === "tahunan") {
+    const sisa = _kuotaSaya.tahunan.total - _kuotaSaya.tahunan.terpakai;
+    info = `📅 Saldo tersedia: <b>${sisa} hari</b> dari ${_kuotaSaya.tahunan.total} hari`;
+  } else if (kuotaKey === "overtime") {
+    const jam = _kuotaSaya.overtime.jamAkumulasi;
+    const hari = Math.floor(jam / 8);
+    info = `⏱ Saldo tersedia: <b>${hari} hari</b> (${jam.toFixed(1)} jam akumulasi)`;
+  }
+
+  if (info) { infoEl.innerHTML = info; infoEl.style.display = ""; }
+  else infoEl.style.display = "none";
+}
+
+function onTcSatuanChange() {
+  const s = document.getElementById("tc-satuan").value;
+  document.getElementById("tc-wrap-tanggal").style.display = s === "hari" ? "" : "none";
+  document.getElementById("tc-wrap-jam").style.display     = s === "jam"  ? "" : "none";
+}
+
+async function saveTambahCuti() {
+  const kebijakanEl = document.getElementById("tc-kebijakan");
+  const kebijakanId = kebijakanEl.value;
+  if (!kebijakanId) return showToast("⚠️ Pilih kebijakan cuti!", "warning");
+
+  const opt        = kebijakanEl.options[kebijakanEl.selectedIndex];
+  const kuotaKey   = opt?.getAttribute("data-kuota") || null;
+  const kebijakanNama = opt?.getAttribute("data-nama") || "";
+  const durasi     = parseFloat(document.getElementById("tc-durasi").value);
+  if (!durasi || durasi <= 0) return showToast("⚠️ Isi durasi dengan benar!", "warning");
+
+  const satuanDurasi = document.getElementById("tc-satuan").value;
+  const tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
+  const tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
+  const jamMulai     = document.getElementById("tc-jam-mulai").value || null;
+  const jamAkhir     = document.getElementById("tc-jam-akhir").value || null;
+
+  const user = localStorage.getItem("user") || "";
+  try {
+    const r = await fetch("/pengajuan-cuti", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, kebijakanId, kebijakanNama, kuotaKey,
+        durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Pengajuan cuti berhasil!");
+      closeTambahCutiModal();
+      loadDaftarCuti();
+    } else {
+      showToast("❌ " + (d.msg || "Gagal mengajukan cuti"), "error");
+    }
+  } catch { showToast("❌ Gagal mengajukan cuti", "error"); }
+}
+
+// ============================================================
+// Hook ke openView & navTo — load cuti saat masuk halaman
+// ============================================================
+const _origOpenView_cuti = openView;
+// Patch openView agar load daftar cuti ketika view-cuti dibuka
+(function() {
+  const _orig = openView;
+  window.openView = function(viewId) {
+    _orig(viewId);
+    if (viewId === "view-cuti") {
+      _cutiFilter = "semua";
+      _cutiTab    = "daftar";
+      // Reset tab UI
+      const td = document.getElementById("cuti-tab-daftar");
+      const ts = document.getElementById("cuti-tab-saldo");
+      if (td) { td.style.background="var(--primary)"; td.style.color="white"; }
+      if (ts) { ts.style.background="white"; ts.style.color="var(--muted)"; }
+      const pd = document.getElementById("cuti-panel-daftar");
+      const ps = document.getElementById("cuti-panel-saldo");
+      if (pd) pd.style.display = "";
+      if (ps) ps.style.display = "none";
+      // Reset filter buttons
+      ["semua","hari","minggu","bulan","tahun"].forEach(id => {
+        const btn = document.getElementById("cf-" + id);
+        if (!btn) return;
+        btn.style.background = id === "semua" ? "var(--primary)" : "#f0f2f5";
+        btn.style.color      = id === "semua" ? "white" : "var(--muted)";
+      });
+      loadDaftarCuti();
+    }
+  };
+})();
+
+// Patch untuk simpan currentUser ke window
+(function() {
+  const _orig = navTo;
+  // Cari username setelah login (di fungsi handleAuth atau loadAdmin yg sudah ada)
+  // Kita baca dari _currentUser yang di-set saat login
+})();
+

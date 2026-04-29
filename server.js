@@ -21,6 +21,7 @@ const F = {
   tracking:       path.join(DATA_DIR, "tracking.json"),
   kebijakanCuti:  path.join(DATA_DIR, "kebijakan_cuti.json"),
   kuotaCuti:      path.join(DATA_DIR, "kuota_cuti.json"),
+  pengajuanCuti:  path.join(DATA_DIR, "pengajuan_cuti.json"),
 };
 
 function load(file, def) {
@@ -893,6 +894,233 @@ app.post("/kuota-cuti/reset-tahunan", (req, res) => {
   });
   save(F.kuotaCuti, kuota);
   res.send({ status: "OK", tahun: tahunBaru });
+});
+
+// ========================
+// PENGAJUAN CUTI
+// ========================
+
+// Helper: level hirarki user
+function getUserLevel(username) {
+  const users  = load(F.users, {});
+  const groups = load(F.groups, []);
+  const u = users[username];
+  if (!u) return 99;
+  const g = groups.find(g => g.id === (u.group || "anggota"));
+  return g ? g.level : 99;
+}
+
+function getUserGroup(username) {
+  const users = load(F.users, {});
+  const u = users[username];
+  return u ? (u.group || "anggota") : "anggota";
+}
+
+// GET semua pengajuan cuti (admin/owner/manager bisa lihat semua, lainnya hanya miliknya)
+app.get("/pengajuan-cuti", (req, res) => {
+  const { requester, filter } = req.query;
+  const pengajuan = load(F.pengajuanCuti, []);
+  const requesterLevel = getUserLevel(requester);
+  const requesterGroup = getUserGroup(requester);
+
+  let list = pengajuan;
+  // Non-admin/owner hanya lihat miliknya + approval scope
+  if (requesterGroup !== "owner" && requesterGroup !== "admin") {
+    const users = load(F.users, {});
+    // Manager bisa lihat cuti semua anggota di divisinya + koordinator
+    if (requesterGroup === "manager") {
+      const myDivisi = (users[requester]?.divisi) || [];
+      const myDivisiArr = Array.isArray(myDivisi) ? myDivisi : [myDivisi];
+      list = pengajuan.filter(p => {
+        if (p.username === requester) return true;
+        const targetUser = users[p.username];
+        if (!targetUser) return false;
+        const targetGroup = targetUser.group || "anggota";
+        if (targetGroup === "owner" || targetGroup === "admin") return false;
+        // manager dan koordinator di divisi yg sama
+        const targetDivisi = Array.isArray(targetUser.divisi) ? targetUser.divisi : (targetUser.divisi ? [targetUser.divisi] : []);
+        return myDivisiArr.some(d => targetDivisi.includes(d));
+      });
+    } else {
+      // koordinator & anggota: hanya lihat punya sendiri
+      list = pengajuan.filter(p => p.username === requester);
+    }
+  }
+
+  // Filter waktu
+  const now = new Date();
+  if (filter === "hari") {
+    const today = now.toISOString().split("T")[0];
+    list = list.filter(p => p.tanggalMulai === today);
+  } else if (filter === "minggu") {
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay());
+    const end   = new Date(start); end.setDate(start.getDate() + 6);
+    const s = start.toISOString().split("T")[0], e = end.toISOString().split("T")[0];
+    list = list.filter(p => p.tanggalMulai >= s && p.tanggalMulai <= e);
+  } else if (filter === "bulan") {
+    const ym = now.toISOString().slice(0, 7);
+    list = list.filter(p => (p.tanggalMulai || "").startsWith(ym));
+  } else if (filter === "tahun") {
+    const yr = String(now.getFullYear());
+    list = list.filter(p => (p.tanggalMulai || "").startsWith(yr));
+  }
+
+  // Sertakan info nama
+  const usersData = load(F.users, {});
+  list = list.map(p => ({
+    ...p,
+    namaLengkap: usersData[p.username]?.namaLengkap || p.username,
+    jabatan: usersData[p.username]?.jabatan || "-",
+    groupTarget: usersData[p.username]?.group || "anggota",
+  }));
+
+  res.send(list.sort((a,b) => b.createdAt.localeCompare(a.createdAt)));
+});
+
+// POST: ajukan cuti baru
+app.post("/pengajuan-cuti", (req, res) => {
+  const { username, kebijakanId, kebijakanNama, kuotaKey, durasi, satuanDurasi,
+          tanggalMulai, tanggalAkhir, jamMulai, jamAkhir } = req.body;
+  if (!username || !kebijakanId || !durasi) return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
+
+  const tahun = new Date().getFullYear();
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, username, tahun);
+
+  // Validasi & kurangi saldo
+  if (kuotaKey === "tahunan") {
+    const sisa = k.tahunan.total - k.tahunan.terpakai;
+    if (parseFloat(durasi) > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
+    k.tahunan.terpakai += parseFloat(durasi);
+  } else if (kuotaKey === "overtime") {
+    const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 8;
+    if (satuanJam > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: `Jam overtime tidak cukup (sisa: ${k.overtime.jamAkumulasi.toFixed(1)} jam)` });
+    k.overtime.jamAkumulasi -= satuanJam;
+    k.overtime.hariDiambil  += satuanDurasi === "hari" ? parseFloat(durasi) : 0;
+  }
+  save(F.kuotaCuti, kuota);
+
+  const pengajuan = load(F.pengajuanCuti, []);
+  const id = "cuti-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
+  const entry = {
+    id, username, kebijakanId, kebijakanNama, kuotaKey: kuotaKey || null,
+    durasi: parseFloat(durasi), satuanDurasi: satuanDurasi || "hari",
+    tanggalMulai: tanggalMulai || null, tanggalAkhir: tanggalAkhir || null,
+    jamMulai: jamMulai || null, jamAkhir: jamAkhir || null,
+    status: "menunggu",
+    approvedBy: null, approvedAt: null,
+    rejectedBy: null, rejectedAt: null, rejectedReason: null,
+    canceledBy: null, canceledAt: null,
+    createdAt: new Date().toISOString()
+  };
+  pengajuan.push(entry);
+  save(F.pengajuanCuti, pengajuan);
+  logAktivitas(username, "CUTI_AJUKAN", new Date().toISOString());
+  res.send({ status: "OK", id });
+});
+
+// POST: approve cuti
+app.post("/pengajuan-cuti/:id/approve", (req, res) => {
+  const { approver } = req.body;
+  const pengajuan = load(F.pengajuanCuti, []);
+  const idx = pengajuan.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  const p = pengajuan[idx];
+
+  // Cek hak approve
+  const approverLevel = getUserLevel(approver);
+  const targetLevel   = getUserLevel(p.username);
+  const approverGroup = getUserGroup(approver);
+  const targetGroup   = getUserGroup(p.username);
+
+  let canApprove = false;
+  if (approverGroup === "owner" || approverGroup === "admin") {
+    canApprove = true;
+  } else if (approverGroup === "manager") {
+    // Manager hanya bisa approve anggota/koordinator (bukan manager/admin/owner)
+    if (targetGroup === "anggota" || targetGroup === "koordinator") canApprove = true;
+  }
+  if (!canApprove) return res.send({ status: "FORBIDDEN", msg: "Tidak memiliki hak approve" });
+
+  p.status     = "disetujui";
+  p.approvedBy = approver;
+  p.approvedAt = new Date().toISOString();
+  save(F.pengajuanCuti, pengajuan);
+  logAktivitas(approver, "CUTI_APPROVE", new Date().toISOString());
+  res.send({ status: "OK" });
+});
+
+// POST: reject cuti (kembalikan saldo)
+app.post("/pengajuan-cuti/:id/reject", (req, res) => {
+  const { approver, reason } = req.body;
+  const pengajuan = load(F.pengajuanCuti, []);
+  const idx = pengajuan.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  const p = pengajuan[idx];
+  if (p.status !== "menunggu") return res.send({ status: "ERROR", msg: "Hanya cuti berstatus menunggu yang bisa di-reject" });
+
+  const approverLevel = getUserLevel(approver);
+  const approverGroup = getUserGroup(approver);
+  const targetGroup   = getUserGroup(p.username);
+
+  let canReject = false;
+  if (approverGroup === "owner" || approverGroup === "admin") canReject = true;
+  else if (approverGroup === "manager" && (targetGroup === "anggota" || targetGroup === "koordinator")) canReject = true;
+  if (!canReject) return res.send({ status: "FORBIDDEN" });
+
+  // Kembalikan saldo
+  const tahun = new Date().getFullYear();
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, p.username, tahun);
+  if (p.kuotaKey === "tahunan") {
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - p.durasi);
+  } else if (p.kuotaKey === "overtime") {
+    const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
+    k.overtime.jamAkumulasi += jamKembali;
+    k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+    if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
+  }
+  save(F.kuotaCuti, kuota);
+
+  p.status       = "ditolak";
+  p.rejectedBy   = approver;
+  p.rejectedAt   = new Date().toISOString();
+  p.rejectedReason = reason || "";
+  save(F.pengajuanCuti, pengajuan);
+  logAktivitas(approver, "CUTI_REJECT", new Date().toISOString());
+  res.send({ status: "OK" });
+});
+
+// POST: batalkan cuti (hanya pengaju sendiri, jika masih menunggu)
+app.post("/pengajuan-cuti/:id/cancel", (req, res) => {
+  const { username } = req.body;
+  const pengajuan = load(F.pengajuanCuti, []);
+  const idx = pengajuan.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.send({ status: "NOT_FOUND" });
+  const p = pengajuan[idx];
+  if (p.username !== username) return res.send({ status: "FORBIDDEN" });
+  if (p.status !== "menunggu" && p.status !== "disetujui") return res.send({ status: "ERROR", msg: "Tidak bisa dibatalkan" });
+
+  // Kembalikan saldo jika belum expired / masih relevan
+  const tahun = new Date().getFullYear();
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, p.username, tahun);
+  if (p.kuotaKey === "tahunan") {
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - p.durasi);
+  } else if (p.kuotaKey === "overtime") {
+    const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
+    k.overtime.jamAkumulasi += jamKembali;
+    k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+    if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
+  }
+  save(F.kuotaCuti, kuota);
+
+  p.status     = "dibatalkan";
+  p.canceledBy = username;
+  p.canceledAt = new Date().toISOString();
+  save(F.pengajuanCuti, pengajuan);
+  logAktivitas(username, "CUTI_CANCEL", new Date().toISOString());
+  res.send({ status: "OK" });
 });
 
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ========================
