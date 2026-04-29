@@ -59,8 +59,8 @@ function openView(viewId) {
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-tracking")   loadTracking();
   if (viewId === "view-timesheet")  {
-    const m = document.getElementById("ts-month");
-    if (!m.value) m.value = new Date().toISOString().slice(0, 7);
+    // Selalu reset ke minggu berjalan saat tab dibuka
+    _tsWeekStart = tsGetMonday();
     loadTimesheet();
   }
 }
@@ -625,11 +625,6 @@ async function sendAbsen(type, label) {
     return;
   }
 
-  // ─── Peringatan jika akurasi GPS terlalu rendah (> 200 m) ───
-  if (loc.accuracy !== null && loc.accuracy > 200) {
-    showToast(`⚠️ Sinyal GPS lemah (akurasi ±${Math.round(loc.accuracy)}m). Pindah ke area terbuka untuk hasil lebih akurat.`, "warning", 5000);
-  }
-
   const ok = await verifyFace(label);
   if (!ok) return;
   const photo = takePhoto();
@@ -637,7 +632,7 @@ async function sendAbsen(type, label) {
   try {
     const now = new Date().toISOString();
     const r = await fetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({user, type, time: now, lat:loc.lat, lng:loc.lng, accuracy:loc.accuracy, photo}) });
+      body: JSON.stringify({user, type, time: now, lat:loc.lat, lng:loc.lng, photo}) });
     const d = await r.json();
     if (d.status === "OK") {
       const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
@@ -648,8 +643,7 @@ async function sendAbsen(type, label) {
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
     } else if (d.status === "OUT_OF_AREA") {
-      const accInfo = d.accuracy ? ` (akurasi GPS ±${d.accuracy}m)` : "";
-      showToast(`❌ Di luar area kantor! Jarak ${d.distance}m dari ${d.area||"kantor"}${accInfo}. Gunakan status "Tugas Luar" jika bekerja di luar kantor.`, "error", 6000);
+      showToast(`❌ Di luar area kantor! Jarak ${d.distance}m dari ${d.area||"kantor"}. Gunakan status "Tugas Luar" jika bekerja di luar kantor.`, "error", 6000);
     } else if (d.status === "LOCATION_REQUIRED") {
       showToast("❌ Aktifkan layanan lokasi di perangkat Anda untuk Clock In", "error", 5000);
     } else if (d.status === "ALREADY_IN") {
@@ -1086,28 +1080,24 @@ async function requestPermissions() {
     navigator.geolocation.getCurrentPosition(
       () => resolve(true),
       () => resolve(false),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   });
 
   return result;
 }
 
-// ─── Ambil koordinat ─ return null jika izin ditolak (jangan silent fallback ke 0,0) ───
+// ─── Ambil koordinat — return null jika izin ditolak (jangan silent fallback ke 0,0) ───
 async function getLoc() {
   return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: null, denied: true });
+    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, denied: true });
     navigator.geolocation.getCurrentPosition(
-      p => resolve({
-        lat:      p.coords.latitude,
-        lng:      p.coords.longitude,
-        accuracy: p.coords.accuracy,
-        denied:   false
-      }),
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, denied: false }),
       err => {
-        resolve({ lat: 0, lng: 0, accuracy: null, denied: err.code === 1 });
+        // code 1 = PERMISSION_DENIED
+        resolve({ lat: 0, lng: 0, denied: err.code === 1 });
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   });
 }
