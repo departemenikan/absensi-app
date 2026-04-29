@@ -4863,7 +4863,6 @@ function renderKuotaList() {
       <div style="text-align:center;flex:0 0 auto;">
         <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">⏱ Overtime</div>
         <div style="font-size:18px;font-weight:900;color:#e65100;">${otJam.toFixed(1)}<span style="font-size:10px;color:var(--muted);font-weight:400;"> jam</span></div>
-        <div style="font-size:10px;color:#81c784;">${otHari} hari ${otSisa>0?'+ '+otSisa+' jam':''}</div>
       </div>
 
       <span style="color:#ddd;font-size:18px;flex-shrink:0;">›</span>
@@ -4889,11 +4888,12 @@ function openKuotaDetailModal(username) {
   document.getElementById("mkd-tahunan-sisa").textContent  = sisa;
   document.getElementById("mkd-tahunan-bar").style.width   = pct + "%";
 
-  // Overtime
+  // Overtime — ditampilkan dalam JAM saja (bukan hari)
   const otJam  = d.overtime.jamAkumulasi || 0;
-  const otHari = Math.floor(otJam / 8);
-  document.getElementById("mkd-ot-jam").textContent    = otJam.toFixed(1);
-  document.getElementById("mkd-ot-hari").textContent   = otHari;
+  document.getElementById("mkd-ot-jam").textContent     = otJam.toFixed(1);
+  // mkd-ot-hari: tampilkan "setara X hari" sebagai info tambahan saja
+  const mkdHariEl = document.getElementById("mkd-ot-hari");
+  if (mkdHariEl) mkdHariEl.textContent = Math.floor(otJam / 8);
   document.getElementById("mkd-ot-diambil").textContent = d.overtime.hariDiambil || 0;
 
   const overlay = document.getElementById("modal-kuota-detail-overlay");
@@ -5207,7 +5207,7 @@ function renderSaldoCuti(k, user) {
       <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-weight:800;font-size:14px;color:#e65100;">⏱ Cuti Overtime</span>
-          <span style="font-size:11px;color:#ffa726;font-weight:700;">1 hari = 8 jam akumulasi</span>
+          <span style="font-size:11px;color:#ffa726;font-weight:700;">Akumulasi dalam jam</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
@@ -5225,7 +5225,7 @@ function renderSaldoCuti(k, user) {
           </div>
         </div>
         <div style="font-size:12px;color:#f57f17;text-align:center;padding:8px;background:rgba(255,152,0,.08);border-radius:8px;">
-          💡 Kamu punya <b>${otHariSetara} hari${otJamSisa > 0 ? " + " + otJamSisa + " jam" : ""}</b> cuti overtime tersedia
+          💡 Kamu punya <b>${k.overtime.jamAkumulasi.toFixed(1)} jam</b> cuti overtime tersedia
         </div>
       </div>
     </div>
@@ -5294,15 +5294,27 @@ async function openTambahCutiModal() {
   });
 
   // Reset fields
-  document.getElementById("tc-durasi").value   = "";
-  document.getElementById("tc-satuan").value   = "hari";
-  document.getElementById("tc-tgl-mulai").value = "";
-  document.getElementById("tc-tgl-akhir").value = "";
-  document.getElementById("tc-jam-mulai").value = "";
-  document.getElementById("tc-jam-akhir").value = "";
-  document.getElementById("tc-saldo-info").style.display = "none";
-  document.getElementById("tc-wrap-tanggal").style.display = "";
-  document.getElementById("tc-wrap-jam").style.display = "none";
+  document.getElementById("tc-durasi").value        = "";
+  document.getElementById("tc-satuan").value        = "hari";
+  document.getElementById("tc-tgl-mulai").value     = "";
+  document.getElementById("tc-tgl-akhir").value     = "";
+  document.getElementById("tc-jam-mulai").value     = "";
+  document.getElementById("tc-jam-akhir").value     = "";
+  const tcTglOt = document.getElementById("tc-tgl-ot");
+  if (tcTglOt) tcTglOt.value = "";
+  const tcComputed = document.getElementById("tc-durasi-computed");
+  if (tcComputed) tcComputed.value = "";
+  document.getElementById("tc-saldo-info").style.display        = "none";
+  // Sembunyikan semua section — akan ditampilkan oleh onTcKebijakanChange
+  document.getElementById("tc-wrap-durasi").style.display       = "none";
+  const tcWrapSatuan = document.getElementById("tc-wrap-satuan");
+  if (tcWrapSatuan) tcWrapSatuan.style.display = "none";
+  document.getElementById("tc-wrap-tanggal").style.display      = "none";
+  document.getElementById("tc-wrap-jam").style.display          = "none";
+  const tcWrapTglOt = document.getElementById("tc-wrap-tanggal-ot");
+  if (tcWrapTglOt) tcWrapTglOt.style.display = "none";
+  const tcInfoKal = document.getElementById("tc-info-kalkulasi");
+  if (tcInfoKal) { tcInfoKal.innerHTML = ""; tcInfoKal.style.display = "none"; }
 
   // Load kuota saya
   const user  = localStorage.getItem("user") || "";
@@ -5322,49 +5334,183 @@ function closeTambahCutiModal() {
 }
 
 function onTcKebijakanChange() {
-  const sel = document.getElementById("tc-kebijakan");
-  const opt = sel.options[sel.selectedIndex];
+  const sel      = document.getElementById("tc-kebijakan");
+  const opt      = sel.options[sel.selectedIndex];
   const kuotaKey = opt?.getAttribute("data-kuota") || "";
   const infoEl   = document.getElementById("tc-saldo-info");
 
-  if (!kuotaKey || !_kuotaSaya) { infoEl.style.display = "none"; return; }
+  // Sembunyikan semua section form dulu
+  document.getElementById("tc-wrap-durasi").style.display        = "none";
+  document.getElementById("tc-wrap-satuan").style.display        = "none";
+  document.getElementById("tc-wrap-tanggal").style.display       = "none";
+  document.getElementById("tc-wrap-jam").style.display           = "none";
+  document.getElementById("tc-wrap-tanggal-ot").style.display    = "none";
+  document.getElementById("tc-info-kalkulasi").style.display     = "none";
+  infoEl.style.display = "none";
 
-  let info = "";
+  if (!kuotaKey) return;
+
   if (kuotaKey === "tahunan") {
-    const sisa = _kuotaSaya.tahunan.total - _kuotaSaya.tahunan.terpakai;
-    info = `📅 Saldo tersedia: <b>${sisa} hari</b> dari ${_kuotaSaya.tahunan.total} hari`;
-  } else if (kuotaKey === "overtime") {
-    const jam = _kuotaSaya.overtime.jamAkumulasi;
-    const hari = Math.floor(jam / 8);
-    info = `⏱ Saldo tersedia: <b>${hari} hari</b> (${jam.toFixed(1)} jam akumulasi)`;
-  }
+    // ── Cuti Tahunan: input tanggal mulai & akhir, durasi jam dihitung otomatis
+    document.getElementById("tc-wrap-tanggal").style.display = "";
+    // Tampilkan saldo tersedia
+    if (_kuotaSaya) {
+      const sisa = _kuotaSaya.tahunan.total - _kuotaSaya.tahunan.terpakai;
+      infoEl.innerHTML = `📅 Saldo tersedia: <b>${sisa} hari</b> dari ${_kuotaSaya.tahunan.total} hari`;
+      infoEl.style.display = "";
+    }
 
-  if (info) { infoEl.innerHTML = info; infoEl.style.display = ""; }
-  else infoEl.style.display = "none";
+  } else if (kuotaKey === "overtime") {
+    // ── Cuti Overtime: input tanggal + jam mulai + jam akhir, durasi dihitung otomatis
+    document.getElementById("tc-wrap-tanggal-ot").style.display = "";
+    document.getElementById("tc-wrap-jam").style.display        = "";
+    // Tampilkan saldo dalam JAM saja (bukan hari)
+    if (_kuotaSaya) {
+      const jam = _kuotaSaya.overtime.jamAkumulasi;
+      infoEl.innerHTML = `⏱ Saldo tersedia: <b>${jam.toFixed(1)} jam</b> akumulasi overtime`;
+      infoEl.style.display = "";
+    }
+
+  } else {
+    // ── Kebijakan lain: tampilkan input durasi + satuan + tanggal/jam sesuai satuan
+    document.getElementById("tc-wrap-durasi").style.display  = "";
+    document.getElementById("tc-wrap-satuan").style.display  = "";
+    document.getElementById("tc-wrap-tanggal").style.display = "";
+  }
 }
 
 function onTcSatuanChange() {
+  // Hanya berlaku untuk kebijakan non-tahunan / non-overtime
+  const sel      = document.getElementById("tc-kebijakan");
+  const opt      = sel?.options[sel.selectedIndex];
+  const kuotaKey = opt?.getAttribute("data-kuota") || "";
+  if (kuotaKey === "tahunan" || kuotaKey === "overtime") return;
+
   const s = document.getElementById("tc-satuan").value;
   document.getElementById("tc-wrap-tanggal").style.display = s === "hari" ? "" : "none";
   document.getElementById("tc-wrap-jam").style.display     = s === "jam"  ? "" : "none";
 }
 
+// ── Hitung otomatis jam cuti tahunan dari rentang tanggal ──────────────────
+// Senin–Jumat = 7 jam, Sabtu = 5 jam, Minggu = 0 (dilewati)
+function onTcTanggalChange() {
+  const tglMulai = document.getElementById("tc-tgl-mulai").value;
+  const tglAkhir = document.getElementById("tc-tgl-akhir").value || tglMulai;
+  const infoEl   = document.getElementById("tc-info-kalkulasi");
+  infoEl.style.display = "none";
+  if (!tglMulai) return;
+
+  const start = new Date(tglMulai + "T00:00:00");
+  const end   = new Date((tglAkhir || tglMulai) + "T00:00:00");
+  if (end < start) {
+    infoEl.innerHTML = "⚠️ Tanggal akhir harus sama atau setelah tanggal mulai";
+    infoEl.style.background = "#fff3e0"; infoEl.style.color = "#e65100";
+    infoEl.style.display = "";
+    document.getElementById("tc-durasi-computed").value = "";
+    return;
+  }
+
+  let totalJam = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    totalJam += JAM_KERJA_PER_HARI[cur.getDay()] || 0;
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  document.getElementById("tc-durasi-computed").value = totalJam;
+
+  if (totalJam > 0) {
+    const hari = tglMulai === (tglAkhir || tglMulai) ? "1 hari" : `rentang ${tglMulai} – ${tglAkhir}`;
+    infoEl.innerHTML = `📊 Total: <b>${totalJam} jam</b> cuti (${hari})`;
+    infoEl.style.background = "#e8f5e9"; infoEl.style.color = "#2e7d32";
+  } else {
+    infoEl.innerHTML = "⚠️ Tidak ada hari kerja dalam rentang tanggal ini";
+    infoEl.style.background = "#fff3e0"; infoEl.style.color = "#e65100";
+  }
+  infoEl.style.display = "";
+}
+
+// ── Hitung otomatis durasi cuti overtime dari jam mulai – jam akhir ─────────
+function onTcJamChange() {
+  const jamMulai = document.getElementById("tc-jam-mulai").value;
+  const jamAkhir = document.getElementById("tc-jam-akhir").value;
+  const infoEl   = document.getElementById("tc-info-kalkulasi");
+  infoEl.style.display = "none";
+  if (!jamMulai || !jamAkhir) return;
+
+  const [h1, m1] = jamMulai.split(":").map(Number);
+  const [h2, m2] = jamAkhir.split(":").map(Number);
+  const totalMenit = (h2 * 60 + m2) - (h1 * 60 + m1);
+
+  if (totalMenit <= 0) {
+    infoEl.innerHTML = "⚠️ Jam akhir harus lebih besar dari jam mulai";
+    infoEl.style.background = "#fff3e0"; infoEl.style.color = "#e65100";
+    infoEl.style.display = "";
+    document.getElementById("tc-durasi-computed").value = "";
+    return;
+  }
+  const totalJam = parseFloat((totalMenit / 60).toFixed(2));
+  document.getElementById("tc-durasi-computed").value = totalJam;
+
+  infoEl.innerHTML = `⏱ Durasi: <b>${totalJam} jam</b> (${totalMenit} menit)`;
+  infoEl.style.background = "#fff8e1"; infoEl.style.color = "#e65100";
+  infoEl.style.display = "";
+}
+
 async function saveTambahCuti() {
-  const kebijakanEl = document.getElementById("tc-kebijakan");
-  const kebijakanId = kebijakanEl.value;
+  const kebijakanEl  = document.getElementById("tc-kebijakan");
+  const kebijakanId  = kebijakanEl.value;
   if (!kebijakanId) return showToast("⚠️ Pilih kebijakan cuti!", "warning");
 
-  const opt        = kebijakanEl.options[kebijakanEl.selectedIndex];
-  const kuotaKey   = opt?.getAttribute("data-kuota") || null;
+  const opt          = kebijakanEl.options[kebijakanEl.selectedIndex];
+  const kuotaKey     = opt?.getAttribute("data-kuota") || null;
   const kebijakanNama = opt?.getAttribute("data-nama") || "";
-  const durasi     = parseFloat(document.getElementById("tc-durasi").value);
-  if (!durasi || durasi <= 0) return showToast("⚠️ Isi durasi dengan benar!", "warning");
 
-  const satuanDurasi = document.getElementById("tc-satuan").value;
-  const tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
-  const tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
-  const jamMulai     = document.getElementById("tc-jam-mulai").value || null;
-  const jamAkhir     = document.getElementById("tc-jam-akhir").value || null;
+  let durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir;
+
+  if (kuotaKey === "tahunan") {
+    // ── Cuti Tahunan: durasi JAM dihitung otomatis dari rentang tanggal ──────
+    tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
+    tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
+    if (!tanggalMulai) return showToast("⚠️ Pilih tanggal mulai cuti!", "warning");
+
+    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    if (!durasi || durasi <= 0)
+      return showToast("⚠️ Tidak ada hari kerja dalam rentang tanggal yang dipilih!", "warning");
+
+    satuanDurasi = "jam";   // selalu jam — sudah dikonversi berdasarkan hari kerja
+    jamMulai     = null;
+    jamAkhir     = null;
+
+  } else if (kuotaKey === "overtime") {
+    // ── Cuti Overtime: durasi JAM dari selisih jam mulai–akhir ───────────────
+    tanggalMulai = document.getElementById("tc-tgl-ot").value || null;
+    if (!tanggalMulai) return showToast("⚠️ Pilih tanggal cuti overtime!", "warning");
+
+    jamMulai = document.getElementById("tc-jam-mulai").value || null;
+    jamAkhir = document.getElementById("tc-jam-akhir").value || null;
+    if (!jamMulai || !jamAkhir)
+      return showToast("⚠️ Isi jam mulai dan jam akhir!", "warning");
+
+    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    if (!durasi || durasi <= 0)
+      return showToast("⚠️ Durasi tidak valid. Pastikan jam akhir > jam mulai!", "warning");
+
+    satuanDurasi = "jam";
+    tanggalAkhir = null;
+
+  } else {
+    // ── Kebijakan lainnya: input manual durasi + satuan ───────────────────────
+    durasi = parseFloat(document.getElementById("tc-durasi").value);
+    if (!durasi || durasi <= 0)
+      return showToast("⚠️ Isi durasi dengan benar!", "warning");
+
+    satuanDurasi = document.getElementById("tc-satuan").value;
+    tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
+    tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
+    jamMulai     = document.getElementById("tc-jam-mulai").value || null;
+    jamAkhir     = document.getElementById("tc-jam-akhir").value || null;
+  }
 
   const user = localStorage.getItem("user") || "";
   try {
