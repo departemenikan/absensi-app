@@ -342,7 +342,9 @@ function enterApp(menus, group, level) {
   // Update header
   document.getElementById("hdr-user").innerText = localStorage.getItem("user") || "";
   document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  // rekap-user-label removed in redesign
+
+  // Load foto profil untuk avatar header
+  updateHeaderAvatar();
 
   navTo("home");
   loadStatus();
@@ -358,6 +360,31 @@ function enterApp(menus, group, level) {
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
   if (ad) ad.value = new Date().toISOString().split("T")[0];
+}
+
+// Sinkronisasi foto profil ke semua avatar di header
+async function updateHeaderAvatar() {
+  const me = localStorage.getItem("user");
+  if (!me) return;
+  try {
+    const r = await fetch("/profile/" + me + "?requester=" + encodeURIComponent(me));
+    const d = await r.json();
+    const avatarIds = [
+      "hdr-avatar-home","hdr-avatar-rekap","hdr-avatar-admin",
+      "hdr-avatar-setting","hdr-avatar-timesheet","hdr-avatar-cuti"
+    ];
+    avatarIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      if (d.photo) {
+        btn.innerHTML = `<img src="${d.photo}" alt="Profil">`;
+      } else {
+        // Inisial nama atau username
+        const initial = (d.namaLengkap || me).charAt(0).toUpperCase();
+        btn.innerHTML = `<span style="font-size:15px;font-weight:800;letter-spacing:0;">${initial}</span>`;
+      }
+    });
+  } catch {}
 }
 
 function applyMenuAccess() {
@@ -4252,6 +4279,7 @@ async function profilSavePhoto() {
       showToast("✅ Foto profil berhasil disimpan!");
       _profilNewPhoto = null;
       document.getElementById("profil-preview-wrap").classList.add("hidden");
+      updateHeaderAvatar();
       loadProfil();
     } else showToast("❌ Gagal menyimpan foto", "error");
   } catch { showToast("❌ Gagal terhubung ke server", "error"); }

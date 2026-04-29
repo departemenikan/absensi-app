@@ -299,6 +299,24 @@
     .scanning{animation:pulse 1s infinite;}
     .profil-edit-icon{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:#f0f4ff;color:var(--primary);border:none;cursor:pointer;flex-shrink:0;margin-left:8px;transition:background .15s;}
     .profil-edit-icon:hover{background:#dce8ff;}
+
+    /* AVATAR HEADER — pojok kanan atas */
+    .hdr-avatar-btn{
+      position:absolute;top:50%;right:16px;transform:translateY(-50%);
+      width:38px;height:38px;border-radius:50%;
+      border:2.5px solid rgba(255,255,255,.7);
+      background:rgba(255,255,255,.18);
+      cursor:pointer;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      font-size:17px;color:white;flex-shrink:0;
+      transition:border-color .2s,box-shadow .2s;
+      box-shadow:0 2px 10px rgba(0,0,0,.18);
+      padding:0;
+    }
+    .hdr-avatar-btn:active{box-shadow:0 0 0 4px rgba(255,255,255,.25);}
+    .hdr-avatar-btn img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+    .top-header{position:relative;}
+    .sub-header{position:relative;}
   </style>
 </head>
 <body>
@@ -423,6 +441,7 @@
       <h3>👋 Selamat Datang</h3>
       <div class="header-user" id="hdr-user"></div>
       <p id="hdr-date"></p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-home" title="Profil Saya">👤</button>
     </div>
     <div class="card">
       <div style="text-align:center;margin-bottom:16px;">
@@ -509,6 +528,7 @@
     <div class="top-header">
       <h3>📋 Rekap Absensi</h3>
       <p>Jam kerja seluruh anggota per bulan</p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-rekap" title="Profil Saya">👤</button>
     </div>
 
     <!-- Toolbar -->
@@ -556,7 +576,9 @@
 <!-- ============================================================ -->
 <div id="view-admin" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>👑 Admin Panel</h3><p>Monitor semua karyawan</p></div>
+    <div class="top-header"><h3>👑 Admin Panel</h3><p>Monitor semua karyawan</p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-admin" title="Profil Saya">👤</button>
+    </div>
     <div class="card">
       <div class="adm-stat">
         <div class="adm-stat-box" style="background:linear-gradient(135deg,#4f8ef7,#1a237e);">
@@ -580,7 +602,9 @@
 <!-- ============================================================ -->
 <div id="view-setting" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p></div>
+    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
+    </div>
     <div class="card">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
@@ -1294,7 +1318,9 @@
 <!-- ============================================================ -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p></div>
+    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-timesheet" title="Profil Saya">👤</button>
+    </div>
 
     <!-- Navigasi minggu -->
     <div class="card" style="padding:12px 14px;margin-top:0;">
@@ -1545,7 +1571,9 @@
 <!-- ============================================================ -->
 <div id="view-cuti" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p></div>
+    <div class="top-header"><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p>
+      <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-cuti" title="Profil Saya">👤</button>
+    </div>
 
     <!-- TAB BAR -->
     <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:-22px;position:relative;z-index:1;">
