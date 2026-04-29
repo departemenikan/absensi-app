@@ -82,7 +82,12 @@ function openView(viewId) {
     switchAreaTab("daftar");
     loadAreas();
   }
-  if (viewId === "view-libur")      loadLibur();
+  if (viewId === "view-libur") {
+    if (!userMenus.includes("libur") && !userMenus.includes("libur.hari-libur")) {
+      showToast("⛔ Akses ditolak", "error"); return;
+    }
+    loadLibur();
+  }
   if (viewId === "view-anggota") {
     if (!userMenus.includes("anggota") && !userMenus.includes("anggota.daftar")) {
       showToast("⛔ Akses ditolak", "error"); return;
@@ -2956,6 +2961,13 @@ let _agamaAnggota      = []; // agama unik dari seluruh anggota
 // HARI LIBUR — Tab switching (antara Hari Libur & Kebijakan Cuti)
 // ================================================================
 function switchLiburTab(tab) {
+  // Guard: tab kebijakan-cuti & kuota-cuti hanya untuk admin/owner
+  if (tab === "kebijakan-cuti" && !userMenus.includes("libur.kebijakan-cuti")) {
+    showToast("⛔ Akses ditolak", "error"); return;
+  }
+  if (tab === "kuota-cuti" && !userMenus.includes("libur.kuota-cuti")) {
+    showToast("⛔ Akses ditolak", "error"); return;
+  }
   const tabs = ["hari-libur", "kebijakan-cuti", "kuota-cuti"];
   tabs.forEach(t => {
     const panel = document.getElementById("panel-" + t);
@@ -2986,7 +2998,7 @@ function _formatTanggalLibur(dateStart, dateEnd) {
 async function loadLibur() {
   try {
     // Ambil data libur dan daftar agama unik paralel
-    const [rLibur, rAgama] = await Promise.all([fetch("/libur"), fetch("/libur/agama-list")]);
+    const [rLibur, rAgama] = await Promise.all([authFetch("/libur"), authFetch("/libur/agama-list")]);
     _allLiburData  = await rLibur.json();
     _agamaAnggota  = await rAgama.json();
 
@@ -3076,6 +3088,7 @@ function _renderKalenderContent(key) {
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">${anggotaDesc}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${userLevel <= 2 ? `
           <button onclick="openImportModal('${key}')"
             style="padding:9px 14px;background:white;color:${cfg.color};border:2px solid ${cfg.color};
               border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px;">
@@ -3085,7 +3098,7 @@ function _renderKalenderContent(key) {
             style="padding:9px 16px;background:${cfg.color};color:white;border:none;
               border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
             ➕ Tambah Hari Libur
-          </button>
+          </button>` : ''}
         </div>
       </div>
       <div id="kal-list-${key}">
@@ -3110,8 +3123,8 @@ function _renderLiburItems(list) {
           👥 ${isNasional ? "Semua anggota" : (anggotaCount !== null ? anggotaCount + " anggota" : "—")}
         </div>
       </div>
-      <button onclick="deleteLibur('${x.id}')"
-        style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 6px;flex-shrink:0;">🗑</button>
+      ${userLevel <= 2 ? `<button onclick="deleteLibur('${x.id}')"
+        style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 6px;flex-shrink:0;">🗑</button>` : ''}
     </div>`;
   }).join("");
 }
@@ -3145,6 +3158,7 @@ function closeLiburModal() {
 }
 
 async function saveLiburFromModal() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const name      = document.getElementById("libur-modal-name").value.trim();
   const dateStart = document.getElementById("libur-modal-date-start").value;
   const dateEnd   = document.getElementById("libur-modal-date-end").value;
@@ -3172,6 +3186,7 @@ async function saveLiburFromModal() {
 }
 
 async function deleteLibur(id) {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   uConfirm({
     icon: "📅",
     title: "Hapus Data Libur",
@@ -3570,14 +3585,16 @@ async function loadKebijakanCuti() {
           background:#fff8e1;color:#e65100;margin-left:6px;">🔗 Kuota Cuti Overtime</span>`;
       }
 
-      // Tombol hapus: sembunyikan jika locked
+      // Tombol hapus: sembunyikan jika locked atau bukan admin
       const deleteBtn = isLocked
         ? `<span title="Kebijakan default tidak dapat dihapus"
              style="font-size:18px;color:#ddd;padding:4px 6px;flex-shrink:0;">🔒</span>`
-        : `<button onclick="deleteKebijakanCuti('${x.id}')"
-             style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;
-                    padding:4px 6px;flex-shrink:0;border-radius:8px;"
-             title="Hapus kebijakan ini">🗑</button>`;
+        : userLevel <= 2
+          ? `<button onclick="deleteKebijakanCuti('${x.id}')"
+               style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;
+                      padding:4px 6px;flex-shrink:0;border-radius:8px;"
+               title="Hapus kebijakan ini">🗑</button>`
+          : '';
 
       // Info keterangan jika default
       const keteranganEl = isDefault && x.keterangan
@@ -3608,6 +3625,7 @@ async function loadKebijakanCuti() {
 }
 
 async function saveKebijakanCuti() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const nama  = document.getElementById("modal-cuti-nama").value.trim();
   const jenis = document.getElementById("modal-cuti-jenis").value;
 
@@ -3634,6 +3652,7 @@ async function saveKebijakanCuti() {
 }
 
 async function deleteKebijakanCuti(id) {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   uConfirm({
     icon: "🌴",
     title: "Hapus Kebijakan Cuti",
@@ -4764,6 +4783,11 @@ async function loadKuotaCuti() {
   const listEl = document.getElementById("kuota-cuti-list");
   if (listEl) listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
 
+  // Kuota cuti semua anggota hanya untuk admin/owner
+  if (userLevel > 2) {
+    if (listEl) listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">⛔ Hanya Owner/Admin yang dapat melihat kuota cuti semua anggota</p>`;
+    return;
+  }
   try {
     const r = await authFetch(`/kuota-cuti?tahun=${tahun}`);
     _kuotaData = await r.json();
@@ -4876,6 +4900,7 @@ function closeKuotaDetailModal() {
 }
 
 async function hitungOvertimeSemua() {
+  if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const tahunEl = document.getElementById("kuota-filter-tahun");
   const tahun   = tahunEl ? tahunEl.value : new Date().getFullYear();
   showToast("🔄 Menghitung overtime semua anggota...", "warning");
