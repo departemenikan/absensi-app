@@ -202,20 +202,14 @@ async function doSignUp(u, p) {
 
     const perms = await requestPermissions();
 
-    if (!perms.camera && !perms.location) {
-      showToast("❌ Izin kamera dan lokasi diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin kamera & lokasi ditolak. Aktifkan di pengaturan browser lalu coba lagi.";
-      btn.innerText = "Sign Up"; btn.disabled = false; return;
-    }
-    if (!perms.camera) {
-      showToast("❌ Izin kamera diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin kamera ditolak. Buka pengaturan browser → izinkan akses kamera.";
-      btn.innerText = "Sign Up"; btn.disabled = false; return;
-    }
-    if (!perms.location) {
-      showToast("❌ Izin lokasi diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin lokasi ditolak. Buka pengaturan browser → izinkan akses lokasi.";
-      btn.innerText = "Sign Up"; btn.disabled = false; return;
+    if (!perms.camera || !perms.location) {
+      btn.innerText = "Sign Up"; btn.disabled = false;
+      const missing = [];
+      if (!perms.camera)   missing.push("camera");
+      if (!perms.location) missing.push("location");
+      if (status) status.innerText = "⚠️ Izin belum diberikan. Ikuti panduan di pop-up.";
+      showPermissionGuide(missing, () => doSignUp(u, p));
+      return;
     }
 
     const videoEl = document.getElementById("video-signup");
@@ -453,6 +447,59 @@ function uConfirm({ icon="⚠️", title, msg, btnOk="Ya", btnOkClass="primary",
 }
 function _uConfirmOk() { _uModal.close(); if (_uModal._cb) _uModal._cb(); }
 
+// ─── Modal panduan izin kamera/lokasi ───────────────────────────────────────
+// missing: array berisi "camera" dan/atau "location"
+// onRetry: fungsi yang dipanggil saat user klik "Coba Lagi"
+function showPermissionGuide(missing, onRetry) {
+  const isCam = missing.includes("camera");
+  const isLoc = missing.includes("location");
+
+  const iconTxt  = (isCam && isLoc) ? "📷📍" : isCam ? "📷" : "📍";
+  const labelTxt = (isCam && isLoc) ? "Kamera & Lokasi" : isCam ? "Kamera" : "Lokasi";
+
+  // Deteksi browser secara sederhana
+  const ua       = navigator.userAgent;
+  const isFF     = ua.includes("Firefox");
+  const isSafari = ua.includes("Safari") && !ua.includes("Chrome");
+
+  let guideHTML = "";
+  if (isFF) {
+    guideHTML = `
+      <div class="perm-step"><span class="perm-num">1</span>Klik ikon <b>🔒 gembok</b> atau <b>ℹ️</b> di sebelah kiri address bar</div>
+      <div class="perm-step"><span class="perm-num">2</span>Cari izin <b>${labelTxt}</b> lalu ubah ke <b>Izinkan</b></div>
+      <div class="perm-step"><span class="perm-num">3</span>Klik <b>Muat Ulang Halaman</b> jika diminta, lalu klik <b>Coba Lagi</b></div>`;
+  } else if (isSafari) {
+    guideHTML = `
+      <div class="perm-step"><span class="perm-num">1</span>Buka menu <b>Safari → Pengaturan untuk Situs Ini</b></div>
+      <div class="perm-step"><span class="perm-num">2</span>Ubah <b>${labelTxt}</b> menjadi <b>Izinkan</b></div>
+      <div class="perm-step"><span class="perm-num">3</span>Kembali ke halaman ini lalu klik <b>Coba Lagi</b></div>`;
+  } else {
+    // Chrome / Edge / Opera / default
+    guideHTML = `
+      <div class="perm-step"><span class="perm-num">1</span>Klik ikon <b>🔒 gembok</b> di address bar browser kamu</div>
+      <div class="perm-step"><span class="perm-num">2</span>Temukan izin <b>${labelTxt}</b> lalu ubah ke <b>Izinkan</b></div>
+      <div class="perm-step"><span class="perm-num">3</span>Klik <b>Muat Ulang</b> jika muncul, kemudian klik <b>Coba Lagi</b> di bawah</div>`;
+  }
+
+  const bodyHTML = `
+    <div style="text-align:center;font-size:2rem;margin-bottom:8px">${iconTxt}</div>
+    <p style="margin:0 0 14px;font-size:13px;color:var(--color-text-secondary);text-align:center">
+      Akses <b>${labelTxt}</b> diperlukan. Ikuti langkah berikut untuk mengizinkan:
+    </p>
+    <div class="perm-steps">${guideHTML}</div>
+    <p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center">
+      Setelah mengizinkan, klik <b>Coba Lagi</b> tanpa perlu reload halaman.
+    </p>`;
+
+  const btnsHTML = `
+    <button class="u-modal-btn cancel" onclick="_uModal.close()">Nanti</button>
+    <button class="u-modal-btn primary" onclick="_uModal.close();_permRetry()">🔄 Coba Lagi</button>`;
+
+  _uModal._permRetryCb = onRetry;
+  _uModal.open(`Izin ${labelTxt} Diperlukan`, "", bodyHTML, btnsHTML);
+}
+function _permRetry() { if (_uModal._permRetryCb) _uModal._permRetryCb(); }
+
 // Modal password (toggle lihat/sembunyikan, tanpa password lama)
 function uPassword({ title, sub="", onOk }) {
   _uModal.open(
@@ -613,15 +660,15 @@ async function sendAbsen(type, label) {
   } catch {
     camOk = false;
   }
-  if (!camOk) {
-    showToast("❌ Izin kamera diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
-    return;
-  }
 
   // ─── Cek izin lokasi ───
   const loc = await getLoc();
-  if (loc.denied) {
-    showToast("❌ Izin lokasi diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
+
+  if (!camOk || loc.denied) {
+    const missing = [];
+    if (!camOk)    missing.push("camera");
+    if (loc.denied) missing.push("location");
+    showPermissionGuide(missing, () => sendAbsen(type, label));
     return;
   }
 
