@@ -467,23 +467,47 @@
 <!-- ============================================================ -->
 <div id="view-rekap" class="view">
   <div class="page-wrap">
-    <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+    <div class="top-header">
       <h3>📋 Rekap Absensi</h3>
+      <p>Rekap jam kerja seluruh anggota</p>
     </div>
-    <div style="margin-top:46px;">
-      <p id="rekap-user-label" style="font-size:13px;color:var(--muted);padding:0 4px 12px;"></p>
-      <div class="card" style="margin-top:0;">
-        <div class="stat-row">
-          <div class="stat-box"><div class="val" id="r-kerja">0h</div><div class="lbl">Total Kerja</div></div>
-          <div class="stat-box"><div class="val" id="r-break">0h</div><div class="lbl">Istirahat</div></div>
-          <div class="stat-box"><div class="val" id="r-over">0h</div><div class="lbl">Lembur</div></div>
-        </div>
+
+    <!-- Toolbar: filter bulan + search + download -->
+    <div class="card" style="padding:12px 14px;margin-top:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input type="month" id="rekap-month"
+          style="flex:1;min-width:130px;padding:8px 12px;border:1.5px solid #e8ecf0;border-radius:8px;font-size:13px;outline:none;"
+          onchange="loadRekap()">
+        <button onclick="loadRekap()"
+          style="padding:8px 14px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:12px;cursor:pointer;">
+          🔄 Tampilkan
+        </button>
+        <button onclick="downloadRekapXLSX()"
+          style="padding:8px 14px;border:none;border-radius:8px;background:linear-gradient(135deg,#27ae60,#2ecc71);
+                 color:white;font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;">
+          ⬇️ Download XLSX
+        </button>
       </div>
-      <div class="card" style="margin-top:16px;">
-        <h4>📅 Riwayat</h4>
-        <div id="history-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+      <!-- Search anggota -->
+      <div style="position:relative;margin-top:8px;">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#bbb;font-size:13px;">🔍</span>
+        <input id="rekap-search" type="text" placeholder="Cari nama anggota..."
+          oninput="rekapRender()"
+          style="width:100%;padding:8px 12px 8px 30px;border:1.5px solid #e8ecf0;border-radius:8px;
+                 font-size:13px;outline:none;box-sizing:border-box;">
       </div>
+    </div>
+
+    <!-- Legend -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;padding:8px 2px 0;font-size:11px;color:var(--muted);">
+      <span>🟢 ≥40j = cukup</span>
+      <span>🔴 &lt;40j = kurang</span>
+      <span style="color:#1565c0;">🔵 = hari cuti</span>
+    </div>
+
+    <!-- Tabel rekap -->
+    <div id="rekap-content" style="margin-top:8px;">
+      <p style="color:var(--muted);text-align:center;padding:32px;">Pilih bulan untuk menampilkan rekap</p>
     </div>
   </div>
 </div>

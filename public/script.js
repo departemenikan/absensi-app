@@ -31,7 +31,11 @@ function openView(viewId) {
   // Scroll ke atas
   window.scrollTo(0, 0);
   // Load data jika perlu
-  if (viewId === "view-rekap")          loadRekap();
+  if (viewId === "view-rekap") {
+    const rm = document.getElementById("rekap-month");
+    if (rm && !rm.value) rm.value = new Date().toISOString().slice(0, 7);
+    loadRekap();
+  }
   if (viewId === "view-admin")          loadAdmin();
   if (viewId === "view-aktivitas")      loadAktivitas();
   if (viewId === "view-aksesibilitas")  loadGroups();
@@ -317,7 +321,7 @@ function enterApp(menus, group, level) {
   // Update header
   document.getElementById("hdr-user").innerText = localStorage.getItem("user") || "";
   document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  document.getElementById("rekap-user-label").innerText = localStorage.getItem("user") || "";
+  // rekap-user-label dihapus di redesign rekap
 
   navTo("home");
   loadStatus();
@@ -1093,27 +1097,286 @@ function fmt(iso) {
 // ============================================================
 // REKAP
 // ============================================================
+// ============================================================
+// REKAP — state
+// ============================================================
+let _rekapData  = null;  // response dari /rekap/monthly
+let _rekapMonth = null;  // "YYYY-MM"
+
+const REKAP_DOW_LABEL  = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const REKAP_DOW_COLOR  = { 0:"#e53935", 6:"#9c27b0" };
+
+function rekapFmtJam(jam) {
+  if (!jam || jam <= 0) return "-";
+  const h = Math.floor(jam);
+  const m = Math.round((jam - h) * 60);
+  return m > 0 ? `${h}j ${m}m` : `${h}j`;
+}
+
 async function loadRekap() {
-  const user = localStorage.getItem("user");
-  try {
-    const [rr, hr] = await Promise.all([fetch("/report/"+user), fetch("/history/"+user)]);
-    const rep = await rr.json(), his = await hr.json();
-    document.getElementById("r-kerja").innerText = rep.totalKerja||"0h";
-    document.getElementById("r-break").innerText = rep.totalBreak||"0h";
-    document.getElementById("r-over").innerText  = rep.overtime||"0h";
-    const list = document.getElementById("history-list");
-    if (!his.length) { list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada data</p>'; return; }
-    list.innerHTML = his.map(d => {
-      const masuk  = d.jamMasuk  ? fmt(d.jamMasuk)  : "--:--";
-      const keluar = d.jamKeluar ? fmt(d.jamKeluar) : "--:--";
-      const dur    = d.jamMasuk && d.jamKeluar ? ((new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000).toFixed(1)+"j" : "-";
-      const late   = d.jamMasuk && new Date(d.jamMasuk).getHours() >= 9;
-      return `<div class="history-item">
-        <div><div class="h-date">${d.date}</div><div class="h-time">Masuk: ${masuk} · Keluar: ${keluar} · ${dur}</div></div>
-        <span class="h-badge ${late?'late':'ok'}">${late?'⚠️ Terlambat':'✅ Tepat'}</span>
+  // Akses hanya owner/admin
+  if (userLevel > 2) {
+    document.getElementById("rekap-content").innerHTML =
+      `<div style="text-align:center;padding:40px;">
+        <div style="font-size:48px;margin-bottom:12px;">⛔</div>
+        <div style="font-weight:700;color:var(--danger);">Akses Ditolak</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px;">Menu Rekap hanya untuk Owner dan Admin.</div>
       </div>`;
+    return;
+  }
+
+  const me = localStorage.getItem("user");
+  const monthEl = document.getElementById("rekap-month");
+  if (!monthEl.value) monthEl.value = new Date().toISOString().slice(0, 7);
+  _rekapMonth = monthEl.value;
+
+  const el = document.getElementById("rekap-content");
+  el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:32px;">⏳ Memuat rekap...</p>`;
+
+  try {
+    const r = await fetch(`/rekap/monthly?month=${_rekapMonth}&requester=${me}`);
+    _rekapData = await r.json();
+    rekapRender();
+  } catch(e) {
+    el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat rekap</p>`;
+  }
+}
+
+function rekapRender() {
+  const el = document.getElementById("rekap-content");
+  if (!el || !_rekapData) return;
+
+  const q = (document.getElementById("rekap-search")?.value || "").toLowerCase();
+  const filtered = (_rekapData.users || []).filter(u =>
+    (u.nama || u.username).toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+  );
+
+  if (!filtered.length) {
+    el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada data</p>`;
+    return;
+  }
+
+  const weeks = _rekapData.weeks || [];
+  const today = new Date().toISOString().split("T")[0];
+
+  // Build HTML — satu tabel per minggu
+  let html = `<div style="display:flex;flex-direction:column;gap:16px;">`;
+
+  weeks.forEach(week => {
+    // Header kolom hari
+    const headerDays = week.dates.map(date => {
+      const d   = new Date(date + "T00:00:00");
+      const dow = d.getDay();
+      const isToday = date === today;
+      const color = REKAP_DOW_COLOR[dow] || "var(--text)";
+      return `<th style="text-align:center;min-width:52px;padding:7px 3px;
+                 background:${isToday ? "#e8f5e9" : ""};
+                 color:${isToday ? "#2e7d32" : color};font-weight:${isToday?"900":"700"};">
+        <div style="font-size:10px;">${REKAP_DOW_LABEL[dow]}</div>
+        <div style="font-size:9px;font-weight:400;opacity:.7;">${d.getDate()}/${d.getMonth()+1}</div>
+      </th>`;
     }).join("");
-  } catch {}
+
+    // Baris per user
+    const rows = filtered.map(u => {
+      const weekData = u.weeks.find(w => w.weekIdx === week.weekIdx);
+      if (!weekData) return "";
+
+      // Sel hari
+      const dayCols = (weekData.days || []).map(day => {
+        const hasKerja = day.jamKerja > 0;
+        const hasCuti  = day.jamCuti  > 0;
+        const isToday  = day.date === today;
+        const isWeekend = day.dow === 0;
+
+        let cellContent;
+        if (isWeekend) {
+          cellContent = `<span style="color:#ddd;font-size:10px;">—</span>`;
+        } else if (hasCuti && hasKerja) {
+          cellContent = `
+            <div style="font-size:11px;font-weight:700;">${rekapFmtJam(day.jamKerja)}</div>
+            <div style="font-size:9px;color:#1565c0;">+${rekapFmtJam(day.jamCuti)}</div>`;
+        } else if (hasCuti) {
+          cellContent = `
+            <div style="font-size:10px;color:#1565c0;font-weight:700;">${rekapFmtJam(day.jamCuti)}</div>
+            <div style="font-size:8px;color:#1976d2;background:#e3f2fd;border-radius:3px;padding:1px 3px;margin-top:1px;line-height:1.3;">${day.keteranganCuti}</div>`;
+        } else if (hasKerja) {
+          cellContent = `<div style="font-size:11px;font-weight:700;">${rekapFmtJam(day.jamKerja)}</div>`;
+        } else {
+          cellContent = `<span style="color:#e0e0e0;font-size:11px;">—</span>`;
+        }
+
+        return `<td style="text-align:center;padding:6px 2px;border-bottom:1px solid #f5f5f5;
+                   background:${isToday ? "#f1f8e9" : hasCuti&&!hasKerja ? "#fafeff" : ""};
+                   vertical-align:middle;">${cellContent}</td>`;
+      }).join("");
+
+      // Total minggu ini
+      const total = weekData.totalEfektif;
+      const kurang = Math.max(0, 40 - total);
+      const totalColor = total < 40 ? "#e53935" : "#2e7d32";
+      const totalBg    = total < 40 ? "#fff5f5" : "#f0fff4";
+
+      // Avatar
+      const avatarHtml = u.photo
+        ? `<img src="${u.photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+              display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:11px;flex-shrink:0;">
+            ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
+
+      return `<tr style="border-bottom:1px solid #f0f2f5;">
+        <td style="padding:6px 10px;min-width:140px;max-width:180px;position:sticky;left:0;background:white;z-index:1;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${avatarHtml}
+            <div style="min-width:0;">
+              <div style="font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.nama||u.username}</div>
+              <div style="font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.jabatan}</div>
+            </div>
+          </div>
+        </td>
+        ${dayCols}
+        <td style="text-align:center;padding:6px 8px;border-left:2px solid #f0f2f5;min-width:60px;
+                   background:${totalBg};">
+          <div style="font-weight:900;font-size:12px;color:${totalColor};">${rekapFmtJam(total)}</div>
+          ${kurang > 0 ? `<div style="font-size:9px;color:#e53935;">-${rekapFmtJam(kurang)}</div>` : ""}
+        </td>
+      </tr>`;
+    }).join("");
+
+    html += `
+    <div style="overflow-x:auto;border-radius:12px;border:1px solid #e8ecf0;background:white;
+                box-shadow:0 2px 8px rgba(0,0,0,.05);">
+      <!-- Header minggu -->
+      <div style="padding:10px 14px;background:linear-gradient(135deg,#1a237e,#4f8ef7);border-radius:12px 12px 0 0;">
+        <span style="color:white;font-weight:700;font-size:13px;">${week.weekLabel}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:500px;">
+        <thead>
+          <tr style="border-bottom:2px solid #e8ecf0;background:#f8f9ff;">
+            <th style="text-align:left;padding:8px 10px;font-size:10px;color:var(--muted);
+                       text-transform:uppercase;letter-spacing:.4px;position:sticky;left:0;background:#f8f9ff;min-width:140px;">
+              Anggota
+            </th>
+            ${headerDays}
+            <th style="text-align:center;padding:8px;font-size:10px;color:var(--muted);
+                       text-transform:uppercase;letter-spacing:.4px;border-left:2px solid #e8ecf0;min-width:60px;">
+              Total
+            </th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  });
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+// ============================================================
+// DOWNLOAD REKAP XLSX
+// ============================================================
+async function downloadRekapXLSX() {
+  if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa download rekap", "error"); return; }
+  if (!_rekapData || !_rekapData.users) { showToast("⚠️ Tampilkan rekap terlebih dahulu", "warning"); return; }
+
+  // Load SheetJS dari CDN
+  if (typeof XLSX === "undefined") {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const wb   = XLSX.utils.book_new();
+  const weeks = _rekapData.weeks || [];
+  const users = _rekapData.users || [];
+  const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const DOW_SHORT = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+
+  // ─── Sheet 1: Rekap Lengkap (per hari, dikelompok per minggu) ───
+  const wsData = [];
+
+  // Judul
+  const [yr, mo] = _rekapMonth.split("-").map(Number);
+  wsData.push([`REKAP ABSENSI — ${BULAN_ID[mo-1]} ${yr}`]);
+  wsData.push([`Diekspor: ${new Date().toLocaleString("id-ID")}`]);
+  wsData.push([]);
+
+  weeks.forEach(week => {
+    // Header minggu
+    wsData.push([week.weekLabel]);
+
+    // Header kolom: Nama | Jabatan | [hari...] | Total Minggu
+    const headerRow = ["Nama", "Jabatan"];
+    week.dates.forEach(date => {
+      const d = new Date(date + "T00:00:00");
+      headerRow.push(`${DOW_SHORT[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`);
+    });
+    headerRow.push("Total Minggu");
+    wsData.push(headerRow);
+
+    // Baris per user
+    users.forEach(u => {
+      const weekData = u.weeks.find(w => w.weekIdx === week.weekIdx);
+      if (!weekData) return;
+      const row = [u.nama || u.username, u.jabatan];
+      weekData.days.forEach(day => {
+        const total = day.jamKerja + day.jamCuti;
+        if (total <= 0) {
+          row.push(day.dow === 0 ? "Libur" : "-");
+        } else {
+          const h = Math.floor(total), m = Math.round((total - h) * 60);
+          row.push(m > 0 ? `${h}j ${m}m` : `${h}j`);
+        }
+      });
+      const tot = weekData.totalEfektif;
+      const th = Math.floor(tot), tm = Math.round((tot-th)*60);
+      row.push(tm > 0 ? `${th}j ${tm}m` : `${th}j`);
+      wsData.push(row);
+    });
+    wsData.push([]); // baris kosong antar minggu
+  });
+
+  const ws1 = XLSX.utils.aoa_to_sheet(wsData);
+  // Lebar kolom otomatis
+  ws1["!cols"] = [{ wch: 22 }, { wch: 14 }];
+  weeks[0]?.dates.forEach(() => ws1["!cols"].push({ wch: 10 }));
+  ws1["!cols"].push({ wch: 12 });
+  XLSX.utils.book_append_sheet(wb, ws1, "Rekap Lengkap");
+
+  // ─── Sheet 2: Ringkasan per Minggu ───
+  const ws2Data = [];
+  ws2Data.push([`RINGKASAN MINGGUAN — ${BULAN_ID[mo-1]} ${yr}`]);
+  ws2Data.push([]);
+
+  const ringkasanHeader = ["Nama", "Jabatan", ...weeks.map(w => `Minggu ${w.weekIdx}`), "Total Bulan"];
+  ws2Data.push(ringkasanHeader);
+
+  users.forEach(u => {
+    const row = [u.nama || u.username, u.jabatan];
+    let totalBulan = 0;
+    weeks.forEach(week => {
+      const wd = u.weeks.find(w => w.weekIdx === week.weekIdx);
+      const tot = wd ? wd.totalEfektif : 0;
+      totalBulan += tot;
+      const h = Math.floor(tot), m = Math.round((tot-h)*60);
+      row.push(m > 0 ? `${h}j ${m}m` : `${h}j`);
+    });
+    const th = Math.floor(totalBulan), tm = Math.round((totalBulan-th)*60);
+    row.push(tm > 0 ? `${th}j ${tm}m` : `${th}j`);
+    ws2Data.push(row);
+  });
+
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2["!cols"] = [{ wch: 22 }, { wch: 14 }, ...weeks.map(() => ({ wch: 14 })), { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws2, "Ringkasan Mingguan");
+
+  // Download
+  XLSX.writeFile(wb, `Rekap_${_rekapMonth}.xlsx`);
+  showToast("✅ File rekap berhasil diunduh!");
 }
 
 // ============================================================

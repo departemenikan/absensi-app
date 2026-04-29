@@ -883,6 +883,100 @@ app.get("/timesheet/weekly", (req, res) => {
   res.send({ weekDates: dates, users: result });
 });
 
+// ========================
+// REKAP BULANAN (Admin/Owner only)
+// GET /rekap/monthly?month=YYYY-MM&requester=username
+// ========================
+app.get("/rekap/monthly", (req, res) => {
+  const { month, requester } = req.query;
+  if (!month) return res.send({ error: "month required" });
+
+  const rGroup = requester ? getUserGroup(requester) : "anggota";
+  if (rGroup !== "owner" && rGroup !== "admin") {
+    return res.status(403).send({ error: "Forbidden" });
+  }
+
+  const [year, mon] = month.split("-").map(Number);
+  const firstDay = new Date(year, mon - 1, 1);
+  const lastDay  = new Date(year, mon, 0);
+
+  const allDates = [];
+  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    allDates.push(d.toISOString().split("T")[0]);
+  }
+
+  function getWeekStart(dateStr) {
+    const d   = new Date(dateStr + "T00:00:00");
+    const dow = d.getDay();
+    const diff = dow === 0 ? -6 : 1 - dow;
+    const m  = new Date(d);
+    m.setDate(d.getDate() + diff);
+    return m.toISOString().split("T")[0];
+  }
+
+  const weekMap = new Map();
+  allDates.forEach(dt => {
+    const ws = getWeekStart(dt);
+    if (!weekMap.has(ws)) weekMap.set(ws, []);
+    weekMap.get(ws).push(dt);
+  });
+
+  const BULAN = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  const weeks = [];
+  let weekIdx = 1;
+  weekMap.forEach((dates, ws) => {
+    const fmtD = d => { const o = new Date(d+"T00:00:00"); return `${o.getDate()} ${BULAN[o.getMonth()]}`; };
+    weeks.push({ weekIdx, weekStart: ws, weekLabel: `Minggu ${weekIdx} (${fmtD(dates[0])} - ${fmtD(dates[dates.length-1])})`, dates });
+    weekIdx++;
+  });
+
+  const data      = load(F.data, []);
+  const users     = load(F.users, {});
+  const pengajuan = load(F.pengajuanCuti, []);
+
+  const result = Object.keys(users).map(username => {
+    const u = users[username];
+    const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
+
+    const weekRows = weeks.map(w => {
+      const days = w.dates.map(dateStr => {
+        const rec = data.find(d => d.user === username && d.date === dateStr);
+        let jamKerja = 0;
+        if (rec && rec.jamMasuk && rec.jamKeluar) {
+          const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+          let bt = 0;
+          (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+          jamKerja = Math.max(0, work - bt);
+        }
+        const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
+        const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
+        const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
+        return {
+          date: dateStr,
+          dow:  new Date(dateStr + "T00:00:00").getDay(),
+          jamKerja:  parseFloat(jamKerja.toFixed(2)),
+          jamCuti:   parseFloat(jamCuti.toFixed(2)),
+          keteranganCuti,
+        };
+      });
+      const totalEfektif = parseFloat(days.reduce((s, d) => s + d.jamKerja + d.jamCuti, 0).toFixed(2));
+      return { weekIdx: w.weekIdx, weekLabel: w.weekLabel, totalEfektif, days };
+    });
+
+    return {
+      username,
+      nama:    u.namaLengkap || username,
+      jabatan: u.jabatan || "-",
+      divisi:  Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
+      photo:   u.photo || "",
+      group:   u.group || "anggota",
+      weeks:   weekRows,
+    };
+  });
+
+  res.send({ month, weeks, users: result });
+});
+
 // GET: summary timesheet bulanan (tetap ada untuk kompatibilitas)
 app.get("/timesheet", (req, res) => {
   const month = req.query.month;
