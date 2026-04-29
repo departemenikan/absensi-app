@@ -321,7 +321,7 @@ function enterApp(menus, group, level) {
   // Update header
   document.getElementById("hdr-user").innerText = localStorage.getItem("user") || "";
   document.getElementById("hdr-date").innerText = new Date().toLocaleDateString("id-ID", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  // rekap-user-label dihapus di redesign rekap
+  // rekap-user-label removed in redesign
 
   navTo("home");
   loadStatus();
@@ -1100,32 +1100,32 @@ function fmt(iso) {
 // ============================================================
 // REKAP — state
 // ============================================================
-let _rekapData  = null;  // response dari /rekap/monthly
-let _rekapMonth = null;  // "YYYY-MM"
+let _rekapData  = null;
+let _rekapMonth = null;
 
-const REKAP_DOW_LABEL  = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
-const REKAP_DOW_COLOR  = { 0:"#e53935", 6:"#9c27b0" };
+const R_DOW_LABEL = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const R_DOW_COLOR = { 0:"#e53935", 6:"#9c27b0" };
 
-function rekapFmtJam(jam) {
-  if (!jam || jam <= 0) return "-";
+function rFmtJam(jam) {
+  if (!jam || jam <= 0) return "";
   const h = Math.floor(jam);
   const m = Math.round((jam - h) * 60);
-  return m > 0 ? `${h}j ${m}m` : `${h}j`;
+  return m > 0 ? `${h}j${m}m` : `${h}j`;
 }
 
 async function loadRekap() {
-  // Akses hanya owner/admin
+  // Hanya owner/admin
   if (userLevel > 2) {
     document.getElementById("rekap-content").innerHTML =
-      `<div style="text-align:center;padding:40px;">
+      `<div style="text-align:center;padding:40px 20px;">
         <div style="font-size:48px;margin-bottom:12px;">⛔</div>
-        <div style="font-weight:700;color:var(--danger);">Akses Ditolak</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:6px;">Menu Rekap hanya untuk Owner dan Admin.</div>
+        <div style="font-weight:700;font-size:16px;color:var(--danger);">Akses Ditolak</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px;">Hanya Owner dan Admin yang dapat mengakses Rekap.</div>
       </div>`;
     return;
   }
 
-  const me = localStorage.getItem("user");
+  const me      = localStorage.getItem("user");
   const monthEl = document.getElementById("rekap-month");
   if (!monthEl.value) monthEl.value = new Date().toISOString().slice(0, 7);
   _rekapMonth = monthEl.value;
@@ -1136,6 +1136,16 @@ async function loadRekap() {
   try {
     const r = await fetch(`/rekap/monthly?month=${_rekapMonth}&requester=${me}`);
     _rekapData = await r.json();
+
+    // Isi dropdown filter minggu
+    const selMinggu = document.getElementById("rekap-filter-minggu");
+    if (selMinggu) {
+      selMinggu.innerHTML = '<option value="">Semua Minggu</option>' +
+        (_rekapData.weeks || []).map(w =>
+          `<option value="${w.weekIdx}">${w.weekLabel} (${w.weekRange})</option>`
+        ).join("");
+    }
+
     rekapRender();
   } catch(e) {
     el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat rekap</p>`;
@@ -1146,8 +1156,12 @@ function rekapRender() {
   const el = document.getElementById("rekap-content");
   if (!el || !_rekapData) return;
 
-  const q = (document.getElementById("rekap-search")?.value || "").toLowerCase();
-  const filtered = (_rekapData.users || []).filter(u =>
+  const q         = (document.getElementById("rekap-search")?.value || "").toLowerCase();
+  const filterW   = parseInt(document.getElementById("rekap-filter-minggu")?.value || "") || 0;
+  const today     = new Date().toISOString().split("T")[0];
+
+  const allUsers  = (_rekapData.users || []);
+  const filtered  = allUsers.filter(u =>
     (u.nama || u.username).toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
   );
 
@@ -1156,121 +1170,159 @@ function rekapRender() {
     return;
   }
 
-  const weeks = _rekapData.weeks || [];
-  const today = new Date().toISOString().split("T")[0];
+  // Tentukan hari yang akan ditampilkan
+  let weeks   = _rekapData.weeks || [];
+  let allDates = _rekapData.allDates || [];
 
-  // Build HTML — satu tabel per minggu
-  let html = `<div style="display:flex;flex-direction:column;gap:16px;">`;
+  if (filterW) {
+    const w = weeks.find(ww => ww.weekIdx === filterW);
+    if (w) {
+      weeks    = [w];
+      allDates = w.dates;
+    }
+  }
 
-  weeks.forEach(week => {
-    // Header kolom hari
-    const headerDays = week.dates.map(date => {
+  // ─── BANGUN HEADER ───────────────────────────────────────────
+  // Kolom: [Nama | Jabatan | [hari...total_minggu]... per minggu | Total Bulan]
+  // Setiap minggu: N kolom hari + 1 kolom total (border kiri tebal)
+
+  let headerHtml = `
+    <th rowspan="2" style="text-align:left;padding:8px 10px;font-size:10px;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.4px;position:sticky;left:0;background:#f8f9ff;
+        min-width:150px;z-index:3;white-space:nowrap;border-right:1px solid #e8ecf0;">Anggota</th>`;
+
+  weeks.forEach((week, wi) => {
+    const isLast = wi === weeks.length - 1;
+    // Kolom hari
+    week.dates.forEach(date => {
       const d   = new Date(date + "T00:00:00");
       const dow = d.getDay();
       const isToday = date === today;
-      const color = REKAP_DOW_COLOR[dow] || "var(--text)";
-      return `<th style="text-align:center;min-width:52px;padding:7px 3px;
-                 background:${isToday ? "#e8f5e9" : ""};
-                 color:${isToday ? "#2e7d32" : color};font-weight:${isToday?"900":"700"};">
-        <div style="font-size:10px;">${REKAP_DOW_LABEL[dow]}</div>
-        <div style="font-size:9px;font-weight:400;opacity:.7;">${d.getDate()}/${d.getMonth()+1}</div>
+      const color = R_DOW_COLOR[dow] || "var(--text)";
+      headerHtml += `
+        <th style="text-align:center;min-width:42px;padding:5px 2px;
+            background:${isToday ? "#e8f5e9" : "#f8f9ff"};
+            color:${isToday ? "#2e7d32" : color};font-size:10px;font-weight:700;
+            border-right:1px solid #eee;">
+          <div>${R_DOW_LABEL[dow]}</div>
+          <div style="font-size:9px;font-weight:400;opacity:.7;">${d.getDate()}/${d.getMonth()+1}</div>
+        </th>`;
+    });
+    // Kolom total minggu
+    headerHtml += `
+      <th style="text-align:center;min-width:52px;padding:5px 4px;background:#f0f4ff;
+          font-size:10px;color:#3949ab;font-weight:700;
+          border-left:3px solid #c5cae9;${!isLast ? "border-right:3px solid #9fa8da;" : ""}">
+        <div>Total</div>
+        <div style="font-size:9px;font-weight:400;">${week.weekLabel}</div>
       </th>`;
-    }).join("");
+  });
 
-    // Baris per user
-    const rows = filtered.map(u => {
-      const weekData = u.weeks.find(w => w.weekIdx === week.weekIdx);
-      if (!weekData) return "";
+  // Kolom total bulan (hanya jika tampil semua minggu)
+  if (!filterW) {
+    headerHtml += `
+      <th style="text-align:center;min-width:58px;padding:5px 4px;background:#e8f5e9;
+          font-size:10px;color:#1b5e20;font-weight:700;border-left:3px solid #a5d6a7;">
+        <div>Total</div>
+        <div style="font-size:9px;font-weight:400;">Bulan</div>
+      </th>`;
+  }
 
-      // Sel hari
-      const dayCols = (weekData.days || []).map(day => {
-        const hasKerja = day.jamKerja > 0;
-        const hasCuti  = day.jamCuti  > 0;
-        const isToday  = day.date === today;
-        const isWeekend = day.dow === 0;
+  // ─── BANGUN BARIS ─────────────────────────────────────────────
+  const rows = filtered.map(u => {
+    // Avatar
+    const avatarHtml = u.photo
+      ? `<img src="${u.photo}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+            display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:10px;flex-shrink:0;">
+          ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
 
-        let cellContent;
+    let rowHtml = `<tr style="border-bottom:1px solid #f0f2f5;">
+      <td style="padding:6px 10px;position:sticky;left:0;background:white;z-index:1;border-right:1px solid #e8ecf0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${avatarHtml}
+          <div style="min-width:0;">
+            <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;">${u.nama||u.username}</div>
+            <div style="font-size:9px;color:var(--muted);">${u.jabatan}</div>
+          </div>
+        </div>
+      </td>`;
+
+    weeks.forEach((week, wi) => {
+      const isLast = wi === weeks.length - 1;
+      // Sel per hari
+      week.dates.forEach(date => {
+        const day = u.days.find(d => d.date === date);
+        const dow = day ? day.dow : new Date(date + "T00:00:00").getDay();
+        const isToday  = date === today;
+        const isWeekend = dow === 0;
+        const jamKerja  = day ? day.jamKerja : 0;
+        const jamCuti   = day ? day.jamCuti  : 0;
+        const hasCuti   = jamCuti > 0;
+        const hasKerja  = jamKerja > 0;
+
+        let cell = "";
         if (isWeekend) {
-          cellContent = `<span style="color:#ddd;font-size:10px;">—</span>`;
+          cell = `<span style="color:#e0e0e0;font-size:10px;">—</span>`;
         } else if (hasCuti && hasKerja) {
-          cellContent = `
-            <div style="font-size:11px;font-weight:700;">${rekapFmtJam(day.jamKerja)}</div>
-            <div style="font-size:9px;color:#1565c0;">+${rekapFmtJam(day.jamCuti)}</div>`;
+          cell = `<div style="font-size:10px;font-weight:700;">${rFmtJam(jamKerja)}</div>
+                  <div style="font-size:9px;color:#1565c0;">+${rFmtJam(jamCuti)}</div>`;
         } else if (hasCuti) {
-          cellContent = `
-            <div style="font-size:10px;color:#1565c0;font-weight:700;">${rekapFmtJam(day.jamCuti)}</div>
-            <div style="font-size:8px;color:#1976d2;background:#e3f2fd;border-radius:3px;padding:1px 3px;margin-top:1px;line-height:1.3;">${day.keteranganCuti}</div>`;
+          cell = `<div style="font-size:10px;color:#1565c0;font-weight:700;">${rFmtJam(jamCuti)}</div>
+                  <div style="font-size:8px;color:#1976d2;background:#e3f2fd;border-radius:3px;
+                       padding:0 3px;margin-top:1px;line-height:1.4;max-width:38px;overflow:hidden;
+                       text-overflow:ellipsis;white-space:nowrap;" title="${day.keteranganCuti||''}">${day.keteranganCuti||'Cuti'}</div>`;
         } else if (hasKerja) {
-          cellContent = `<div style="font-size:11px;font-weight:700;">${rekapFmtJam(day.jamKerja)}</div>`;
+          cell = `<div style="font-size:10px;font-weight:700;">${rFmtJam(jamKerja)}</div>`;
         } else {
-          cellContent = `<span style="color:#e0e0e0;font-size:11px;">—</span>`;
+          cell = `<span style="color:#e8e8e8;font-size:10px;">—</span>`;
         }
 
-        return `<td style="text-align:center;padding:6px 2px;border-bottom:1px solid #f5f5f5;
-                   background:${isToday ? "#f1f8e9" : hasCuti&&!hasKerja ? "#fafeff" : ""};
-                   vertical-align:middle;">${cellContent}</td>`;
-      }).join("");
+        rowHtml += `<td style="text-align:center;padding:5px 2px;
+            background:${isToday ? "#f1f8e9" : hasCuti&&!hasKerja ? "#fafbff" : ""};
+            vertical-align:middle;border-right:1px solid #f5f5f5;">${cell}</td>`;
+      });
 
       // Total minggu ini
-      const total = weekData.totalEfektif;
-      const kurang = Math.max(0, 40 - total);
-      const totalColor = total < 40 ? "#e53935" : "#2e7d32";
-      const totalBg    = total < 40 ? "#fff5f5" : "#f0fff4";
+      const wt = u.weekTotals?.find(ww => ww.weekIdx === week.weekIdx);
+      const tot = wt ? wt.totalEfektif : 0;
+      const totalColor = tot < 40 ? "#e53935" : "#2e7d32";
+      const totalBg    = tot < 40 ? "#fff8f8" : "#f0fff4";
+      const kurang     = Math.max(0, 40 - tot);
+      rowHtml += `<td style="text-align:center;padding:5px 6px;background:${totalBg};
+          border-left:3px solid #c5cae9;${!isLast ? "border-right:3px solid #9fa8da;" : ""}
+          vertical-align:middle;">
+        <div style="font-weight:900;font-size:11px;color:${totalColor};">${rFmtJam(tot)||"0j"}</div>
+        ${kurang > 0 ? `<div style="font-size:8px;color:#e53935;">-${rFmtJam(kurang)}</div>` : ""}
+      </td>`;
+    });
 
-      // Avatar
-      const avatarHtml = u.photo
-        ? `<img src="${u.photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-        : `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
-              display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:11px;flex-shrink:0;">
-            ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
+    // Total bulan
+    if (!filterW) {
+      const totB = u.totalBulan || 0;
+      const totBColor = totB < 40 * weeks.length ? "#e53935" : "#2e7d32";
+      rowHtml += `<td style="text-align:center;padding:5px 6px;background:#f0fff4;
+          border-left:3px solid #a5d6a7;vertical-align:middle;">
+        <div style="font-weight:900;font-size:11px;color:${totBColor};">${rFmtJam(totB)||"0j"}</div>
+      </td>`;
+    }
 
-      return `<tr style="border-bottom:1px solid #f0f2f5;">
-        <td style="padding:6px 10px;min-width:140px;max-width:180px;position:sticky;left:0;background:white;z-index:1;">
-          <div style="display:flex;align-items:center;gap:6px;">
-            ${avatarHtml}
-            <div style="min-width:0;">
-              <div style="font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.nama||u.username}</div>
-              <div style="font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.jabatan}</div>
-            </div>
-          </div>
-        </td>
-        ${dayCols}
-        <td style="text-align:center;padding:6px 8px;border-left:2px solid #f0f2f5;min-width:60px;
-                   background:${totalBg};">
-          <div style="font-weight:900;font-size:12px;color:${totalColor};">${rekapFmtJam(total)}</div>
-          ${kurang > 0 ? `<div style="font-size:9px;color:#e53935;">-${rekapFmtJam(kurang)}</div>` : ""}
-        </td>
-      </tr>`;
-    }).join("");
+    rowHtml += `</tr>`;
+    return rowHtml;
+  }).join("");
 
-    html += `
-    <div style="overflow-x:auto;border-radius:12px;border:1px solid #e8ecf0;background:white;
-                box-shadow:0 2px 8px rgba(0,0,0,.05);">
-      <!-- Header minggu -->
-      <div style="padding:10px 14px;background:linear-gradient(135deg,#1a237e,#4f8ef7);border-radius:12px 12px 0 0;">
-        <span style="color:white;font-weight:700;font-size:13px;">${week.weekLabel}</span>
-      </div>
+  el.innerHTML = `
+    <div style="overflow-x:auto;border-radius:12px;border:1px solid #e8ecf0;
+                background:white;box-shadow:0 2px 8px rgba(0,0,0,.05);">
       <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:500px;">
         <thead>
-          <tr style="border-bottom:2px solid #e8ecf0;background:#f8f9ff;">
-            <th style="text-align:left;padding:8px 10px;font-size:10px;color:var(--muted);
-                       text-transform:uppercase;letter-spacing:.4px;position:sticky;left:0;background:#f8f9ff;min-width:140px;">
-              Anggota
-            </th>
-            ${headerDays}
-            <th style="text-align:center;padding:8px;font-size:10px;color:var(--muted);
-                       text-transform:uppercase;letter-spacing:.4px;border-left:2px solid #e8ecf0;min-width:60px;">
-              Total
-            </th>
+          <tr style="border-bottom:2px solid #e8ecf0;">
+            ${headerHtml}
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
-  });
-
-  html += `</div>`;
-  el.innerHTML = html;
 }
 
 // ============================================================
@@ -1278,103 +1330,102 @@ function rekapRender() {
 // ============================================================
 async function downloadRekapXLSX() {
   if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa download rekap", "error"); return; }
-  if (!_rekapData || !_rekapData.users) { showToast("⚠️ Tampilkan rekap terlebih dahulu", "warning"); return; }
+  if (!_rekapData?.users) { showToast("⚠️ Tampilkan rekap terlebih dahulu", "warning"); return; }
 
-  // Load SheetJS dari CDN
   if (typeof XLSX === "undefined") {
-    await new Promise((resolve, reject) => {
+    await new Promise((res, rej) => {
       const s = document.createElement("script");
       s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-      s.onload = resolve; s.onerror = reject;
+      s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
   }
 
-  const wb   = XLSX.utils.book_new();
-  const weeks = _rekapData.weeks || [];
-  const users = _rekapData.users || [];
-  const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-  const DOW_SHORT = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
-
-  // ─── Sheet 1: Rekap Lengkap (per hari, dikelompok per minggu) ───
-  const wsData = [];
-
-  // Judul
+  const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli",
+                    "Agustus","September","Oktober","November","Desember"];
+  const DOW_S    = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+  const wb       = XLSX.utils.book_new();
+  const weeks    = _rekapData.weeks || [];
+  const users    = _rekapData.users || [];
   const [yr, mo] = _rekapMonth.split("-").map(Number);
+
+  function fmtJamXlsx(jam) {
+    if (!jam || jam <= 0) return "-";
+    const h = Math.floor(jam), m = Math.round((jam-h)*60);
+    return m > 0 ? `${h}j ${m}m` : `${h}j`;
+  }
+
+  // ── Sheet 1: Rekap Lengkap ──
+  const wsData = [];
   wsData.push([`REKAP ABSENSI — ${BULAN_ID[mo-1]} ${yr}`]);
   wsData.push([`Diekspor: ${new Date().toLocaleString("id-ID")}`]);
   wsData.push([]);
 
-  weeks.forEach(week => {
-    // Header minggu
-    wsData.push([week.weekLabel]);
+  // Header baris 1 — label minggu (merge atas hari)
+  const h1 = ["Nama","Jabatan"];
+  weeks.forEach(w => {
+    w.dates.forEach(() => h1.push(""));
+    h1[h1.length - w.dates.length] = `${w.weekLabel} (${w.weekRange})`;
+    h1.push(`Total ${w.weekLabel}`);
+  });
+  h1.push("Total Bulan");
+  wsData.push(h1);
 
-    // Header kolom: Nama | Jabatan | [hari...] | Total Minggu
-    const headerRow = ["Nama", "Jabatan"];
-    week.dates.forEach(date => {
-      const d = new Date(date + "T00:00:00");
-      headerRow.push(`${DOW_SHORT[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`);
+  // Header baris 2 — nama hari
+  const h2 = ["",""];
+  weeks.forEach(w => {
+    w.dates.forEach(date => {
+      const d = new Date(date+"T00:00:00");
+      h2.push(`${DOW_S[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`);
     });
-    headerRow.push("Total Minggu");
-    wsData.push(headerRow);
+    h2.push("");
+  });
+  h2.push("");
+  wsData.push(h2);
 
-    // Baris per user
-    users.forEach(u => {
-      const weekData = u.weeks.find(w => w.weekIdx === week.weekIdx);
-      if (!weekData) return;
-      const row = [u.nama || u.username, u.jabatan];
-      weekData.days.forEach(day => {
-        const total = day.jamKerja + day.jamCuti;
-        if (total <= 0) {
-          row.push(day.dow === 0 ? "Libur" : "-");
-        } else {
-          const h = Math.floor(total), m = Math.round((total - h) * 60);
-          row.push(m > 0 ? `${h}j ${m}m` : `${h}j`);
-        }
+  // Baris per user
+  users.forEach(u => {
+    const row = [u.nama||u.username, u.jabatan];
+    weeks.forEach(w => {
+      w.dates.forEach(date => {
+        const day = u.days.find(d => d.date === date);
+        const tot = day ? day.jamKerja + day.jamCuti : 0;
+        const dow = day ? day.dow : new Date(date+"T00:00:00").getDay();
+        if (dow === 0) { row.push("Libur"); return; }
+        row.push(fmtJamXlsx(tot));
       });
-      const tot = weekData.totalEfektif;
-      const th = Math.floor(tot), tm = Math.round((tot-th)*60);
-      row.push(tm > 0 ? `${th}j ${tm}m` : `${th}j`);
-      wsData.push(row);
+      const wt = u.weekTotals?.find(ww => ww.weekIdx === w.weekIdx);
+      row.push(fmtJamXlsx(wt?.totalEfektif || 0));
     });
-    wsData.push([]); // baris kosong antar minggu
+    row.push(fmtJamXlsx(u.totalBulan || 0));
+    wsData.push(row);
   });
 
   const ws1 = XLSX.utils.aoa_to_sheet(wsData);
-  // Lebar kolom otomatis
-  ws1["!cols"] = [{ wch: 22 }, { wch: 14 }];
-  weeks[0]?.dates.forEach(() => ws1["!cols"].push({ wch: 10 }));
-  ws1["!cols"].push({ wch: 12 });
+  const colWidths = [{ wch: 22 }, { wch: 14 }];
+  weeks.forEach(w => { w.dates.forEach(() => colWidths.push({ wch: 9 })); colWidths.push({ wch: 12 }); });
+  colWidths.push({ wch: 12 });
+  ws1["!cols"] = colWidths;
   XLSX.utils.book_append_sheet(wb, ws1, "Rekap Lengkap");
 
-  // ─── Sheet 2: Ringkasan per Minggu ───
+  // ── Sheet 2: Ringkasan Mingguan ──
   const ws2Data = [];
   ws2Data.push([`RINGKASAN MINGGUAN — ${BULAN_ID[mo-1]} ${yr}`]);
   ws2Data.push([]);
-
-  const ringkasanHeader = ["Nama", "Jabatan", ...weeks.map(w => `Minggu ${w.weekIdx}`), "Total Bulan"];
-  ws2Data.push(ringkasanHeader);
-
+  ws2Data.push(["Nama","Jabatan",...weeks.map(w => `${w.weekLabel} (${w.weekRange})`),"Total Bulan"]);
   users.forEach(u => {
-    const row = [u.nama || u.username, u.jabatan];
-    let totalBulan = 0;
-    weeks.forEach(week => {
-      const wd = u.weeks.find(w => w.weekIdx === week.weekIdx);
-      const tot = wd ? wd.totalEfektif : 0;
-      totalBulan += tot;
-      const h = Math.floor(tot), m = Math.round((tot-h)*60);
-      row.push(m > 0 ? `${h}j ${m}m` : `${h}j`);
+    const row = [u.nama||u.username, u.jabatan];
+    weeks.forEach(w => {
+      const wt = u.weekTotals?.find(ww => ww.weekIdx === w.weekIdx);
+      row.push(fmtJamXlsx(wt?.totalEfektif || 0));
     });
-    const th = Math.floor(totalBulan), tm = Math.round((totalBulan-th)*60);
-    row.push(tm > 0 ? `${th}j ${tm}m` : `${th}j`);
+    row.push(fmtJamXlsx(u.totalBulan || 0));
     ws2Data.push(row);
   });
-
   const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
-  ws2["!cols"] = [{ wch: 22 }, { wch: 14 }, ...weeks.map(() => ({ wch: 14 })), { wch: 14 }];
+  ws2["!cols"] = [{ wch:22 },{ wch:14 },...weeks.map(() => ({ wch:16 })),{ wch:14 }];
   XLSX.utils.book_append_sheet(wb, ws2, "Ringkasan Mingguan");
 
-  // Download
   XLSX.writeFile(wb, `Rekap_${_rekapMonth}.xlsx`);
   showToast("✅ File rekap berhasil diunduh!");
 }

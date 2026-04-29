@@ -900,11 +900,13 @@ app.get("/rekap/monthly", (req, res) => {
   const firstDay = new Date(year, mon - 1, 1);
   const lastDay  = new Date(year, mon, 0);
 
+  // Semua tanggal dalam bulan ini
   const allDates = [];
   for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
     allDates.push(d.toISOString().split("T")[0]);
   }
 
+  // Hitung weekStart (Senin) untuk setiap tanggal
   function getWeekStart(dateStr) {
     const d   = new Date(dateStr + "T00:00:00");
     const dow = d.getDay();
@@ -914,6 +916,7 @@ app.get("/rekap/monthly", (req, res) => {
     return m.toISOString().split("T")[0];
   }
 
+  // Kelompokkan tanggal ke minggu (urut)
   const weekMap = new Map();
   allDates.forEach(dt => {
     const ws = getWeekStart(dt);
@@ -926,7 +929,13 @@ app.get("/rekap/monthly", (req, res) => {
   let weekIdx = 1;
   weekMap.forEach((dates, ws) => {
     const fmtD = d => { const o = new Date(d+"T00:00:00"); return `${o.getDate()} ${BULAN[o.getMonth()]}`; };
-    weeks.push({ weekIdx, weekStart: ws, weekLabel: `Minggu ${weekIdx} (${fmtD(dates[0])} - ${fmtD(dates[dates.length-1])})`, dates });
+    weeks.push({
+      weekIdx,
+      weekStart: ws,
+      weekLabel: `Minggu ${weekIdx}`,
+      weekRange: `${fmtD(dates[0])} - ${fmtD(dates[dates.length-1])}`,
+      dates
+    });
     weekIdx++;
   });
 
@@ -938,43 +947,56 @@ app.get("/rekap/monthly", (req, res) => {
     const u = users[username];
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
-    const weekRows = weeks.map(w => {
-      const days = w.dates.map(dateStr => {
-        const rec = data.find(d => d.user === username && d.date === dateStr);
-        let jamKerja = 0;
-        if (rec && rec.jamMasuk && rec.jamKeluar) {
-          const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
-          let bt = 0;
-          (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
-          jamKerja = Math.max(0, work - bt);
-        }
-        const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
-        const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
-        const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
-        return {
-          date: dateStr,
-          dow:  new Date(dateStr + "T00:00:00").getDay(),
-          jamKerja:  parseFloat(jamKerja.toFixed(2)),
-          jamCuti:   parseFloat(jamCuti.toFixed(2)),
-          keteranganCuti,
-        };
-      });
-      const totalEfektif = parseFloat(days.reduce((s, d) => s + d.jamKerja + d.jamCuti, 0).toFixed(2));
-      return { weekIdx: w.weekIdx, weekLabel: w.weekLabel, totalEfektif, days };
+    // Semua hari dalam bulan (flat)
+    const days = allDates.map(dateStr => {
+      const rec = data.find(d => d.user === username && d.date === dateStr);
+      let jamKerja = 0;
+      if (rec && rec.jamMasuk && rec.jamKeluar) {
+        const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+        let bt = 0;
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        jamKerja = Math.max(0, work - bt);
+      }
+      const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
+      const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
+      const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
+      const ws = getWeekStart(dateStr);
+      const weekIdxForDay = weeks.find(w => w.weekStart === ws)?.weekIdx || 0;
+      return {
+        date: dateStr,
+        dow:  new Date(dateStr + "T00:00:00").getDay(),
+        weekIdx: weekIdxForDay,
+        jamKerja:  parseFloat(jamKerja.toFixed(2)),
+        jamCuti:   parseFloat(jamCuti.toFixed(2)),
+        keteranganCuti,
+      };
     });
+
+    // Total per minggu
+    const weekTotals = weeks.map(w => {
+      const wDays = days.filter(d => d.weekIdx === w.weekIdx);
+      return {
+        weekIdx: w.weekIdx,
+        totalEfektif: parseFloat(wDays.reduce((s, d) => s + d.jamKerja + d.jamCuti, 0).toFixed(2))
+      };
+    });
+
+    const totalBulan = parseFloat(days.reduce((s, d) => s + d.jamKerja + d.jamCuti, 0).toFixed(2));
 
     return {
       username,
-      nama:    u.namaLengkap || username,
-      jabatan: u.jabatan || "-",
-      divisi:  Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
-      photo:   u.photo || "",
-      group:   u.group || "anggota",
-      weeks:   weekRows,
+      nama:       u.namaLengkap || username,
+      jabatan:    u.jabatan || "-",
+      divisi:     Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
+      photo:      u.photo || "",
+      group:      u.group || "anggota",
+      days,
+      weekTotals,
+      totalBulan,
     };
   });
 
-  res.send({ month, weeks, users: result });
+  res.send({ month, weeks, allDates, users: result });
 });
 
 // GET: summary timesheet bulanan (tetap ada untuk kompatibilitas)
