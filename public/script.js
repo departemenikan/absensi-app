@@ -2749,8 +2749,8 @@ function toggleAreaMap(id) {
       if (!mapEl) return;
       const m = L.map(`area-map-mini-${id}`, { zoomControl: true, dragging: true })
                  .setView([a.lat, a.lng], 17);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors", maxZoom: 19
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        attribution: "Tiles © Esri", maxZoom: 19
       }).addTo(m);
       L.marker([a.lat, a.lng]).addTo(m)
        .bindPopup(`📍 ${a.name}<br><small>Radius: ${a.radius}m</small>`).openPopup();
@@ -2811,8 +2811,8 @@ function initAreaMap(lat, lng) {
     return;
   }
   _areaMap = L.map("area-map").setView([lat, lng], 16);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap contributors", maxZoom: 19
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Tiles © Esri", maxZoom: 19
   }).addTo(_areaMap);
 
   // Klik peta = pindah marker
@@ -2872,8 +2872,21 @@ function getMyLoc() {
   }, () => showToast("❌ Gagal ambil lokasi. Izinkan akses lokasi.", "error"), {enableHighAccuracy:true});
 }
 
-// ─── Search lokasi via Nominatim (OpenStreetMap) ───
+// ─── Search lokasi via Photon (Komoot) — lebih responsif dari Nominatim ───
 let _searchTimeout = null;
+
+// Helper: parse hasil Photon GeoJSON ke format display
+function _photonDisplayName(props) {
+  const parts = [
+    props.name,
+    props.street,
+    props.district || props.suburb,
+    props.city || props.town || props.village,
+    props.state,
+    props.country
+  ].filter(Boolean);
+  return parts.join(", ");
+}
 
 async function areaSearchSuggest() {
   const q = document.getElementById("area-search-input")?.value.trim();
@@ -2884,27 +2897,35 @@ async function areaSearchSuggest() {
 
   _searchTimeout = setTimeout(async () => {
     try {
-      const res = await authFetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,
-        { headers: { "Accept-Language": "id,en" } }
+      // Photon: fetch langsung (tidak lewat authFetch agar tidak kena CORS/proxy)
+      const res = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`,
+        { headers: { "Accept": "application/json" } }
       );
-      const data = await res.json();
-      if (!data.length) { box.style.display = "none"; return; }
-      box.innerHTML = data.map((item, i) =>
-        `<div onclick="areaSelectSuggest(${item.lat},${item.lon},${JSON.stringify(item.display_name).replace(/"/g,"'")})"
+      const json = await res.json();
+      const features = json.features || [];
+      if (!features.length) { box.style.display = "none"; return; }
+
+      box.innerHTML = features.map(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const props      = f.properties;
+        const title      = props.name || props.street || q;
+        const subtitle   = _photonDisplayName(props);
+        const safeTitle  = JSON.stringify(subtitle).replace(/"/g, "'");
+        return `<div onclick="areaSelectSuggest(${lat},${lng},${safeTitle})"
           style="padding:10px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid #f5f5f5;
                  color:var(--text);line-height:1.4;"
           onmouseenter="this.style.background='#f8f9ff'"
           onmouseleave="this.style.background=''">
-          <div style="font-weight:600;">${item.name || item.display_name.split(",")[0]}</div>
+          <div style="font-weight:600;">${title}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            ${item.display_name}
+            ${subtitle}
           </div>
-        </div>`
-      ).join("");
+        </div>`;
+      }).join("");
       box.style.display = "block";
     } catch { box.style.display = "none"; }
-  }, 400);
+  }, 350);
 }
 
 function areaSelectSuggest(lat, lng, displayName) {
@@ -2923,20 +2944,21 @@ async function searchAreaLocation() {
   const q = document.getElementById("area-search-input")?.value.trim();
   if (!q) return showToast("⚠️ Masukkan nama lokasi yang ingin dicari", "warning");
 
-  // Cek dulu jika memilih dari suggest
   const box = document.getElementById("area-search-suggest");
   if (box) box.style.display = "none";
 
   showToast("🔍 Mencari lokasi...", "warning", 2000);
   try {
-    const res = await authFetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-      { headers: { "Accept-Language": "id,en" } }
+    const res = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=id`,
+      { headers: { "Accept": "application/json" } }
     );
-    const data = await res.json();
-    if (!data.length) return showToast("❌ Lokasi tidak ditemukan. Coba kata kunci lain.", "error");
-    const { lat, lon, display_name } = data[0];
-    areaSelectSuggest(lat, lon, display_name);
+    const json = await res.json();
+    const features = json.features || [];
+    if (!features.length) return showToast("❌ Lokasi tidak ditemukan. Coba kata kunci lain.", "error");
+    const [lng, lat] = features[0].geometry.coordinates;
+    const displayNameResult = _photonDisplayName(features[0].properties);
+    areaSelectSuggest(lat, lng, displayNameResult);
     showToast("✅ Lokasi ditemukan!");
   } catch { showToast("❌ Gagal mencari lokasi. Periksa koneksi internet.", "error"); }
 }
@@ -4744,8 +4766,8 @@ function renderLiveMap(list) {
   // Init peta jika belum
   if (!_trkLiveMap) {
     _trkLiveMap = L.map("trk-live-map", { zoomControl: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap", maxZoom: 19
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles © Esri", maxZoom: 19
     }).addTo(_trkLiveMap);
   }
   // Hapus marker lama
@@ -4838,8 +4860,8 @@ function viewRouteFromModal() {
 function initRiwayatMap() {
   if (_trkRiwayatMap) { setTimeout(() => _trkRiwayatMap.invalidateSize(), 200); return; }
   _trkRiwayatMap = L.map("trk-riwayat-map", { zoomControl: true });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap", maxZoom: 19
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Tiles © Esri", maxZoom: 19
   }).addTo(_trkRiwayatMap);
   _trkRiwayatMap.setView([-8.65, 115.22], 12);
   setTimeout(() => _trkRiwayatMap.invalidateSize(), 200);
