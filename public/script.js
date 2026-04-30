@@ -374,7 +374,7 @@ function enterApp(menus, group, level) {
   loadWeeklyInfo();
   loadHomeLibur();
   // Jika sudah clock in, mulai tracking ping
-  fetch("/status/" + (localStorage.getItem("user")||""))
+  authFetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
     .then(d => { if (d.status === "IN") startTrackingPing(); })
     .catch(() => {});
@@ -760,7 +760,7 @@ async function loadStatus() {
   const user = localStorage.getItem("user");
   if (!user) return;
   try {
-    const r = await fetch("/status/" + user);
+    const r = await authFetch("/status/" + user);
     const d = await r.json();
     updateBtns(d.status);
   } catch { updateBtns("OUT"); }
