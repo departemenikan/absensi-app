@@ -5052,7 +5052,7 @@ async function loadDaftarCuti() {
   el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
   const user = localStorage.getItem("user") || "";
   try {
-    const r = await authFetch(`/pengajuan-cuti?requester=${user}&filter=${_cutiFilter}`);
+    const r = await authFetch(`/pengajuan-cuti?filter=${_cutiFilter}`);
     const list = await r.json();
     renderDaftarCuti(list, user);
   } catch {
@@ -5336,7 +5336,7 @@ async function loadRiwayatCutiSaya(user) {
   const el = document.getElementById("cuti-saldo-riwayat");
   if (!el) return;
   try {
-    const r = await authFetch(`/pengajuan-cuti?requester=${user}&filter=semua`);
+    const r = await authFetch(`/pengajuan-cuti?filter=semua`);
     const list = await r.json();
     const mine = list.filter(p => p.username === user).slice(0, 10);
     if (!mine.length) {
@@ -5641,7 +5641,7 @@ async function saveTambahCuti() {
   try {
     const r = await authFetch("/pengajuan-cuti", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: user, kebijakanId, kebijakanNama, kuotaKey,
+      body: JSON.stringify({ kebijakanId, kebijakanNama, kuotaKey,
         durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir })
     });
     const d = await r.json();

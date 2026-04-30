@@ -1465,7 +1465,9 @@ function getUserGroup(username) {
 
 // GET semua pengajuan cuti (admin/owner/manager bisa lihat semua, lainnya hanya miliknya)
 app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {
-  const { requester, filter } = req.query;
+  // Identitas requester diambil dari middleware (X-User header), bukan dari query string
+  const requester = req._requester;
+  const { filter } = req.query;
   const pengajuan = load(F.pengajuanCuti, []);
   const requesterLevel = getUserLevel(requester);
   const requesterGroup = getUserGroup(requester);
@@ -1526,7 +1528,9 @@ app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {
 
 // POST: ajukan cuti baru
 app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
-  const { username, kebijakanId, kebijakanNama, kuotaKey, durasi, satuanDurasi,
+  // Identitas pengaju diambil dari middleware (X-User header), bukan dari body
+  const username = req._requester;
+  const { kebijakanId, kebijakanNama, kuotaKey, durasi, satuanDurasi,
           tanggalMulai, tanggalAkhir, jamMulai, jamAkhir } = req.body;
   if (!username || !kebijakanId || !durasi) return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
 
