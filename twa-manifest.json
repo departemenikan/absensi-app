@@ -1,0 +1,45 @@
+{
+  "packageId": "com.sukodo.absensi",
+  "host": "GANTI-DENGAN-URL-RAILWAY-ANDA.up.railway.app",
+  "name": "Absensi Smart",
+  "launcherName": "AbsenSmart",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#4f8ef7",
+  "themeColorDark": "#1a237e",
+  "navigationColor": "#4f8ef7",
+  "navigationColorDark": "#1a237e",
+  "navigationDividerColor": "#4f8ef7",
+  "navigationDividerColorDark": "#1a237e",
+  "backgroundColor": "#ffffff",
+  "startUrl": "/",
+  "iconUrl": "https://GANTI-DENGAN-URL-RAILWAY-ANDA.up.railway.app/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "absensi-smart"
+  },
+  "appVersionCode": 1,
+  "appVersion": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://GANTI-DENGAN-URL-RAILWAY-ANDA.up.railway.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "enableNotifications": false,
+  "minSdkVersion": 19,
+  "targetSdkVersion": 34,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://GANTI-DENGAN-URL-RAILWAY-ANDA.up.railway.app/",
+  "scopeUrl": "/",
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}
