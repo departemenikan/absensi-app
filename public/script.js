@@ -740,9 +740,11 @@ async function sendAbsen(type, label) {
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
     } else if (d.status === "OUT_OF_AREA") {
-      showToast(`❌ Di luar area kantor! Jarak ${d.distance}m dari ${d.area||"kantor"}. Gunakan status "Tugas Luar" jika bekerja di luar kantor.`, "error", 6000);
+      const _actionLabel = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"}[type] || type;
+      showToast(`❌ ${_actionLabel} gagal! Anda berada ${d.distance}m dari ${d.area||"kantor"}. Harus berada dalam radius area. Jika sedang Tugas Luar, minta admin ubah status kerja Anda.`, "error", 7000);
     } else if (d.status === "LOCATION_REQUIRED") {
-      showToast("❌ Aktifkan layanan lokasi di perangkat Anda untuk Clock In", "error", 5000);
+      const _actionLabel = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"}[type] || type;
+      showToast(`❌ Aktifkan layanan lokasi di perangkat Anda untuk ${_actionLabel}`, "error", 5000);
     } else if (d.status === "ALREADY_IN") {
       showToast("⚠️ Sudah Clock In hari ini", "warning"); loadStatus();
     }

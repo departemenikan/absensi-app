@@ -276,11 +276,12 @@ app.post("/absen", requireLevel(99), (req, res) => {
     }
   }
 
-  // Validasi area — hanya untuk clock IN, dan hanya jika ada area aktif
-  // Clock OUT/BREAK tidak perlu validasi area (bisa di luar kantor saat pulang)
-  if (type === "IN" && areas.length > 0 && !isTugasLuar) {
+  // Validasi area — untuk SEMUA tipe absen (IN, OUT, BREAK_START, BREAK_END), kecuali Tugas Luar
+  const needsAreaCheck = areas.length > 0 && !isTugasLuar;
+  if (needsAreaCheck) {
     if (lat === 0 && lng === 0) {
-      return res.status(400).send({ status: "LOCATION_REQUIRED", msg: "Aktifkan lokasi untuk Clock In" });
+      const _typeLabel = { IN: "Clock In", OUT: "Clock Out", BREAK_START: "Mulai Istirahat", BREAK_END: "Selesai Istirahat" }[type] || type;
+      return res.status(400).send({ status: "LOCATION_REQUIRED", msg: `Aktifkan lokasi untuk ${_typeLabel}` });
     }
     const activeAreas = areas.filter(a => a.active !== false);
     if (activeAreas.length > 0) {
