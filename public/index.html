@@ -76,7 +76,7 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px 16px 58px;margin:-16px -16px 0;}
+      color:white;padding:16px 16px 36px;margin:-16px -16px 0;}
     .top-header h3{font-size:16px;padding-left:0;}
     .top-header:has(.nav-back-btn.show) h3{padding-left:0;margin-left:0;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
@@ -84,16 +84,16 @@
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-38px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-20px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
 
     /* STATUS */
-    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:7px 18px;
-      border-radius:50px;font-weight:700;font-size:13px;background:#f0f2f5;color:var(--muted);
-      border:none;box-shadow:none;margin-bottom:0;}
-    .status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;
+      border-radius:50px;font-weight:600;font-size:13px;background:#f0f2f5;color:var(--muted);
+      border:none;box-shadow:none;}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0;}
 
     /* BUTTONS */
     .btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -464,11 +464,11 @@
       <p id="hdr-date"></p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-home" title="Profil Saya">👤</button>
     </div>
-    <!-- Status badge melayang di tengah antara header dan card -->
-    <div style="text-align:center;position:relative;z-index:2;margin-bottom:-14px;">
-      <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
-    </div>
     <div class="card">
+      <!-- Status badge di dalam card, di atas tombol -->
+      <div style="text-align:center;margin-bottom:14px;">
+        <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
+      </div>
       <div class="btn-grid">
         <button id="btn-in"    class="btn-absen btn-in    btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
         <button id="btn-bs"    class="btn-absen btn-break hidden"   onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
