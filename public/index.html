@@ -76,7 +76,7 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px 16px 36px;margin:-16px -16px 0;}
+      color:white;padding:16px 16px 24px;margin:-16px -16px 0;}
     .top-header h3{font-size:16px;padding-left:0;}
     .top-header:has(.nav-back-btn.show) h3{padding-left:0;margin-left:0;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
@@ -84,8 +84,10 @@
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-20px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:12px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
+    /* Card pertama setelah sub-header di halaman dalam */
+    .card-first{margin-top:14px!important;}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
 
@@ -649,7 +651,7 @@
     <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
     </div>
-    <div class="card" style="padding-top:42px;">
+    <div class="card" style="padding-top:24px;">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
