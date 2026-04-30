@@ -1841,3 +1841,115 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
   res.send(result);
 });
 
+
+// ========================
+// CHATBOT (Groq AI)
+// ========================
+app.post("/chat", requireLevel(99), async (req, res) => {
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_API_KEY) return res.send({ reply: "❌ GROQ_API_KEY belum dikonfigurasi di server." });
+
+  const { message, history } = req.body;
+  if (!message) return res.send({ reply: "Pesan kosong." });
+
+  const username = req._requester;
+  const level    = req._requesterLevel;
+  const users    = load(F.users, {});
+  const user     = users[username] || {};
+  const today    = new Date().toISOString().split("T")[0];
+
+  // Absensi hari ini
+  const dataAbsen    = load(F.data, []);
+  const rekorHariIni = dataAbsen.find(d => d.user === username && d.date === today);
+
+  // Rekap bulan ini
+  const nowDate  = new Date();
+  const bulanIni = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,"0")}`;
+  const rekapBulan = dataAbsen
+    .filter(d => d.user === username && d.date.startsWith(bulanIni))
+    .map(d => ({ tanggal: d.date, masuk: d.jamMasuk, keluar: d.jamKeluar, totalJam: d.totalJam || 0 }));
+
+  // Kuota cuti
+  const kuotaData = load(F.kuotaCuti, {});
+  const tahun     = nowDate.getFullYear();
+  const kuota     = kuotaData[username]?.[tahun] || null;
+
+  // Pengajuan cuti 5 terakhir
+  const pengajuanData = load(F.pengajuanCuti, []);
+  const cutiUser = pengajuanData
+    .filter(p => p.username === username).slice(-5)
+    .map(p => ({ kebijakan: p.kebijakanNama, durasi: p.durasi, satuan: p.satuanDurasi, status: p.status, tgl: p.tanggalMulai }));
+
+  // Hari libur bulan ini
+  const liburData  = load(F.libur, []);
+  const liburBulan = liburData
+    .filter(l => (l.dateStart || l.date || "").startsWith(bulanIni))
+    .map(l => ({ nama: l.name, tanggal: l.dateStart || l.date }));
+
+  // Konteks tambahan untuk admin/owner
+  let konteksAdmin = "";
+  if (level <= 2) {
+    const hariIniSemua = dataAbsen.filter(d => d.date === today);
+    const sudahAbsen   = hariIniSemua.map(d => d.user);
+    const semuaUser    = Object.keys(users);
+    const belumAbsen   = semuaUser.filter(u => !sudahAbsen.includes(u) && users[u].status !== "nonaktif");
+    konteksAdmin = `\nData Admin/Owner:\n- Total user aktif: ${semuaUser.length}\n- Sudah absen hari ini: ${sudahAbsen.length} orang (${sudahAbsen.join(", ")})\n- Belum absen hari ini: ${belumAbsen.length} orang (${belumAbsen.join(", ")})`;
+  }
+
+  const systemPrompt = `Kamu adalah asisten AI untuk aplikasi absensi dan manajemen SDM.
+Jawab dalam Bahasa Indonesia yang ramah, singkat, dan informatif.
+Jangan mengarang data — gunakan hanya data yang tersedia. Jika tidak ada, katakan dengan jujur.
+
+=== DATA USER ===
+Username    : ${username}
+Nama        : ${user.namaLengkap || username}
+Jabatan     : ${user.jabatan || "-"}
+Divisi      : ${Array.isArray(user.divisi) ? user.divisi.join(", ") : (user.divisi || "-")}
+Level Akses : ${level<=1?"Owner":level===2?"Admin":level===3?"Manager":level===4?"Koordinator":"Anggota"}
+
+=== ABSENSI HARI INI (${today}) ===
+${rekorHariIni
+  ? `Jam Masuk : ${rekorHariIni.jamMasuk||"-"}\nJam Keluar: ${rekorHariIni.jamKeluar||"Belum keluar"}\nTotal Jam : ${rekorHariIni.totalJam||0} jam`
+  : "Belum absen hari ini"}
+
+=== REKAP BULAN INI (${bulanIni}) ===
+Total hari hadir: ${rekapBulan.length} hari
+Total jam kerja : ${rekapBulan.reduce((s,d)=>s+(d.totalJam||0),0).toFixed(1)} jam
+${rekapBulan.map(d=>`  ${d.tanggal}: masuk ${d.masuk||"-"}, keluar ${d.keluar||"-"}, ${d.totalJam||0} jam`).join("\n")||"Belum ada data"}
+
+=== KUOTA CUTI ===
+${kuota
+  ? `Cuti Tahunan: ${kuota.tahunan?.total||12} hari (terpakai: ${kuota.tahunan?.terpakai||0}, sisa: ${(kuota.tahunan?.total||12)-(kuota.tahunan?.terpakai||0)} hari)\nOvertime    : ${kuota.overtime?.jamAkumulasi?.toFixed(1)||"0"} jam tersedia`
+  : "Data kuota cuti belum tersedia"}
+
+=== RIWAYAT CUTI (5 terakhir) ===
+${cutiUser.length ? cutiUser.map(c=>`  ${c.tgl}: ${c.kebijakan} ${c.durasi} ${c.satuan} — ${c.status}`).join("\n") : "Belum ada pengajuan cuti"}
+
+=== HARI LIBUR BULAN INI ===
+${liburBulan.length ? liburBulan.map(l=>`  ${l.tanggal}: ${l.nama}`).join("\n") : "Tidak ada hari libur bulan ini"}
+${konteksAdmin}`;
+
+  const messages = [
+    ...(Array.isArray(history) ? history.slice(-10) : []),
+    { role: "user", content: message }
+  ];
+
+  try {
+    const groqRes  = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        max_tokens: 1024,
+        temperature: 0.5,
+      })
+    });
+    const groqData = await groqRes.json();
+    const reply    = groqData.choices?.[0]?.message?.content || "Maaf, tidak ada respons dari AI.";
+    res.send({ reply });
+  } catch (err) {
+    console.error("Groq error:", err);
+    res.send({ reply: "❌ Gagal menghubungi AI. Coba lagi." });
+  }
+});

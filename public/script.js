@@ -6109,3 +6109,73 @@ if ("serviceWorker" in navigator) {
       .catch((err) => console.warn("SW failed:", err));
   });
 }
+
+// ========================
+// CHATBOT
+// ========================
+let _chatHistory = [];
+let _chatOpen    = false;
+
+function toggleChatPanel() {
+  _chatOpen = !_chatOpen;
+  const panel = document.getElementById("chat-panel");
+  if (_chatOpen) {
+    panel.classList.add("open");
+    document.getElementById("chat-input").focus();
+  } else {
+    panel.classList.remove("open");
+  }
+}
+
+function chatAppend(role, text) {
+  const box = document.getElementById("chat-messages");
+  const el  = document.createElement("div");
+  el.className = "chat-bubble " + role;
+  el.textContent = text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function sendChat() {
+  const input = document.getElementById("chat-input");
+  const btn   = document.getElementById("chat-send");
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  input.value = "";
+  btn.disabled = true;
+
+  chatAppend("user", msg);
+
+  // Typing indicator
+  const typing = chatAppend("bot typing", "⏳ Sedang memproses...");
+
+  try {
+    const r = await authFetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, history: _chatHistory })
+    });
+    const d = await r.json();
+    const reply = d.reply || "Maaf, tidak ada respons.";
+
+    // Update history untuk konteks percakapan berikutnya
+    _chatHistory.push({ role: "user", content: msg });
+    _chatHistory.push({ role: "assistant", content: reply });
+    if (_chatHistory.length > 20) _chatHistory = _chatHistory.slice(-20);
+
+    // Ganti typing indicator dengan jawaban asli
+    typing.className   = "chat-bubble bot";
+    typing.textContent = reply;
+  } catch {
+    typing.className   = "chat-bubble bot";
+    typing.textContent = "❌ Gagal menghubungi server. Coba lagi.";
+  }
+
+  btn.disabled = false;
+  input.focus();
+
+  const box = document.getElementById("chat-messages");
+  box.scrollTop = box.scrollHeight;
+}
