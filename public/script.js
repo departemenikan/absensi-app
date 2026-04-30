@@ -2438,19 +2438,19 @@ const ALL_MENUS = [
     ]
   },
   {
-    key: "aktivitas",    label: "📌 Aktivitas",    section: "Pengaturan",
+    key: "aktivitas",    label: "📌 Aktivitas",      section: "Pengaturan",
   },
   {
-    key: "rekap",        label: "📋 Rekap",         section: "Pengaturan",
+    key: "rekap",        label: "📋 Rekap",           section: "Pengaturan",
   },
   {
-    key: "aksesibilitas", label: "🔐 Aksesibilitas", section: "Pengaturan",
+    key: "aksesibilitas", label: "🔐 Aksesibilitas",  section: "Pengaturan",
   },
   {
-    key: "tracking",     label: "🗺️ Tracking",       section: "Pengaturan",
+    key: "tracking",     label: "🗺️ Tracking",         section: "Pengaturan",
   },
   {
-    key: "admin",        label: "👑 Admin Panel",    section: "Pengaturan",
+    key: "profil",       label: "👤 Profil",           section: "Pengaturan",
   },
 ];
 
@@ -2475,6 +2475,9 @@ function menusBySection() {
   return sections;
 }
 
+// State lokal sementara sebelum disimpan: { [groupId]: Set<menuKey> }
+const _aksesTemp = {};
+
 async function loadGroups() {
   try {
     const r = await authFetch("/groups");
@@ -2483,26 +2486,23 @@ async function loadGroups() {
 
     const sections = menusBySection();
 
+    // Inisialisasi state lokal dari data server
+    groups.forEach(g => {
+      _aksesTemp[g.id] = new Set(g.menus || []);
+    });
+
     list.innerHTML = groups.map(g => {
       const isOwner = g.id === "owner";
-
-      // Hitung jumlah key aktif (parent + child)
-      const allKeys  = allMenuKeys();
-      const activeCount = allKeys.filter(k => g.menus.includes(k)).length;
-      const totalCount  = allKeys.filter(k => {
-        const m = ALL_MENUS.find(x => x.key === k);
-        return !m?.alwaysOn; // jangan hitung yg alwaysOn ke total toggle
-      }).length + ALL_MENUS.filter(m => m.alwaysOn).length;
+      const visibleCount = allMenuKeys().filter(k => g.menus.includes(k)).length;
 
       // Render per section
       const sectionHTML = Object.entries(sections).map(([secName, menus]) => {
         const rows = menus.map(m => {
-          const isAlways  = m.alwaysOn === true;
-          const isChecked = g.menus.includes(m.key) || isAlways;
+          const isAlways   = m.alwaysOn === true;
+          const isChecked  = g.menus.includes(m.key) || isAlways;
           const isDisabled = isOwner || isAlways;
           const hasChildren = m.children && m.children.length > 0;
 
-          // Parent row
           const parentRow = `
             <div class="akses-row akses-parent" style="${hasChildren?'border-bottom:none;':''}">
               <div style="display:flex;align-items:center;gap:8px;">
@@ -2511,12 +2511,11 @@ async function loadGroups() {
               </div>
               <label class="toggle-switch${isDisabled?' toggle-disabled':''}">
                 <input type="checkbox" ${isChecked?'checked':''} ${isDisabled?'disabled':''}
-                  onchange="toggleGroupMenu('${g.id}','${m.key}',this.checked)">
+                  onchange="onAksesToggle('${g.id}','${m.key}',this.checked)">
                 <span class="toggle-slider"></span>
               </label>
             </div>`;
 
-          // Children rows (submenu)
           const childRows = (m.children || []).map(c => {
             const cChecked  = g.menus.includes(c.key) || isAlways;
             const cDisabled = isOwner || isAlways;
@@ -2528,7 +2527,7 @@ async function loadGroups() {
               </div>
               <label class="toggle-switch${cDisabled?' toggle-disabled':''}">
                 <input type="checkbox" ${cChecked?'checked':''} ${cDisabled?'disabled':''}
-                  onchange="toggleGroupMenu('${g.id}','${c.key}',this.checked)">
+                  onchange="onAksesToggle('${g.id}','${c.key}',this.checked)">
                 <span class="toggle-slider"></span>
               </label>
             </div>`;
@@ -2543,9 +2542,6 @@ async function loadGroups() {
             ${rows}
           </div>`;
       }).join("");
-
-      // Count display
-      const visibleCount = allMenuKeys().filter(k => g.menus.includes(k)).length;
 
       return `
       <div class="group-item">
@@ -2565,13 +2561,80 @@ async function loadGroups() {
             : ''
           }
           ${sectionHTML}
+          ${!isOwner ? `
+          <div style="padding:14px 16px;background:#f8f9ff;border-top:1px solid #eef0f8;">
+            <button id="save-btn-${g.id}"
+              onclick="saveGroupMenus('${g.id}')"
+              style="width:100%;padding:11px;border:none;border-radius:10px;
+                     background:var(--primary);color:white;font-weight:700;
+                     font-size:14px;cursor:pointer;transition:opacity .15s;"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              💾 Simpan Pengaturan ${g.name}
+            </button>
+          </div>` : ''}
         </div>
       </div>`;
     }).join("");
 
   } catch(e) {
-    document.getElementById("group-list").innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat data grup</p>';
+    document.getElementById("group-list").innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat data jabatan</p>';
   }
+}
+
+// Toggle hanya update state lokal — TIDAK langsung simpan ke server
+function onAksesToggle(groupId, menuKey, enabled) {
+  const state = _aksesTemp[groupId];
+  if (!state) return;
+
+  // Jika parent di-toggle, ikutkan semua child
+  const parentMenu = ALL_MENUS.find(m => m.key === menuKey);
+  if (parentMenu?.children) {
+    parentMenu.children.forEach(c => {
+      enabled ? state.add(c.key) : state.delete(c.key);
+    });
+  }
+
+  if (enabled) {
+    state.add(menuKey);
+    // Jika child di-enable, pastikan parentnya ikut aktif
+    const parentEntry = ALL_MENUS.find(m => (m.children||[]).some(c => c.key === menuKey));
+    if (parentEntry) state.add(parentEntry.key);
+  } else {
+    state.delete(menuKey);
+  }
+
+  // home selalu ada
+  state.add("home");
+}
+
+// Simpan state lokal ke server untuk satu group
+async function saveGroupMenus(groupId) {
+  const state = _aksesTemp[groupId];
+  if (!state) return;
+
+  const btn = document.getElementById("save-btn-" + groupId);
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Menyimpan..."; }
+
+  try {
+    const menus = Array.from(state);
+    const r = await authFetch(`/groups/${groupId}/menus`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ menus })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Pengaturan akses berhasil disimpan!");
+    } else if (d.status === "PROTECTED") {
+      showToast("⚠️ Owner tidak bisa diubah", "warning");
+    } else {
+      showToast("❌ Gagal menyimpan", "error");
+    }
+  } catch {
+    showToast("❌ Gagal menyimpan", "error");
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `💾 Simpan Pengaturan`; }
 }
 
 function toggleGroupBody(id) {
@@ -2580,53 +2643,6 @@ function toggleGroupBody(id) {
   if (!el) return;
   const isOpen = el.classList.toggle("open");
   if (chev) chev.style.transform = isOpen ? "rotate(90deg)" : "";
-}
-
-async function toggleGroupMenu(groupId, menuKey, enabled) {
-  try {
-    const r = await authFetch("/groups");
-    const groups = await r.json();
-    const group  = groups.find(g => g.id === groupId);
-    if (!group) return;
-
-    // Jika parent di-enable, enable juga semua childnya
-    // Jika parent di-disable, disable juga semua childnya
-    const parentMenu = ALL_MENUS.find(m => m.key === menuKey);
-    if (parentMenu?.children) {
-      parentMenu.children.forEach(c => {
-        if (enabled) {
-          if (!group.menus.includes(c.key)) group.menus.push(c.key);
-        } else {
-          group.menus = group.menus.filter(k => k !== c.key);
-        }
-      });
-    }
-
-    // Toggle key parent/child itu sendiri
-    if (enabled) {
-      if (!group.menus.includes(menuKey)) group.menus.push(menuKey);
-      // Jika child di-enable, pastikan parentnya juga aktif
-      const parentEntry = ALL_MENUS.find(m => (m.children||[]).some(c => c.key === menuKey));
-      if (parentEntry && !group.menus.includes(parentEntry.key)) {
-        group.menus.push(parentEntry.key);
-      }
-    } else {
-      group.menus = group.menus.filter(k => k !== menuKey);
-    }
-
-    // home selalu ada
-    if (!group.menus.includes("home")) group.menus.push("home");
-
-    const rr = await authFetch(`/groups/${groupId}/menus`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ menus: group.menus })
-    });
-    const dd = await rr.json();
-    if (dd.status === "OK") showToast("✅ Akses diperbarui");
-    else if (dd.status === "PROTECTED") showToast("⚠️ Owner tidak bisa diubah", "warning");
-    loadGroups();
-  } catch { showToast("❌ Gagal memperbarui", "error"); }
 }
 
 // ============================================================
