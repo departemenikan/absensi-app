@@ -2499,7 +2499,7 @@ async function loadGroups() {
       const sectionHTML = Object.entries(sections).map(([secName, menus]) => {
         const rows = menus.map(m => {
           const isAlways   = m.alwaysOn === true;
-          const isChecked  = g.menus.includes(m.key) || isAlways;
+          const isChecked  = isOwner || g.menus.includes(m.key) || isAlways;
           const isDisabled = isOwner || isAlways;
           const hasChildren = m.children && m.children.length > 0;
 
@@ -2517,7 +2517,7 @@ async function loadGroups() {
             </div>`;
 
           const childRows = (m.children || []).map(c => {
-            const cChecked  = g.menus.includes(c.key) || isAlways;
+            const cChecked  = isOwner || g.menus.includes(c.key) || isAlways;
             const cDisabled = isOwner || isAlways;
             return `
             <div class="akses-row akses-child">
