@@ -76,14 +76,14 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:10px 16px 36px;margin:-16px -16px 0;}
+      color:white;padding:14px 16px 52px;margin:-16px -16px 0;}
     .top-header h3{font-size:16px;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
     .header-user{font-size:12px;opacity:.9;margin-top:2px;font-weight:700;}
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-30px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-36px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
@@ -154,10 +154,11 @@
     /* SUB-HEADER (untuk halaman dalam) */
     .sub-header{display:flex;align-items:center;gap:12px;
       background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:10px 16px;margin:-16px -16px 0;}
+      color:white;padding:14px 16px;margin:-16px -16px 0;}
     .sub-header h3{font-size:15px;}
     .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
-      border-radius:8px;padding:5px 10px;font-size:18px;cursor:pointer;}
+      border-radius:8px;padding:5px 12px;font-size:14px;cursor:pointer;
+      display:flex;align-items:center;gap:4px;font-weight:600;}
 
     /* ANGGOTA */
     .member-item{display:flex;align-items:center;justify-content:space-between;
@@ -705,7 +706,7 @@
 <div id="view-anggota" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>👥 Anggota</h3>
     </div>
     <div style="margin-top:36px;">
@@ -786,7 +787,7 @@
 <div id="view-aksesibilitas" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>🔐 Aksesibilitas</h3>
     </div>
     <div style="margin-top:36px;">
@@ -833,7 +834,7 @@
 <div id="view-area" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>📍 Area Kantor</h3>
     </div>
     <div style="margin-top:36px;">
@@ -927,7 +928,7 @@
 <div id="view-libur" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>📅 Hari Libur & Cuti</h3>
     </div>
     <div style="margin-top:36px;">
@@ -1338,7 +1339,7 @@
 <div id="view-aktivitas" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>📌 Aktivitas</h3>
     </div>
 
@@ -1700,7 +1701,7 @@
     </div>
 
     <!-- TAB BAR -->
-    <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:-22px;position:relative;z-index:1;">
+    <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:-30px;position:relative;z-index:1;">
       <button id="cuti-tab-daftar" onclick="switchCutiTab('daftar')"
         style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;transition:.2s;">
         📋 Daftar Cuti
@@ -1860,7 +1861,7 @@
 <div id="view-profil" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>👤 Profil Saya</h3>
     </div>
     <div style="margin-top:36px;">
@@ -2340,7 +2341,7 @@
 <div id="view-tracking" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
       <h3>🗺️ Tracking Anggota</h3>
     </div>
     <div style="margin-top:36px;">
