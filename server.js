@@ -325,7 +325,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.get("/status/:user", requireLevel(99), (req, res) => {
+app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
   const today = new Date().toISOString().split("T")[0];
   const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
@@ -352,7 +352,12 @@ app.get("/report/:user", requireSelfOrLevel("user", 2), (req, res) => {
 
 app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data = load(F.data, []);
-  res.send(data.filter(d => d.user === req.params.user).slice(-30).reverse());
+  const records = data
+    .filter(d => d.user === req.params.user)
+    .slice(-30)
+    .reverse()
+    .map(({ foto, lokasi, ...rest }) => rest);
+  res.send(records);
 });
 
 // ========================
