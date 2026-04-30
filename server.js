@@ -884,7 +884,9 @@ function jamCutiUntukTanggal(p, dateStr) {
 // Query: ?weekStart=YYYY-MM-DD  (Senin)
 // Response: [{ username, nama, jabatan, divisi, days: [{date, dow, jamKerja, jamCuti, keteranganCuti}], totalJam, totalCuti }]
 app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
-  const { weekStart, requester } = req.query;
+  const { weekStart } = req.query;
+  // Identitas requester diambil dari middleware (X-User header), bukan dari query string
+  const requester = req._requester;
   if (!weekStart) return res.send({ error: "weekStart required" });
 
   const monDate = new Date(weekStart + "T00:00:00");
@@ -1139,7 +1141,9 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
 
 // POST: admin/manager create absen manual
 app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
-  const { requester, targetUser, date, jamMasuk, jamKeluar } = req.body;
+  // Identitas requester diambil dari middleware (X-User header), bukan dari body
+  const requester = req._requester;
+  const { targetUser, date, jamMasuk, jamKeluar } = req.body;
   if (!requester || !targetUser || !date || !jamMasuk || !jamKeluar)
     return res.send({ status: "ERROR", msg: "Data tidak lengkap" });
 
@@ -1183,7 +1187,9 @@ app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
 
 // PUT: edit jam absen (oleh manager/admin/owner)
 app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
-  const { requester, jamMasuk, jamKeluar } = req.body;
+  // Identitas requester diambil dari middleware (X-User header), bukan dari body
+  const requester = req._requester;
+  const { jamMasuk, jamKeluar } = req.body;
   const { user: targetUser, date } = req.params;
 
   const requesterGroup = getUserGroup(requester);
