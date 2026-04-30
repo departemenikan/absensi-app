@@ -76,7 +76,7 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px 16px 44px;margin:-16px -16px 0;}
+      color:white;padding:16px 16px 58px;margin:-16px -16px 0;}
     .top-header h3{font-size:16px;padding-left:0;}
     .top-header:has(.nav-back-btn.show) h3{padding-left:0;margin-left:0;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
@@ -84,7 +84,7 @@
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-24px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-38px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
@@ -157,9 +157,9 @@
       background:linear-gradient(135deg,#1a237e,#4f8ef7);
       color:white;padding:14px 16px 20px;margin:-16px -16px 0;}
     .sub-header h3{font-size:15px;}
-    .back-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:white;
-      border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;
-      display:inline-flex;align-items:center;gap:3px;font-weight:500;opacity:.9;}
+    .back-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:white;
+      border-radius:6px;padding:4px 8px;font-size:16px;cursor:pointer;line-height:1;
+      display:inline-flex;align-items:center;justify-content:center;font-weight:400;opacity:.85;}
 
     /* ANGGOTA */
     .member-item{display:flex;align-items:center;justify-content:space-between;
@@ -457,16 +457,17 @@
 <div id="view-home" class="view">
   <div class="page-wrap">
     <div class="top-header">
-      <button class="nav-back-btn" id="nav-back-home" onclick="history.back()">‹ Kembali</button>
+      
       <h3>👋 Selamat Datang</h3>
       <div class="header-user" id="hdr-user"></div>
       <p id="hdr-date"></p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-home" title="Profil Saya">👤</button>
     </div>
+    <!-- Status badge melayang di tengah antara header dan card -->
+    <div style="text-align:center;position:relative;z-index:2;margin-bottom:-14px;">
+      <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
+    </div>
     <div class="card">
-      <div style="text-align:center;margin-bottom:16px;">
-        <div id="statusText" class="status-badge"><span class="status-dot"></span> Memuat...</div>
-      </div>
       <div class="btn-grid">
         <button id="btn-in"    class="btn-absen btn-in    btn-full" onclick="clockIn()"><span style="font-size:22px;">🟢</span>Clock In</button>
         <button id="btn-bs"    class="btn-absen btn-break hidden"   onclick="breakStart()"><span style="font-size:22px;">☕</span>Istirahat</button>
@@ -567,7 +568,7 @@
 <div id="view-rekap" class="view">
   <div class="page-wrap">
     <div class="top-header">
-      <button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button>
+      
       <h3>📋 Rekap Absensi</h3>
       <p>Jam kerja seluruh anggota per bulan</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-rekap" title="Profil Saya">👤</button>
@@ -644,7 +645,7 @@
 <!-- ============================================================ -->
 <div id="view-setting" class="view">
   <div class="page-wrap">
-    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
+    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
     </div>
     <div class="card" style="padding-top:32px;">
@@ -716,7 +717,7 @@
 <div id="view-anggota" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>👥 Anggota</h3>
     </div>
     <div style="margin-top:36px;">
@@ -797,7 +798,7 @@
 <div id="view-aksesibilitas" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>🔐 Aksesibilitas</h3>
     </div>
     <div style="margin-top:36px;">
@@ -844,7 +845,7 @@
 <div id="view-area" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📍 Area Kantor</h3>
     </div>
     <div style="margin-top:36px;">
@@ -938,7 +939,7 @@
 <div id="view-libur" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📅 Hari Libur & Cuti</h3>
     </div>
     <div style="margin-top:36px;">
@@ -1349,7 +1350,7 @@
 <div id="view-aktivitas" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📌 Aktivitas</h3>
     </div>
 
@@ -1453,7 +1454,7 @@
 <!-- ============================================================ -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
-    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p>
+    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-timesheet" title="Profil Saya">👤</button>
     </div>
 
@@ -1706,7 +1707,7 @@
 <!-- ============================================================ -->
 <div id="view-cuti" class="view">
   <div class="page-wrap">
-    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p>
+    <div class="top-header"><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-cuti" title="Profil Saya">👤</button>
     </div>
 
@@ -1871,7 +1872,7 @@
 <div id="view-profil" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="history.back()">‹ Kembali</button>
+      <button class="back-btn" onclick="history.back()">‹</button>
       <h3>👤 Profil Saya</h3>
     </div>
     <div style="margin-top:36px;">
@@ -2351,7 +2352,7 @@
 <div id="view-tracking" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>🗺️ Tracking Anggota</h3>
     </div>
     <div style="margin-top:36px;">
