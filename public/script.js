@@ -1199,17 +1199,40 @@ async function requestPermissions() {
 
 // ─── Ambil koordinat — return null jika izin ditolak (jangan silent fallback ke 0,0) ───
 async function getLoc() {
-  return new Promise(resolve => {
+  // Cek status permission via Permissions API (support Android/TWA)
+  if (navigator.permissions) {
+    try {
+      const permStatus = await navigator.permissions.query({ name: "geolocation" });
+      if (permStatus.state === "denied") {
+        showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+        return { lat: 0, lng: 0, denied: true };
+      }
+    } catch { /* browser lama tidak support, lanjut */ }
+  }
+
+  // Helper: coba ambil posisi dengan opsi tertentu
+  const tryGetPos = (highAccuracy, timeoutMs) => new Promise(resolve => {
     if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, denied: true });
     navigator.geolocation.getCurrentPosition(
       p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, denied: false }),
-      err => {
-        // code 1 = PERMISSION_DENIED
-        resolve({ lat: 0, lng: 0, denied: err.code === 1 });
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
+      err => resolve({ lat: 0, lng: 0, denied: err.code === 1, timedOut: err.code === 3 }),
+      { enableHighAccuracy: highAccuracy, timeout: timeoutMs, maximumAge: 30000 }
     );
   });
+
+  // Coba high accuracy dulu (15 detik)
+  let result = await tryGetPos(true, 15000);
+
+  // Kalau timeout, fallback ke low accuracy
+  if (result.timedOut) result = await tryGetPos(false, 10000);
+
+  if (result.denied) {
+    showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+  } else if (result.timedOut) {
+    showToast("\u274C Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+  }
+
+  return result;
 }
 
 function fmt(iso) {
@@ -5900,14 +5923,33 @@ function loadHomeAktivitasDropdown() {
     list.map(a => `<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join("");
 }
 
-function startHomeLokasi() {
+async function startHomeLokasi() {
   const el = document.getElementById("home-lokasi-text");
   if (!el) return;
   if (!navigator.geolocation) {
     el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Geolokasi tidak didukung browser ini</span>';
     return;
   }
-  el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⏳ Mendeteksi lokasi...</span>';
+
+  // Cek permission dulu sebelum watchPosition (penting untuk Android/TWA)
+  if (navigator.permissions) {
+    try {
+      const permStatus = await navigator.permissions.query({ name: "geolocation" });
+      if (permStatus.state === "denied") {
+        el.innerHTML = '<span style="color:#e74c3c;font-size:13px;">\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.</span>';
+        return;
+      }
+      // Kalau "prompt", trigger dulu sekali agar muncul dialog izin
+      if (permStatus.state === "prompt") {
+        el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u23F3 Meminta izin lokasi...</span>';
+        await new Promise(resolve => {
+          navigator.geolocation.getCurrentPosition(resolve, resolve, { timeout: 10000 });
+        });
+      }
+    } catch { /* lanjut */ }
+  }
+
+  el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u23F3 Mendeteksi lokasi...</span>';
 
   function updateLokasi(pos) {
     const lat = pos.coords.latitude;
@@ -5915,13 +5957,20 @@ function startHomeLokasi() {
     checkLokasiRadius(lat, lng);
   }
 
-  function errLokasi() {
-    if (el) el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⚠️ Izin lokasi ditolak</span>';
+  function errLokasi(err) {
+    if (!el) return;
+    if (err.code === 1) {
+      el.innerHTML = '<span style="color:#e74c3c;font-size:12px;">\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Izin \u2192 Lokasi \u2192 Izinkan.</span>';
+    } else if (err.code === 3) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u26A0\uFE0F GPS timeout. Pastikan GPS aktif.</span>';
+    } else {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u26A0\uFE0F Gagal deteksi lokasi.</span>';
+    }
   }
 
   if (_homeLokWatcher) navigator.geolocation.clearWatch(_homeLokWatcher);
   _homeLokWatcher = navigator.geolocation.watchPosition(updateLokasi, errLokasi, {
-    enableHighAccuracy: true, maximumAge: 10000, timeout: 15000
+    enableHighAccuracy: true, maximumAge: 10000, timeout: 20000
   });
 }
 
