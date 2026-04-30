@@ -76,14 +76,15 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:16px 16px 50px;margin:-16px -16px 0;}
-    .top-header h3{font-size:16px;}
+      color:white;padding:16px 16px 44px;margin:-16px -16px 0;}
+    .top-header h3{font-size:16px;padding-left:0;}
+    .top-header:has(.nav-back-btn.show) h3{padding-left:0;margin-left:0;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
     .header-user{font-size:12px;opacity:.9;margin-top:2px;font-weight:700;}
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-20px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-24px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
@@ -156,9 +157,9 @@
       background:linear-gradient(135deg,#1a237e,#4f8ef7);
       color:white;padding:14px 16px 20px;margin:-16px -16px 0;}
     .sub-header h3{font-size:15px;}
-    .back-btn{background:rgba(255,255,255,.25);border:1.5px solid rgba(255,255,255,.5);color:white;
-      border-radius:8px;padding:6px 14px;font-size:14px;cursor:pointer;
-      display:flex;align-items:center;gap:4px;font-weight:600;letter-spacing:.2px;}
+    .back-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:white;
+      border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;
+      display:inline-flex;align-items:center;gap:3px;font-weight:500;opacity:.9;}
 
     /* ANGGOTA */
     .member-item{display:flex;align-items:center;justify-content:space-between;
@@ -259,6 +260,13 @@
     .form-group input:focus,.form-group select:focus{border-color:var(--primary);}
     .btn-row{display:flex;gap:10px;margin-top:4px;}
     .btn-row button{flex:1;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;}
+
+    /* NAV-BACK: tombol kembali kecil di header halaman navbar */
+    .nav-back-btn{position:absolute;left:12px;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+      color:white;border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;
+      display:none;align-items:center;gap:2px;font-weight:500;z-index:2;}
+    .nav-back-btn.show{display:inline-flex;}
 
     /* NAV */
     .bottom-nav{position:fixed;bottom:0;width:100%;background:white;
@@ -449,6 +457,7 @@
 <div id="view-home" class="view">
   <div class="page-wrap">
     <div class="top-header">
+      <button class="nav-back-btn" id="nav-back-home" onclick="history.back()">‹ Kembali</button>
       <h3>👋 Selamat Datang</h3>
       <div class="header-user" id="hdr-user"></div>
       <p id="hdr-date"></p>
@@ -558,13 +567,14 @@
 <div id="view-rekap" class="view">
   <div class="page-wrap">
     <div class="top-header">
+      <button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button>
       <h3>📋 Rekap Absensi</h3>
       <p>Jam kerja seluruh anggota per bulan</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-rekap" title="Profil Saya">👤</button>
     </div>
 
     <!-- Toolbar -->
-    <div class="card" style="padding:12px 14px;margin-top:0;">
+    <div class="card" style="padding:12px 14px;margin-top:14px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <input type="month" id="rekap-month"
           style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e8ecf0;border-radius:8px;font-size:13px;outline:none;"
@@ -634,10 +644,10 @@
 <!-- ============================================================ -->
 <div id="view-setting" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
+    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
     </div>
-    <div class="card" style="padding-top:28px;">
+    <div class="card" style="padding-top:32px;">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
@@ -1443,7 +1453,7 @@
 <!-- ============================================================ -->
 <div id="view-timesheet" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p>
+    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>🕐 Timesheet</h3><p>Laporan jam kerja mingguan</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-timesheet" title="Profil Saya">👤</button>
     </div>
 
@@ -1696,7 +1706,7 @@
 <!-- ============================================================ -->
 <div id="view-cuti" class="view">
   <div class="page-wrap">
-    <div class="top-header"><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p>
+    <div class="top-header"><button class="nav-back-btn show" onclick="history.back()">‹ Kembali</button><h3>🌴 Cuti</h3><p>Pengajuan &amp; manajemen cuti</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-cuti" title="Profil Saya">👤</button>
     </div>
 
@@ -1861,7 +1871,7 @@
 <div id="view-profil" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="openView('view-setting')">← Kembali</button>
+      <button class="back-btn" onclick="history.back()">‹ Kembali</button>
       <h3>👤 Profil Saya</h3>
     </div>
     <div style="margin-top:36px;">
