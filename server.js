@@ -1741,7 +1741,7 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));// ========================
+
 // TRACKING
 // ========================
 
@@ -1953,3 +1953,50 @@ ${konteksAdmin}`;
     res.send({ reply: "❌ Gagal menghubungi AI. Coba lagi." });
   }
 });
+
+// ========================
+// TWA — WEB APP MANIFEST
+// ========================
+app.get('/manifest.json', (req, res) => {
+  res.json({
+    name: "Absensi Smart",
+    short_name: "AbsenSmart",
+    description: "Aplikasi absensi karyawan dengan face recognition dan geofencing",
+    start_url: "/",
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#1a237e",
+    theme_color: "#4f8ef7",
+    icons: [
+      { src: "/icons/icon-72.png",  sizes: "72x72",   type: "image/png", purpose: "any maskable" },
+      { src: "/icons/icon-96.png",  sizes: "96x96",   type: "image/png", purpose: "any maskable" },
+      { src: "/icons/icon-128.png", sizes: "128x128", type: "image/png", purpose: "any maskable" },
+      { src: "/icons/icon-144.png", sizes: "144x144", type: "image/png", purpose: "any maskable" },
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+    ]
+  });
+});
+
+// ========================
+// TWA — DIGITAL ASSET LINKS
+// ========================
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.sukodo.absensi",
+        sha256_cert_fingerprints: [
+          "F5:94:83:58:15:3F:78:4C:48:FF:7F:2C:BF:99:57:66:34:28:02:72:AA:E3:D8:BE:45:0E:F6:FE:8C:2F:81:A2"
+        ]
+      }
+    }
+  ]);
+});
+
+// ========================
+// START SERVER
+// ========================
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
