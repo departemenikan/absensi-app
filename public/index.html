@@ -76,14 +76,14 @@
     .view.active{display:block;}
 
     .top-header{background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:14px 16px 52px;margin:-16px -16px 0;}
+      color:white;padding:16px 16px 50px;margin:-16px -16px 0;}
     .top-header h3{font-size:16px;}
     .top-header p{font-size:12px;opacity:.8;margin-top:1px;}
     .header-user{font-size:12px;opacity:.9;margin-top:2px;font-weight:700;}
 
     .page-wrap{padding:16px;animation:fadeIn .3s ease;}
 
-    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-36px;
+    .card{background:var(--card);border-radius:16px;padding:20px;margin-top:-20px;
       box-shadow:0 4px 20px rgba(0,0,0,.08);}
     .card+.card{margin-top:16px;}
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
@@ -154,11 +154,11 @@
     /* SUB-HEADER (untuk halaman dalam) */
     .sub-header{display:flex;align-items:center;gap:12px;
       background:linear-gradient(135deg,#1a237e,#4f8ef7);
-      color:white;padding:14px 16px;margin:-16px -16px 0;}
+      color:white;padding:14px 16px 20px;margin:-16px -16px 0;}
     .sub-header h3{font-size:15px;}
-    .back-btn{background:rgba(255,255,255,.2);border:none;color:white;
-      border-radius:8px;padding:5px 12px;font-size:14px;cursor:pointer;
-      display:flex;align-items:center;gap:4px;font-weight:600;}
+    .back-btn{background:rgba(255,255,255,.25);border:1.5px solid rgba(255,255,255,.5);color:white;
+      border-radius:8px;padding:6px 14px;font-size:14px;cursor:pointer;
+      display:flex;align-items:center;gap:4px;font-weight:600;letter-spacing:.2px;}
 
     /* ANGGOTA */
     .member-item{display:flex;align-items:center;justify-content:space-between;
@@ -637,7 +637,7 @@
     <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
     </div>
-    <div class="card">
+    <div class="card" style="padding-top:28px;">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
@@ -1448,7 +1448,7 @@
     </div>
 
     <!-- Navigasi minggu -->
-    <div class="card" style="padding:12px 14px;margin-top:0;">
+    <div class="card" style="padding:12px 14px;margin-top:14px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button onclick="tsNavWeek(-1)"
           style="background:#f0f2f5;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:16px;">‹</button>
@@ -1701,7 +1701,7 @@
     </div>
 
     <!-- TAB BAR -->
-    <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:-30px;position:relative;z-index:1;">
+    <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:12px;position:relative;z-index:1;">
       <button id="cuti-tab-daftar" onclick="switchCutiTab('daftar')"
         style="flex:1;padding:13px;border:none;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;transition:.2s;">
         📋 Daftar Cuti
