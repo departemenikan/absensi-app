@@ -90,8 +90,9 @@
     .card h4{font-size:15px;margin-bottom:14px;font-weight:700;}
 
     /* STATUS */
-    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;
-      border-radius:50px;font-weight:700;font-size:14px;background:#f0f2f5;color:var(--muted);margin-bottom:16px;}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:7px 18px;
+      border-radius:50px;font-weight:700;font-size:13px;background:#f0f2f5;color:var(--muted);
+      border:none;box-shadow:none;margin-bottom:0;}
     .status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
 
     /* BUTTONS */
@@ -648,7 +649,7 @@
     <div class="top-header"><h3>⚙️ Pengaturan</h3><p>Kelola sistem absensi</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-setting" title="Profil Saya">👤</button>
     </div>
-    <div class="card" style="padding-top:32px;">
+    <div class="card" style="padding-top:42px;">
       <h4>🗂️ Menu</h4>
       <div class="menu-list">
         <div class="menu-item" id="menu-anggota" onclick="openView('view-anggota')">
@@ -2508,4 +2509,77 @@
 </div>
 
 </body>
+
+<script>
+// ============================================================
+// SWIPE GESTURE — Geser kiri/kanan untuk pindah navbar
+// ============================================================
+(function(){
+  // Urutan halaman navbar
+  const NAV_PAGES = ['home','timesheet','cuti','setting'];
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isSwiping = false;
+
+  // Halaman aktif saat ini
+  function currentNavIndex() {
+    const activeBtn = document.querySelector('.nav-btn.active');
+    if (!activeBtn) return 0;
+    const id = activeBtn.id.replace('nav-','');
+    const idx = NAV_PAGES.indexOf(id);
+    return idx >= 0 ? idx : 0;
+  }
+
+  // Hanya swipe di halaman navbar (bukan di dalam modal/map/scroll horizontal)
+  function isNavPage() {
+    const activeView = document.querySelector('.view.active');
+    if (!activeView) return false;
+    const id = activeView.id.replace('view-','');
+    return NAV_PAGES.includes(id);
+  }
+
+  document.addEventListener('touchstart', function(e){
+    // Abaikan jika target di dalam elemen scroll horizontal atau modal
+    if (e.target.closest('#trk-live-list, #trk-timeline, #rekap-content, #u-modal-overlay, #chat-panel, .group-body, select')) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSwiping = false;
+  }, {passive:true});
+
+  document.addEventListener('touchmove', function(e){
+    if (!touchStartX) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    // Pastikan ini gerakan horizontal bukan scroll vertikal
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) {
+      isSwiping = true;
+    }
+  }, {passive:true});
+
+  document.addEventListener('touchend', function(e){
+    if (!isSwiping || !isNavPage()) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const THRESHOLD = 60; // minimal pixel untuk trigger swipe
+
+    if (Math.abs(dx) < THRESHOLD) return;
+
+    const cur = currentNavIndex();
+    let next = cur;
+
+    if (dx < 0 && cur < NAV_PAGES.length - 1) {
+      // Swipe kiri → halaman berikutnya
+      next = cur + 1;
+    } else if (dx > 0 && cur > 0) {
+      // Swipe kanan → halaman sebelumnya
+      next = cur - 1;
+    }
+
+    if (next !== cur) {
+      navTo(NAV_PAGES[next]);
+    }
+    touchStartX = 0;
+    isSwiping = false;
+  }, {passive:true});
+})();
+</script>
 </html>
