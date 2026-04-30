@@ -5709,3 +5709,296 @@ const _origOpenView_cuti = openView;
   // Kita baca dari _currentUser yang di-set saat login
 })();
 
+
+// ============================================================
+// AKTIVITAS KUSTOM (Daftar Aktivitas yg bisa di-tambah admin)
+// ============================================================
+
+const AKTIVITAS_KEY = "daftar_aktivitas_kustom";
+
+function getDaftarAktivitas() {
+  try { return JSON.parse(localStorage.getItem(AKTIVITAS_KEY) || "[]"); } catch { return []; }
+}
+
+function saveDaftarAktivitas(list) {
+  localStorage.setItem(AKTIVITAS_KEY, JSON.stringify(list));
+}
+
+function openTambahAktivitas() {
+  const el = document.getElementById("modal-tambah-aktivitas");
+  el.style.display = "flex";
+  setTimeout(() => document.getElementById("input-nama-aktivitas").focus(), 100);
+}
+
+function closeTambahAktivitas() {
+  document.getElementById("modal-tambah-aktivitas").style.display = "none";
+  document.getElementById("input-nama-aktivitas").value = "";
+}
+
+function simpanAktivitas() {
+  const nama = (document.getElementById("input-nama-aktivitas").value || "").trim();
+  if (!nama) { showToast("⚠️ Nama aktivitas wajib diisi", "warning"); return; }
+  const list = getDaftarAktivitas();
+  if (list.find(a => a.toLowerCase() === nama.toLowerCase())) {
+    showToast("⚠️ Aktivitas sudah ada", "warning"); return;
+  }
+  list.push(nama);
+  saveDaftarAktivitas(list);
+  closeTambahAktivitas();
+  renderDaftarAktivitas();
+  loadHomeAktivitasDropdown();
+  showToast("✅ Aktivitas berhasil ditambahkan");
+}
+
+function hapusAktivitas(nama) {
+  if (!confirm(`Hapus aktivitas "${nama}"?`)) return;
+  const list = getDaftarAktivitas().filter(a => a !== nama);
+  saveDaftarAktivitas(list);
+  renderDaftarAktivitas();
+  loadHomeAktivitasDropdown();
+  showToast("🗑️ Aktivitas dihapus");
+}
+
+function renderDaftarAktivitas() {
+  const el = document.getElementById("daftar-aktivitas-list");
+  if (!el) return;
+  const list = getDaftarAktivitas();
+  if (!list.length) {
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada aktivitas kustom. Klik ＋ Tambah Aktivitas.</p>';
+    return;
+  }
+  el.innerHTML = list.map(a => `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:11px 0;border-bottom:1px solid #f0f2f5;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:16px;">📌</span>
+        <span style="font-size:14px;font-weight:600;">${a}</span>
+      </div>
+      <button onclick="hapusAktivitas('${a.replace(/'/g,"\\'")}') "
+        style="padding:5px 12px;border:none;border-radius:8px;background:#fce4ec;
+               color:#c62828;font-weight:700;font-size:12px;cursor:pointer;">🗑️</button>
+    </div>`).join("") + '<div style="height:4px;"></div>';
+}
+
+// Override loadAktivitas to also render daftar
+const _origLoadAktivitas = loadAktivitas;
+loadAktivitas = async function() {
+  await _origLoadAktivitas();
+  renderDaftarAktivitas();
+};
+
+// ============================================================
+// HOME: Lokasi Auto-detect + Aktivitas Dropdown
+// ============================================================
+
+let _homeLokWatcher = null;
+
+function loadHomeAktivitasDropdown() {
+  const sel = document.getElementById("home-aktivitas-select");
+  if (!sel) return;
+  const list = getDaftarAktivitas();
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Pilih Aktivitas —</option>' +
+    list.map(a => `<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join("");
+}
+
+function startHomeLokasi() {
+  const el = document.getElementById("home-lokasi-text");
+  if (!el) return;
+  if (!navigator.geolocation) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Geolokasi tidak didukung browser ini</span>';
+    return;
+  }
+  el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⏳ Mendeteksi lokasi...</span>';
+
+  function updateLokasi(pos) {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    checkLokasiRadius(lat, lng);
+  }
+
+  function errLokasi() {
+    if (el) el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⚠️ Izin lokasi ditolak</span>';
+  }
+
+  if (_homeLokWatcher) navigator.geolocation.clearWatch(_homeLokWatcher);
+  _homeLokWatcher = navigator.geolocation.watchPosition(updateLokasi, errLokasi, {
+    enableHighAccuracy: true, maximumAge: 10000, timeout: 15000
+  });
+}
+
+function stopHomeLokasi() {
+  if (_homeLokWatcher) { navigator.geolocation.clearWatch(_homeLokWatcher); _homeLokWatcher = null; }
+}
+
+async function checkLokasiRadius(lat, lng) {
+  const el = document.getElementById("home-lokasi-text");
+  if (!el) return;
+  try {
+    // Load areas dari server
+    const r = await authFetch("/areas");
+    if (!r.ok) throw new Error();
+    const areas = await r.json();
+    const activeAreas = areas.filter(a => a.active !== false);
+
+    if (!activeAreas.length) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Belum ada area kantor terdaftar</span>';
+      return;
+    }
+
+    function haversine(lat1, lng1, lat2, lng2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    let nearest = null;
+    let nearestDist = Infinity;
+
+    for (const area of activeAreas) {
+      const dist = haversine(lat, lng, area.lat, area.lng);
+      if (dist < nearestDist) { nearestDist = dist; nearest = area; }
+    }
+
+    const radius = nearest.radius || 100;
+
+    if (nearestDist <= radius) {
+      // Di dalam radius area
+      el.innerHTML = `<span style="color:var(--success);font-weight:700;font-size:14px;">✅ ${nearest.name}</span>`;
+    } else if (nearestDist <= 1000) {
+      // Dalam 1000m dari area terdekat - tampil realtime jarak
+      const distLabel = nearestDist < 1000 ? Math.round(nearestDist) + ' m' : (nearestDist/1000).toFixed(1) + ' km';
+      el.innerHTML = `<span style="color:var(--warning);font-weight:600;font-size:13px;">📍 ${distLabel} dari ${nearest.name}</span>`;
+    } else {
+      // Lebih dari 1000m
+      el.innerHTML = `<span style="color:var(--muted);font-size:13px;">Di luar Radius Area</span>`;
+    }
+  } catch {
+    el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Gagal memuat data area</span>';
+  }
+}
+
+// Hook ke openView untuk memulai/hentikan tracking lokasi
+const _origOpenView = openView;
+openView = function(viewId) {
+  _origOpenView(viewId);
+  if (viewId === "view-home") {
+    loadHomeAktivitasDropdown();
+    startHomeLokasi();
+  } else {
+    stopHomeLokasi();
+  }
+};
+
+// Hook ke navTo juga
+const _origNavTo = typeof navTo === "function" ? navTo : null;
+if (_origNavTo) {
+  navTo = function(page) {
+    _origNavTo(page);
+    if (page === "home") {
+      setTimeout(() => { loadHomeAktivitasDropdown(); startHomeLokasi(); }, 200);
+    } else {
+      stopHomeLokasi();
+    }
+  };
+}
+
+// Auto-start lokasi jika view-home sudah aktif saat load
+document.addEventListener("DOMContentLoaded", () => {
+  const homeView = document.getElementById("view-home");
+  if (homeView && homeView.classList.contains("active")) {
+    loadHomeAktivitasDropdown();
+    startHomeLokasi();
+  }
+});
+
+// ============================================================
+// OVERRIDE: Gunakan server-side aktivitas-kustom
+// ============================================================
+(function() {
+  // Replace localStorage-based functions with server-based ones
+
+  async function getDaftarAktivitasServer() {
+    try {
+      const r = await authFetch("/aktivitas-kustom");
+      if (!r.ok) return [];
+      return await r.json();
+    } catch { return []; }
+  }
+
+  async function renderDaftarAktivitasServer() {
+    const el = document.getElementById("daftar-aktivitas-list");
+    if (!el) return;
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:16px;font-size:13px;">Memuat...</p>';
+    const list = await getDaftarAktivitasServer();
+    if (!list.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada aktivitas kustom. Klik ＋ Tambah Aktivitas.</p>';
+      return;
+    }
+    el.innerHTML = list.map(a => `
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        padding:11px 0;border-bottom:1px solid #f0f2f5;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:16px;">📌</span>
+          <span style="font-size:14px;font-weight:600;">${a}</span>
+        </div>
+        <button onclick="hapusAktivitasServer('${a.replace(/'/g,"\\'")}') "
+          style="padding:5px 12px;border:none;border-radius:8px;background:#fce4ec;
+                 color:#c62828;font-weight:700;font-size:12px;cursor:pointer;">🗑️</button>
+      </div>`).join("") + '<div style="height:4px;"></div>';
+  }
+
+  window.hapusAktivitasServer = async function(nama) {
+    if (!confirm(`Hapus aktivitas "${nama}"?`)) return;
+    try {
+      await authFetch(`/aktivitas-kustom/${encodeURIComponent(nama)}`, { method: "DELETE" });
+      renderDaftarAktivitasServer();
+      loadHomeAktivitasDropdownServer();
+      showToast("🗑️ Aktivitas dihapus");
+    } catch { showToast("Gagal menghapus", "error"); }
+  };
+
+  // Replace simpanAktivitas
+  window.simpanAktivitas = async function() {
+    const nama = (document.getElementById("input-nama-aktivitas").value || "").trim();
+    if (!nama) { showToast("⚠️ Nama aktivitas wajib diisi", "warning"); return; }
+    try {
+      const r = await authFetch("/aktivitas-kustom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nama })
+      });
+      if (r.status === 409) { showToast("⚠️ Aktivitas sudah ada", "warning"); return; }
+      if (!r.ok) throw new Error();
+      closeTambahAktivitas();
+      renderDaftarAktivitasServer();
+      loadHomeAktivitasDropdownServer();
+      showToast("✅ Aktivitas berhasil ditambahkan");
+    } catch { showToast("Gagal menyimpan", "error"); }
+  };
+
+  // Replace renderDaftarAktivitas
+  window.renderDaftarAktivitas = renderDaftarAktivitasServer;
+
+  // Load aktivitas home dropdown from server
+  async function loadHomeAktivitasDropdownServer() {
+    const sel = document.getElementById("home-aktivitas-select");
+    if (!sel) return;
+    const list = await getDaftarAktivitasServer();
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Pilih Aktivitas —</option>' +
+      list.map(a => `<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join("");
+  }
+  window.loadHomeAktivitasDropdown = loadHomeAktivitasDropdownServer;
+  window.loadHomeAktivitasDropdownServer = loadHomeAktivitasDropdownServer;
+
+  // Also patch loadAktivitas to call server render
+  const _orig2 = loadAktivitas;
+  loadAktivitas = async function() {
+    await _orig2();
+    renderDaftarAktivitasServer();
+  };
+  window.loadAktivitas = loadAktivitas;
+})();

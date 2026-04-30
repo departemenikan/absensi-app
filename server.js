@@ -25,6 +25,7 @@ const F = {
   kebijakanCuti:  path.join(DATA_DIR, "kebijakan_cuti.json"),
   kuotaCuti:      path.join(DATA_DIR, "kuota_cuti.json"),
   pengajuanCuti:  path.join(DATA_DIR, "pengajuan_cuti.json"),
+  aktivitasKustom: path.join(DATA_DIR, "aktivitas_kustom.json"),
 };
 
 function load(file, def) {
@@ -852,6 +853,27 @@ app.delete("/kebijakan-cuti/:id", requireLevel(2), (req, res) => {
 app.get("/aktivitas", requireLevel(3), (req, res) => {
   const data = load(F.aktivitas, []);
   res.send(data.slice(-100).reverse());
+});
+
+// AKTIVITAS KUSTOM (daftar jenis aktivitas)
+// ========================
+app.get("/aktivitas-kustom", requireLevel(99), (req, res) => {
+  res.send(load(F.aktivitasKustom, []));
+});
+app.post("/aktivitas-kustom", requireLevel(3), (req, res) => {
+  const { nama } = req.body;
+  if (!nama || !nama.trim()) return res.status(400).send({ error: "Nama wajib diisi" });
+  const list = load(F.aktivitasKustom, []);
+  if (list.includes(nama.trim())) return res.status(409).send({ error: "Sudah ada" });
+  list.push(nama.trim());
+  save(F.aktivitasKustom, list);
+  res.send({ ok: true });
+});
+app.delete("/aktivitas-kustom/:nama", requireLevel(3), (req, res) => {
+  const nama = decodeURIComponent(req.params.nama);
+  const list = load(F.aktivitasKustom, []).filter(a => a !== nama);
+  save(F.aktivitasKustom, list);
+  res.send({ ok: true });
 });
 
 // ========================
