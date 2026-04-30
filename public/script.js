@@ -73,7 +73,12 @@ function openView(viewId) {
     loadRekap();
   }
   if (viewId === "view-admin")          loadAdmin();
-  if (viewId === "view-aktivitas")      loadAktivitas();
+  if (viewId === "view-aktivitas") {
+    loadAktivitas();
+    const hasDaftar  = userMenus.includes("aktivitas.daftar")  || userMenus.includes("aktivitas");
+    const hasMonitor = userMenus.includes("aktivitas.monitor") || userMenus.includes("aktivitas");
+    switchAktivitasTab(hasDaftar ? "daftar" : hasMonitor ? "monitor" : "daftar");
+  }
   if (viewId === "view-aksesibilitas")  loadGroups();
   if (viewId === "view-area") {
     if (!userMenus.includes("area") && !userMenus.includes("area.daftar")) {
@@ -461,6 +466,12 @@ function applyMenuAccess() {
   const cutiSaldo  = document.getElementById("cuti-tab-saldo");
   if (cutiDaftar) cutiDaftar.classList.toggle("hidden", !userMenus.includes("cuti.daftar") && !userMenus.includes("cuti"));
   if (cutiSaldo)  cutiSaldo.classList.toggle("hidden",  !userMenus.includes("cuti.saldo"));
+
+  // ── Submenu: Aktivitas (tab daftar & monitor) ──
+  const tabAktDaftar  = document.getElementById("tab-btn-daftar");
+  const tabAktMonitor = document.getElementById("tab-btn-monitor");
+  if (tabAktDaftar)  tabAktDaftar.classList.toggle("hidden",  !userMenus.includes("aktivitas.daftar")  && !userMenus.includes("aktivitas"));
+  if (tabAktMonitor) tabAktMonitor.classList.toggle("hidden", !userMenus.includes("aktivitas.monitor") && !userMenus.includes("aktivitas"));
 }
 
 function logout() {
@@ -2439,6 +2450,10 @@ const ALL_MENUS = [
   },
   {
     key: "aktivitas",    label: "📌 Aktivitas",      section: "Pengaturan",
+    children: [
+      { key: "aktivitas.daftar",  label: "Daftar Aktivitas",  parentKey: "aktivitas" },
+      { key: "aktivitas.monitor", label: "Monitor Kehadiran", parentKey: "aktivitas" },
+    ]
   },
   {
     key: "rekap",        label: "📋 Rekap",           section: "Pengaturan",
@@ -3738,20 +3753,103 @@ function konversiCutiHariKeJam(tanggalCuti) {
 // AKTIVITAS
 // ============================================================
 async function loadAktivitas() {
+  const list = document.getElementById("aktivitas-list");
+  if (list) list.innerHTML = "";
+}
+
+// ─── TAB SWITCHER AKTIVITAS ─────────────────────────────────
+function switchAktivitasTab(tab) {
+  const isDaftar = tab === "daftar";
+  const panelDaftar  = document.getElementById("panel-aktivitas-daftar");
+  const panelMonitor = document.getElementById("panel-aktivitas-monitor");
+  if (panelDaftar)  panelDaftar.style.display  = isDaftar ? "" : "none";
+  if (panelMonitor) panelMonitor.style.display = isDaftar ? "none" : "";
+
+  const btnDaftar  = document.getElementById("tab-btn-daftar");
+  const btnMonitor = document.getElementById("tab-btn-monitor");
+
+  if (isDaftar) {
+    if (btnDaftar)  { btnDaftar.style.background  = "linear-gradient(135deg,#4f8ef7,#1a237e)"; btnDaftar.style.color  = "white"; btnDaftar.style.boxShadow  = "0 2px 8px rgba(79,142,247,.4)"; }
+    if (btnMonitor) { btnMonitor.style.background = "transparent"; btnMonitor.style.color = "var(--muted)"; btnMonitor.style.boxShadow = "none"; }
+  } else {
+    if (btnMonitor) { btnMonitor.style.background = "linear-gradient(135deg,#4f8ef7,#1a237e)"; btnMonitor.style.color = "white"; btnMonitor.style.boxShadow = "0 2px 8px rgba(79,142,247,.4)"; }
+    if (btnDaftar)  { btnDaftar.style.background  = "transparent"; btnDaftar.style.color  = "var(--muted)"; btnDaftar.style.boxShadow  = "none"; }
+    loadMonitorKehadiran();
+  }
+}
+
+// ─── MONITOR KEHADIRAN ───────────────────────────────────────
+async function loadMonitorKehadiran() {
+  const elBekerja = document.getElementById("monitor-sedang-bekerja");
+  const elTidak   = document.getElementById("monitor-tidak-hadir");
+  const elDivider = document.getElementById("monitor-divider");
+  if (!elBekerja) return;
+
+  elBekerja.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>';
+  elTidak.innerHTML   = "";
+  elDivider.style.display = "none";
+
   try {
-    const r = await authFetch("/aktivitas");
+    const r = await authFetch("/admin/today");
     const d = await r.json();
-    const list = document.getElementById("aktivitas-list");
-    if (!d.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Belum ada aktivitas</p>'; return; }
-    const icons  = {IN:"🟢",OUT:"🔴",BREAK_START:"☕",BREAK_END:"💪"};
-    const labels = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"};
-    list.innerHTML = d.map(a => `
-      <div class="act-item">
-        <div class="act-user">${icons[a.type]||"📌"} ${a.user}</div>
-        <div class="act-desc">${labels[a.type]||a.type}</div>
-        <div class="act-time">${new Date(a.time).toLocaleString("id-ID")}</div>
-      </div>`).join("");
-  } catch {}
+    const records = d.records || [];
+
+    const bekerja = records.filter(x => x.status === "IN" || x.status === "BREAK");
+    const lainnya = records.filter(x => x.status === "OUT" || x.status === "DONE");
+
+    // ── Sedang bekerja ──
+    if (!bekerja.length) {
+      elBekerja.innerHTML = '<p style="color:var(--muted);text-align:center;padding:16px;font-size:13px;">Belum ada yang clock in hari ini</p>';
+    } else {
+      const label = `<div style="font-size:11px;font-weight:700;color:#27ae60;letter-spacing:.5px;
+        text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e8f5e9;">
+        🟢 Sedang Bekerja (${bekerja.length})</div>`;
+      elBekerja.innerHTML = label + bekerja.map(x => {
+        const isBreak   = x.status === "BREAK";
+        const dotColor  = isBreak ? "#f39c12" : "#27ae60";
+        const statusTxt = isBreak ? "Sedang Istirahat" : "Sedang Berlangsung";
+        const masukTxt  = x.jamMasuk ? " · Masuk " + new Date(x.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
+        return `<div style="display:flex;align-items:center;justify-content:space-between;
+          padding:10px 0;border-bottom:1px solid #f5f5f5;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};
+              display:inline-block;flex-shrink:0;box-shadow:0 0 0 3px ${dotColor}33;"></span>
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${x.user}</div>
+              <div style="font-size:11px;color:${dotColor};font-weight:600;">${statusTxt}${masukTxt}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    // ── Belum / sudah pulang ──
+    if (lainnya.length) {
+      elDivider.style.display = "";
+      const label = `<div style="font-size:11px;font-weight:700;color:#95a5a6;letter-spacing:.5px;
+        text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f0f2f5;">
+        ⚪ Belum / Sudah Selesai (${lainnya.length})</div>`;
+      elTidak.innerHTML = label + lainnya.map(x => {
+        const isDone   = x.status === "DONE";
+        const dotColor = isDone ? "#4f8ef7" : "#bdc3c7";
+        const subTxt   = isDone
+          ? "Selesai · Keluar " + new Date(x.jamKeluar).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
+          : "Belum Absen";
+        return `<div style="display:flex;align-items:center;gap:10px;
+          padding:10px 0;border-bottom:1px solid #f5f5f5;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};
+            display:inline-block;flex-shrink:0;"></span>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#7f8c8d;">${x.user}</div>
+            <div style="font-size:11px;color:${dotColor};">${subTxt}</div>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+  } catch {
+    elBekerja.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;font-size:13px;">❌ Gagal memuat data</p>';
+  }
 }
 
 // ============================================================

@@ -1341,8 +1341,27 @@
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📌 Aktivitas</h3>
     </div>
-    <div style="margin-top:36px;">
-      <!-- Daftar Aktivitas Kustom -->
+
+    <!-- Tab Switcher -->
+    <div style="margin-top:36px;display:flex;gap:0;background:white;border-radius:14px;
+                padding:4px;box-shadow:0 2px 12px rgba(0,0,0,.08);margin-bottom:14px;">
+      <button id="tab-btn-daftar" onclick="switchAktivitasTab('daftar')"
+        style="flex:1;padding:10px 6px;border:none;border-radius:10px;font-size:13px;
+               font-weight:700;cursor:pointer;transition:all .2s;
+               background:linear-gradient(135deg,#4f8ef7,#1a237e);color:white;
+               box-shadow:0 2px 8px rgba(79,142,247,.4);">
+        🗂️ Daftar Aktivitas
+      </button>
+      <button id="tab-btn-monitor" onclick="switchAktivitasTab('monitor')"
+        style="flex:1;padding:10px 6px;border:none;border-radius:10px;font-size:13px;
+               font-weight:700;cursor:pointer;transition:all .2s;
+               background:transparent;color:var(--muted);">
+        👁️ Monitor Kehadiran
+      </button>
+    </div>
+
+    <!-- Panel: Daftar Aktivitas -->
+    <div id="panel-aktivitas-daftar">
       <div class="card" style="margin-top:0;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
           <h4 style="margin:0;">🗂️ Daftar Aktivitas</h4>
@@ -1358,13 +1377,28 @@
           <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
         </div>
       </div>
+    </div>
 
-      <!-- Log Aktivitas Absensi -->
-      <div class="card" style="margin-top:16px;">
-        <h4>📋 Log Aktivitas Absensi</h4>
-        <div id="aktivitas-list"><p style="color:var(--muted);text-align:center;padding:20px;">Memuat...</p></div>
+    <!-- Panel: Monitor Kehadiran -->
+    <div id="panel-aktivitas-monitor" style="display:none;">
+      <div class="card" style="margin-top:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h4 style="margin:0;">👁️ Monitor Kehadiran</h4>
+          <button onclick="loadMonitorKehadiran()"
+            style="padding:6px 14px;border:none;border-radius:10px;background:#e8f5e9;
+                   color:#27ae60;font-weight:700;font-size:12px;cursor:pointer;">🔄 Refresh</button>
+        </div>
+        <div id="monitor-sedang-bekerja">
+          <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
+        </div>
+        <div id="monitor-divider" style="display:none;height:1px;background:#f0f2f5;margin:14px 0;"></div>
+        <div id="monitor-tidak-hadir"></div>
       </div>
     </div>
+
+    <!-- hidden list for legacy compatibility -->
+    <div id="aktivitas-list" style="display:none;"></div>
+
   </div>
 </div>
 
