@@ -1,6 +1,6 @@
 // Service Worker — Absensi Smart
 // Versi: update ini setiap kali ada perubahan besar
-const CACHE_NAME = "absensi-smart-v1";
+const CACHE_NAME = "absensi-smart-v2";
 
 // File yang di-cache untuk offline
 const CACHE_URLS = [
@@ -39,7 +39,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Selalu ke network untuk API calls
+  // ── Bypass: request ke domain external (geocoder, tile map, CDN) ──
+  // Langsung ke network, jangan di-intercept service worker
+  const externalDomains = [
+    "photon.komoot.io",
+    "nominatim.openstreetmap.org",
+    "server.arcgisonline.com",
+    "tile.openstreetmap.org",
+    "basemaps.cartocdn.com",
+    "unpkg.com",
+    "cdnjs.cloudflare.com"
+  ];
+  if (externalDomains.some(d => url.hostname.includes(d))) {
+    // Biarkan browser handle langsung — tidak di-cache, tidak di-intercept
+    return;
+  }
+
+  // Selalu ke network untuk API calls internal
   if (
     url.pathname.startsWith("/absen") ||
     url.pathname.startsWith("/login") ||
@@ -50,14 +66,9 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/anggota") ||
     url.pathname.startsWith("/timesheet") ||
     url.pathname.startsWith("/kuota-cuti") ||
-    url.pathname.startsWith("/kebijakan-cuti") ||
-    url.pathname.startsWith("/pengajuan-cuti") ||
-    url.pathname.startsWith("/rekap") ||
     url.pathname.startsWith("/libur") ||
     url.pathname.startsWith("/areas") ||
     url.pathname.startsWith("/groups") ||
-    url.pathname.startsWith("/divisi") ||
-    url.pathname.startsWith("/tracking") ||
     url.pathname.startsWith("/roles")
   ) {
     event.respondWith(fetch(event.request));
@@ -68,7 +79,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Simpan ke cache jika sukses
+        // Simpan ke cache hanya untuk response dari domain sendiri (type === "basic")
         if (response && response.status === 200 && response.type === "basic") {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
