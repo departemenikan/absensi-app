@@ -682,6 +682,36 @@ app.get("/areas/info", requireLevel(99), (req, res) => {
   res.send({ total: areas.length, activeCount: active.length });
 });
 
+// POST /areas/check — semua user login bisa pakai. Kirim lat/lng user, server kembalikan
+// status (IN_AREA / NEAR / OUT) + nama area + jarak. Koordinat area TIDAK dikirim ke client.
+app.post("/areas/check", requireLevel(99), (req, res) => {
+  const { lat, lng, accuracy } = req.body;
+  if (lat == null || lng == null) return res.send({ status: "NO_LOCATION" });
+
+  const areas = load(F.areas, []);
+  const activeAreas = areas.filter(a => a.active !== false);
+  if (!activeAreas.length) return res.send({ status: "NO_AREA" });
+
+  let nearest = null;
+  let nearestDist = Infinity;
+
+  activeAreas.forEach(a => {
+    const d = dist(lat, lng, a.lat, a.lng);
+    if (d < nearestDist) { nearestDist = d; nearest = a; }
+  });
+
+  const accTolerance = Math.min(accuracy != null ? accuracy : 0, 100);
+  const radius = (nearest.radius || 100) + accTolerance;
+
+  if (nearestDist <= radius) {
+    res.send({ status: "IN_AREA", name: nearest.name, distance: Math.round(nearestDist) });
+  } else if (nearestDist <= 2000) {
+    res.send({ status: "NEAR", name: nearest.name, distance: Math.round(nearestDist) });
+  } else {
+    res.send({ status: "OUT", name: nearest.name, distance: Math.round(nearestDist) });
+  }
+});
+
 app.post("/areas", requireLevel(2), (req, res) => {
   const { name, lat, lng, radius } = req.body;
   if (!name || !lat || !lng) return res.send({ status: "ERROR" });

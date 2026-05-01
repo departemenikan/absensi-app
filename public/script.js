@@ -712,38 +712,63 @@ async function sendAbsen(type, label) {
   const user = localStorage.getItem("user");
   if (!user) return checkLoginStatus();
 
-  // ─── Cek izin kamera ───
-  let camOk = false;
+  // ─── Ambil lokasi + mulai buka kamera BERSAMAAN (hemat waktu) ───
+  // Tampilkan status loading dulu
+  const btnIn  = document.getElementById("btn-in");
+  const btnOut = document.getElementById("btn-out");
+  const btnBS  = document.getElementById("btn-bs");
+  const btnBE  = document.getElementById("btn-be");
+  [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = true; });
+
+  let loc;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    stream.getTracks().forEach(t => t.stop());
-    camOk = true;
-  } catch {
-    camOk = false;
-  }
-  if (!camOk) {
-    showToast("❌ Izin kamera diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
-    return;
-  }
+    // Cek izin kamera terlebih dahulu (cepat)
+    let camOk = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      stream.getTracks().forEach(t => t.stop());
+      camOk = true;
+    } catch { camOk = false; }
 
-  // ─── Cek izin lokasi ───
-  const loc = await getLoc();
-  if (loc.denied) {
-    showToast("❌ Izin lokasi diperlukan untuk absensi. Aktifkan di pengaturan browser.", "error", 5000);
-    return;
-  }
+    if (!camOk) {
+      showToast("❌ Izin kamera diperlukan untuk absensi. Aktifkan di pengaturan HP.", "error", 5000);
+      return;
+    }
 
-  const ok = await verifyFace(label);
-  if (!ok) return;
-  const photo = takePhoto();
+    // Ambil lokasi (bisa lama, tampilkan info ke user)
+    showToast("📍 Mendeteksi lokasi...", "warning", 3000);
+    loc = await getLoc();
 
-  try {
+    if (loc.denied) {
+      showToast("❌ Izin lokasi diperlukan. Aktifkan di Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi.", "error", 8000);
+      return;
+    }
+    if (loc.timedOut && loc.lat === 0 && loc.lng === 0) {
+      showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif, lalu coba lagi.", "error", 5000);
+      return;
+    }
+
+    // Verifikasi wajah (buka kamera modal)
+    const ok = await verifyFace(label);
+    if (!ok) return;
+    const photo = takePhoto();
+
     const now = new Date().toISOString();
-    const r = await authFetch("/absen", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({type, time: now, lat:loc.lat, lng:loc.lng, photo}) });
+    const r = await authFetch("/absen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        time: now,
+        lat: loc.lat,
+        lng: loc.lng,
+        accuracy: loc.accuracy || 0,  // ← kirim accuracy agar server toleran GPS lemah
+        photo
+      })
+    });
     const d = await r.json();
     if (d.status === "OK") {
-      const msgs = {IN:"✅ Clock In berhasil!",OUT:"👋 Clock Out berhasil!",BREAK_START:"☕ Selamat istirahat!",BREAK_END:"💪 Lanjut kerja!"};
+      const msgs = { IN:"✅ Clock In berhasil!", OUT:"👋 Clock Out berhasil!", BREAK_START:"☕ Selamat istirahat!", BREAK_END:"💪 Lanjut kerja!" };
       showToast(msgs[type] || "✅ Berhasil!");
       updateLocalRecord(type, now);
       loadStatus();
@@ -751,15 +776,21 @@ async function sendAbsen(type, label) {
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
     } else if (d.status === "OUT_OF_AREA") {
-      const _actionLabel = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"}[type] || type;
+      const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ ${_actionLabel} gagal! Anda berada ${d.distance}m dari ${d.area||"kantor"}. Harus berada dalam radius area. Jika sedang Tugas Luar, minta admin ubah status kerja Anda.`, "error", 7000);
     } else if (d.status === "LOCATION_REQUIRED") {
-      const _actionLabel = {IN:"Clock In",OUT:"Clock Out",BREAK_START:"Mulai Istirahat",BREAK_END:"Selesai Istirahat"}[type] || type;
+      const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ Aktifkan layanan lokasi di perangkat Anda untuk ${_actionLabel}`, "error", 5000);
     } else if (d.status === "ALREADY_IN") {
       showToast("⚠️ Sudah Clock In hari ini", "warning"); loadStatus();
     }
-  } catch { showToast("❌ Terjadi kesalahan teknis", "error"); }
+  } catch (e) {
+    console.error("sendAbsen error:", e);
+    showToast("❌ Terjadi kesalahan teknis. Coba lagi.", "error");
+  } finally {
+    // Selalu aktifkan kembali tombol
+    [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+  }
 }
 
 function clockIn()    { sendAbsen("IN",          "Clock In"); }
@@ -1184,14 +1215,36 @@ async function requestPermissions() {
     result.camera = false;
   }
 
-  // Lokasi
+  // Lokasi — coba sampai 3x dengan timeout bertambah (penting untuk TWA Android)
+  // Di TWA, GPS butuh waktu "warm up" setelah izin pertama kali diberikan
   result.location = await new Promise(resolve => {
     if (!navigator.geolocation) return resolve(false);
-    navigator.geolocation.getCurrentPosition(
-      () => resolve(true),
-      () => resolve(false),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    let attempts = 0;
+    const maxAttempts = 3;
+    const timeouts = [8000, 12000, 15000];
+
+    function tryGet() {
+      attempts++;
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        (err) => {
+          // Jika user menolak (PERMISSION_DENIED), langsung berhenti
+          if (err.code === 1) return resolve(false);
+          // Jika timeout/unavailable, coba lagi dengan low accuracy
+          if (attempts < maxAttempts) {
+            setTimeout(tryGet, 500);
+          } else {
+            resolve(false);
+          }
+        },
+        {
+          enableHighAccuracy: attempts === 1,  // high accuracy hanya percobaan pertama
+          timeout: timeouts[attempts - 1] || 15000,
+          maximumAge: 60000
+        }
+      );
+    }
+    tryGet();
   });
 
   return result;
@@ -1205,26 +1258,39 @@ async function getLoc() {
       const permStatus = await navigator.permissions.query({ name: "geolocation" });
       if (permStatus.state === "denied") {
         showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
-        return { lat: 0, lng: 0, denied: true };
+        return { lat: 0, lng: 0, accuracy: 0, denied: true };
       }
     } catch { /* browser lama tidak support, lanjut */ }
   }
 
-  // Helper: coba ambil posisi dengan opsi tertentu
-  const tryGetPos = (highAccuracy, timeoutMs) => new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, denied: true });
+  // Helper: coba ambil posisi dengan opsi tertentu — sertakan accuracy
+  const tryGetPos = (highAccuracy, timeoutMs, maxAge) => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: 0, denied: true });
     navigator.geolocation.getCurrentPosition(
-      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, denied: false }),
-      err => resolve({ lat: 0, lng: 0, denied: err.code === 1, timedOut: err.code === 3 }),
-      { enableHighAccuracy: highAccuracy, timeout: timeoutMs, maximumAge: 30000 }
+      p => resolve({
+        lat: p.coords.latitude,
+        lng: p.coords.longitude,
+        accuracy: p.coords.accuracy || 0,
+        denied: false,
+        timedOut: false
+      }),
+      err => resolve({
+        lat: 0, lng: 0, accuracy: 0,
+        denied: err.code === 1,
+        timedOut: err.code === 3 || err.code === 2
+      }),
+      { enableHighAccuracy: highAccuracy, timeout: timeoutMs, maximumAge: maxAge }
     );
   });
 
-  // Coba high accuracy dulu (15 detik)
-  let result = await tryGetPos(true, 15000);
-
-  // Kalau timeout, fallback ke low accuracy
-  if (result.timedOut) result = await tryGetPos(false, 10000);
+  // Strategi bertahap: high accuracy → low accuracy → cached (maximumAge lebih besar)
+  let result = await tryGetPos(true, 12000, 10000);   // 1. GPS presisi, tunggu 12 detik
+  if (result.timedOut || result.denied) {
+    result = await tryGetPos(false, 8000, 30000);       // 2. Network/WiFi, tunggu 8 detik
+  }
+  if (result.timedOut || result.denied) {
+    result = await tryGetPos(false, 5000, 120000);      // 3. Cached sampai 2 menit
+  }
 
   if (result.denied) {
     showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
@@ -4713,15 +4779,23 @@ async function sendTrackPing() {
   const user = localStorage.getItem("user");
   if (!user) return;
   try {
-    const loc = await getLoc();
-    if (!loc.lat && !loc.lng) return;
+    // Untuk tracking ping, pakai maximumAge 60 detik (hemat baterai, tidak perlu presisi tinggi)
+    const pos = await new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error("no geolocation"));
+      navigator.geolocation.getCurrentPosition(
+        p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy || 0 }),
+        err => reject(err),
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      );
+    });
+    if (!pos.lat && !pos.lng) return;
     // Gunakan authFetch agar X-User header disertakan; identitas user divalidasi di server
     await authFetch("/tracking/ping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 0 })
+      body: JSON.stringify({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy })
     });
-  } catch {}
+  } catch {} // silent fail — tracking bukan fitur kritis
 }
 
 function startTrackingPing() {
@@ -6004,11 +6078,11 @@ async function startHomeLokasi() {
         el.innerHTML = '<span style="color:#e74c3c;font-size:13px;">\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.</span>';
         return;
       }
-      // Kalau "prompt", trigger dulu sekali agar muncul dialog izin
       if (permStatus.state === "prompt") {
         el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u23F3 Meminta izin lokasi...</span>';
+        // Tunggu izin diberikan dulu dengan getCurrentPosition
         await new Promise(resolve => {
-          navigator.geolocation.getCurrentPosition(resolve, resolve, { timeout: 10000 });
+          navigator.geolocation.getCurrentPosition(resolve, resolve, { timeout: 12000, maximumAge: 60000 });
         });
       }
     } catch { /* lanjut */ }
@@ -6016,10 +6090,43 @@ async function startHomeLokasi() {
 
   el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u23F3 Mendeteksi lokasi...</span>';
 
+  // Ambil posisi pertama kali dulu (getCurrentPosition) sebelum watchPosition
+  // Ini penting di Android — GPS butuh "warm up" sebelum watchPosition bisa akurat
+  const firstPos = await new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(
+      p => resolve(p),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+  });
+
+  if (firstPos) {
+    const lat = firstPos.coords.latitude;
+    const lng = firstPos.coords.longitude;
+    const acc = firstPos.coords.accuracy || 0;
+    checkLokasiRadius(lat, lng, acc);
+  } else {
+    // Coba low accuracy sebagai fallback
+    const fallbackPos = await new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        p => resolve(p),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
+      );
+    });
+    if (fallbackPos) {
+      checkLokasiRadius(fallbackPos.coords.latitude, fallbackPos.coords.longitude, fallbackPos.coords.accuracy || 0);
+    } else {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u26A0\uFE0F Pastikan GPS aktif.</span>';
+    }
+  }
+
+  // Mulai watchPosition untuk update real-time
   function updateLokasi(pos) {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
-    checkLokasiRadius(lat, lng);
+    const acc = pos.coords.accuracy || 0;
+    checkLokasiRadius(lat, lng, acc);
   }
 
   function errLokasi(err) {
@@ -6027,15 +6134,18 @@ async function startHomeLokasi() {
     if (err.code === 1) {
       el.innerHTML = '<span style="color:#e74c3c;font-size:12px;">\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Izin \u2192 Lokasi \u2192 Izinkan.</span>';
     } else if (err.code === 3) {
-      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u26A0\uFE0F GPS timeout. Pastikan GPS aktif.</span>';
+      // Timeout pada watchPosition: tidak tampilkan error — posisi terakhir masih valid
+      console.warn("watchPosition timeout, posisi terakhir tetap ditampilkan");
     } else {
-      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">\u26A0\uFE0F Gagal deteksi lokasi.</span>';
+      console.warn("watchPosition error:", err.code, err.message);
     }
   }
 
   if (_homeLokWatcher) navigator.geolocation.clearWatch(_homeLokWatcher);
   _homeLokWatcher = navigator.geolocation.watchPosition(updateLokasi, errLokasi, {
-    enableHighAccuracy: true, maximumAge: 10000, timeout: 20000
+    enableHighAccuracy: true,
+    maximumAge: 15000,   // terima posisi cached sampai 15 detik
+    timeout: 30000       // timeout lebih panjang untuk watchPosition
   });
 }
 
@@ -6043,52 +6153,34 @@ function stopHomeLokasi() {
   if (_homeLokWatcher) { navigator.geolocation.clearWatch(_homeLokWatcher); _homeLokWatcher = null; }
 }
 
-async function checkLokasiRadius(lat, lng) {
+async function checkLokasiRadius(lat, lng, accuracy) {
   const el = document.getElementById("home-lokasi-text");
   if (!el) return;
   try {
-    // Load areas dari server
-    const r = await authFetch("/areas");
-    if (!r.ok) throw new Error();
-    const areas = await r.json();
-    const activeAreas = areas.filter(a => a.active !== false);
+    // Pakai /areas/check — semua level user bisa akses, koordinat area tidak bocor ke client
+    const r = await authFetch("/areas/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat, lng, accuracy: accuracy || 0 })
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
 
-    if (!activeAreas.length) {
+    if (data.status === "NO_AREA") {
       el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Belum ada area kantor terdaftar</span>';
-      return;
-    }
-
-    function haversine(lat1, lng1, lat2, lng2) {
-      const R = 6371000;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLng = (lng2 - lng1) * Math.PI / 180;
-      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
-    let nearest = null;
-    let nearestDist = Infinity;
-
-    for (const area of activeAreas) {
-      const dist = haversine(lat, lng, area.lat, area.lng);
-      if (dist < nearestDist) { nearestDist = dist; nearest = area; }
-    }
-
-    const radius = nearest.radius || 100;
-
-    if (nearestDist <= radius) {
-      // Di dalam radius area
-      el.innerHTML = `<span style="color:var(--success);font-weight:700;font-size:14px;">✅ ${nearest.name}</span>`;
-    } else if (nearestDist <= 1000) {
-      // Dalam 1000m dari area terdekat - tampil realtime jarak
-      const distLabel = nearestDist < 1000 ? Math.round(nearestDist) + ' m' : (nearestDist/1000).toFixed(1) + ' km';
-      el.innerHTML = `<span style="color:var(--warning);font-weight:600;font-size:13px;">📍 ${distLabel} dari ${nearest.name}</span>`;
+    } else if (data.status === "NO_LOCATION") {
+      el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⚠️ Lokasi tidak tersedia</span>';
+    } else if (data.status === "IN_AREA") {
+      el.innerHTML = `<span style="color:var(--success);font-weight:700;font-size:14px;">✅ ${data.name}</span>`;
+    } else if (data.status === "NEAR") {
+      const distLabel = data.distance < 1000 ? data.distance + ' m' : (data.distance/1000).toFixed(1) + ' km';
+      el.innerHTML = `<span style="color:var(--warning);font-weight:600;font-size:13px;">📍 ${distLabel} dari ${data.name}</span>`;
     } else {
-      // Lebih dari 1000m
       el.innerHTML = `<span style="color:var(--muted);font-size:13px;">Di luar Radius Area</span>`;
     }
-  } catch {
-    el.innerHTML = '<span style="color:var(--muted);font-size:13px;">Gagal memuat data area</span>';
+  } catch (e) {
+    console.warn("checkLokasiRadius error:", e);
+    el.innerHTML = '<span style="color:var(--muted);font-size:13px;">⚠️ Gagal cek area</span>';
   }
 }
 
