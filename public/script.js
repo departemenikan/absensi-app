@@ -2785,7 +2785,10 @@ function switchAreaTab(tab) {
         const defLat = -8.6500000, defLng = 115.2200000;
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            p => initAreaMap(p.coords.latitude, p.coords.longitude),
+            p => {
+              _updateLocationBias(p.coords.latitude, p.coords.longitude);
+              initAreaMap(p.coords.latitude, p.coords.longitude);
+            },
             () => initAreaMap(defLat, defLng),
             { enableHighAccuracy: true, timeout: 5000 }
           );
@@ -2846,6 +2849,7 @@ function _setAreaMarker(lat, lng) {
 }
 
 function _updateAreaCoords(lat, lng) {
+  _updateLocationBias(lat, lng);
   document.getElementById("area-lat").value = lat.toFixed(7);
   document.getElementById("area-lng").value = lng.toFixed(7);
   document.getElementById("area-coords-display").textContent =
@@ -2862,7 +2866,9 @@ function getMyLoc() {
   navigator.geolocation.getCurrentPosition(p => {
     const lat = p.coords.latitude;
     const lng = p.coords.longitude;
+    _updateLocationBias(lat, lng);
     if (_areaMap) {
+      _areaMap.invalidateSize();
       _areaMap.setView([lat, lng], 17);
       _setAreaMarker(lat, lng);
     } else {
@@ -2872,8 +2878,18 @@ function getMyLoc() {
   }, () => showToast("❌ Gagal ambil lokasi. Izinkan akses lokasi.", "error"), {enableHighAccuracy:true});
 }
 
-// ─── Search lokasi via Photon (Komoot) — lebih responsif dari Nominatim ───
+// ─── Search lokasi via Photon (Komoot) ───
 let _searchTimeout = null;
+
+// Simpan koordinat user terakhir untuk location bias Photon
+let _userLat = -8.6500000;
+let _userLng = 115.2200000;
+
+// Update bias koordinat setiap kali ada lokasi baru (GPS / klik map / getMyLoc)
+function _updateLocationBias(lat, lng) {
+  _userLat = lat;
+  _userLng = lng;
+}
 
 // Helper: parse hasil Photon GeoJSON ke format display
 function _photonDisplayName(props) {
@@ -2888,6 +2904,24 @@ function _photonDisplayName(props) {
   return parts.join(", ");
 }
 
+// Helper: pastikan map sudah init dan visible sebelum setView
+function _ensureMapReady(lat, lng, zoom) {
+  return new Promise(resolve => {
+    if (!_areaMap) {
+      initAreaMap(lat, lng);
+      setTimeout(() => {
+        _areaMap.invalidateSize();
+        _areaMap.setView([lat, lng], zoom || 17);
+        resolve();
+      }, 300);
+    } else {
+      _areaMap.invalidateSize();
+      _areaMap.setView([lat, lng], zoom || 17);
+      setTimeout(resolve, 50);
+    }
+  });
+}
+
 async function areaSearchSuggest() {
   const q = document.getElementById("area-search-input")?.value.trim();
   const box = document.getElementById("area-search-suggest");
@@ -2897,11 +2931,11 @@ async function areaSearchSuggest() {
 
   _searchTimeout = setTimeout(async () => {
     try {
-      // Photon: fetch langsung (tidak lewat authFetch agar tidak kena CORS/proxy)
-      const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`,
-        { headers: { "Accept": "application/json" } }
-      );
+      // Photon dengan location bias koordinat user — hasil lebih relevan & lokal
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`
+                + `&lat=${_userLat}&lon=${_userLng}`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("network");
       const json = await res.json();
       const features = json.features || [];
       if (!features.length) { box.style.display = "none"; return; }
@@ -2925,19 +2959,16 @@ async function areaSearchSuggest() {
       }).join("");
       box.style.display = "block";
     } catch { box.style.display = "none"; }
-  }, 350);
+  }, 400);
 }
 
-function areaSelectSuggest(lat, lng, displayName) {
+async function areaSelectSuggest(lat, lng, displayName) {
   lat = parseFloat(lat); lng = parseFloat(lng);
   document.getElementById("area-search-input").value = displayName;
   document.getElementById("area-search-suggest").style.display = "none";
-  if (_areaMap) {
-    _areaMap.setView([lat, lng], 17);
-    _setAreaMarker(lat, lng);
-  } else {
-    initAreaMap(lat, lng);
-  }
+  _updateLocationBias(lat, lng);
+  await _ensureMapReady(lat, lng, 17);
+  _setAreaMarker(lat, lng);
 }
 
 async function searchAreaLocation() {
@@ -2947,20 +2978,32 @@ async function searchAreaLocation() {
   const box = document.getElementById("area-search-suggest");
   if (box) box.style.display = "none";
 
-  showToast("🔍 Mencari lokasi...", "warning", 2000);
+  showToast("🔍 Mencari lokasi...", "info", 3000);
   try {
-    const res = await fetch(
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=id`,
-      { headers: { "Accept": "application/json" } }
-    );
+    // Photon dengan location bias
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=id`
+              + `&lat=${_userLat}&lon=${_userLng}`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!res.ok) throw new Error("network");
     const json = await res.json();
     const features = json.features || [];
-    if (!features.length) return showToast("❌ Lokasi tidak ditemukan. Coba kata kunci lain.", "error");
-    const [lng, lat] = features[0].geometry.coordinates;
-    const displayNameResult = _photonDisplayName(features[0].properties);
-    areaSelectSuggest(lat, lng, displayNameResult);
+
+    if (!features.length) {
+      showToast("❌ Lokasi tidak ditemukan. Coba nama jalan, gedung, atau kota.", "error");
+      return;
+    }
+
+    // Ambil hasil pertama yang paling relevan
+    const best = features[0];
+    const [lng, lat] = best.geometry.coordinates;
+    const displayNameResult = _photonDisplayName(best.properties);
+
+    await areaSelectSuggest(lat, lng, displayNameResult);
     showToast("✅ Lokasi ditemukan!");
-  } catch { showToast("❌ Gagal mencari lokasi. Periksa koneksi internet.", "error"); }
+  } catch (err) {
+    console.error("Search error:", err);
+    showToast("❌ Gagal mencari lokasi. Periksa koneksi internet.", "error");
+  }
 }
 
 // Tutup suggest saat klik di luar
