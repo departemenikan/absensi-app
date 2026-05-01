@@ -180,28 +180,25 @@ function toggleAuthMode() {
     const status = document.getElementById("faceStatus");
     if (status) status.innerText = "🔐 Meminta izin kamera & lokasi...";
 
-    // Tampilkan pesan pop-up browser untuk izin kamera & lokasi
-    requestPermissions().then(perms => {
-      if (!perms.camera || !perms.location) {
-        const missing = [];
-        if (!perms.camera)   missing.push("📷 Kamera");
-        if (!perms.location) missing.push("📍 Lokasi");
-        if (status) status.innerText = `❌ Izin diperlukan: ${missing.join(" & ")}. Aktifkan di pengaturan browser.`;
-        showToast(`⚠️ Izin ${missing.join(" & ")} diperlukan untuk Sign Up`, "warning", 5000);
-        // Tetap tampilkan form tapi beri peringatan
-      } else {
-        if (status) status.innerText = "✅ Izin kamera & lokasi diberikan";
+    // Cek dan minta izin via gate — sequential, tidak blokir render UI
+    requirePermissions(true, true).then(granted => {
+      if (granted) {
+        if (status) status.innerText = "✅ Izin diberikan — kamera siap";
       }
+      // Jika tidak granted, gate modal tetap terbuka — user tidak bisa lanjut
     });
 
-    // Mulai kamera untuk scan wajah
+    // Mulai kamera untuk scan wajah (paralel dengan permintaan izin)
     startCam("video-signup").then(() => {
-      const status = document.getElementById("faceStatus");
-      if (status && status.innerText.startsWith("✅ Izin")) {
-        waitVideoReady("video-signup", 8000)
-          .then(() => { status.innerText = "✅ Kamera siap — hadapkan wajah ke kamera"; })
-          .catch(() => { status.innerText = "⚠️ Gagal buka kamera. Izinkan akses kamera."; });
-      }
+      waitVideoReady("video-signup", 8000)
+        .then(() => {
+          const st = document.getElementById("faceStatus");
+          if (st) st.innerText = "✅ Kamera siap — hadapkan wajah ke kamera";
+        })
+        .catch(() => {
+          const st = document.getElementById("faceStatus");
+          if (st) st.innerText = "⚠️ Gagal buka kamera. Pastikan izin kamera diberikan.";
+        });
     });
   } else {
     stopCam("video-signup");
@@ -238,25 +235,14 @@ async function doSignUp(u, p) {
   btn.disabled = true;
 
   try {
-    // ─── Minta izin kamera & lokasi sebelum proses ───
+    // ─── Minta izin kamera & lokasi via gate (sequential) ───
     btn.innerText = "🔐 Memeriksa izin...";
-    if (status) status.innerText = "🔐 Meminta izin kamera & lokasi...";
+    if (status) status.innerText = "🔐 Memverifikasi izin kamera & lokasi...";
 
-    const perms = await requestPermissions();
-
-    if (!perms.camera && !perms.location) {
-      showToast("❌ Izin kamera dan lokasi diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin kamera & lokasi ditolak. Aktifkan di pengaturan browser lalu coba lagi.";
-      btn.innerText = "Sign Up"; btn.disabled = false; return;
-    }
-    if (!perms.camera) {
-      showToast("❌ Izin kamera diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin kamera ditolak. Buka pengaturan browser → izinkan akses kamera.";
-      btn.innerText = "Sign Up"; btn.disabled = false; return;
-    }
-    if (!perms.location) {
-      showToast("❌ Izin lokasi diperlukan untuk Sign Up", "error");
-      if (status) status.innerText = "❌ Izin lokasi ditolak. Buka pengaturan browser → izinkan akses lokasi.";
+    const granted = await requirePermissions(true, true);
+    if (!granted) {
+      // Gate modal masih terbuka, user belum beri izin lengkap
+      if (status) status.innerText = "❌ Izin belum lengkap. Berikan izin yang diminta.";
       btn.innerText = "Sign Up"; btn.disabled = false; return;
     }
 
@@ -722,29 +708,27 @@ async function sendAbsen(type, label) {
 
   let loc;
   try {
-    // Cek izin kamera terlebih dahulu (cepat)
-    let camOk = false;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      stream.getTracks().forEach(t => t.stop());
-      camOk = true;
-    } catch { camOk = false; }
-
-    if (!camOk) {
-      showToast("❌ Izin kamera diperlukan untuk absensi. Aktifkan di pengaturan HP.", "error", 5000);
+    // ─── Cek & minta izin kamera + lokasi via gate (sequential) ───
+    const granted = await requirePermissions(true, true);
+    if (!granted) {
+      // Gate modal masih terbuka — user belum lengkapi izin
+      [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
       return;
     }
 
-    // Ambil lokasi (bisa lama, tampilkan info ke user)
+    // Ambil lokasi (izin sudah granted)
     showToast("📍 Mendeteksi lokasi...", "warning", 3000);
     loc = await getLoc();
 
     if (loc.denied) {
-      showToast("❌ Izin lokasi diperlukan. Aktifkan di Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi.", "error", 8000);
+      // Seharusnya tidak terjadi setelah gate, tapi jaga-jaga
+      await requirePermissions(false, true); // tampilkan gate khusus lokasi
+      [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
       return;
     }
     if (loc.timedOut && loc.lat === 0 && loc.lng === 0) {
       showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif, lalu coba lagi.", "error", 5000);
+      [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
       return;
     }
 
@@ -1201,53 +1185,332 @@ async function loadHomeLibur() {
 }
 
 
-// ─── Minta izin kamera + lokasi sekaligus, return {camera, location} ───
-async function requestPermissions() {
-  const result = { camera: false, location: false };
+// ═══════════════════════════════════════════════════════════════════════════
+//  PERMISSION GATE SYSTEM
+//  Logika:
+//  1. Cek status tiap izin via Permissions API (camera, geolocation)
+//  2. Jika state = "prompt"  → tampilkan popup native browser
+//  3. Jika state = "denied"  → tampilkan panduan buka Settings
+//  4. Gate modal hanya hilang jika SEMUA izin yang diperlukan = "granted"
+//  5. Izin diminta SATU PER SATU (sequential), bukan bersamaan
+//  6. Setiap kali ada upaya aksi (sign up / absen), cek ulang dan
+//     hanya tampilkan popup untuk izin yang belum diberikan
+// ═══════════════════════════════════════════════════════════════════════════
 
-  // Kamera
+// Cache state izin (di-refresh setiap kali dicek ulang)
+let _permState = { camera: "unknown", location: "unknown" };
+// Callback yang dipanggil saat semua izin granted
+let _permResolve = null;
+// Mode gate: "signup" | "absen"
+let _permGateMode = "";
+
+// ── Cek state izin via Permissions API (non-blocking) ──────────────────────
+async function queryPermState(name) {
+  // name: "camera" | "geolocation"
+  if (!navigator.permissions) return "unknown";
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    result.camera = true;
-    // Langsung stop — hanya untuk trigger permission
-    stream.getTracks().forEach(t => t.stop());
+    const status = await navigator.permissions.query({
+      name: name === "camera" ? "camera" : "geolocation"
+    });
+    return status.state; // "granted" | "denied" | "prompt"
   } catch {
-    result.camera = false;
+    return "unknown";
+  }
+}
+
+// ── Minta izin kamera (satu kali, hanya trigger popup) ─────────────────────
+async function requestCameraPermission() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" }, audio: false
+    });
+    stream.getTracks().forEach(t => t.stop());
+    return "granted";
+  } catch (e) {
+    if (e.name === "NotAllowedError") return "denied";
+    return "unknown";
+  }
+}
+
+// ── Minta izin lokasi (satu kali, hanya trigger popup) ─────────────────────
+async function requestLocationPermission() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve("unavailable");
+    navigator.geolocation.getCurrentPosition(
+      () => resolve("granted"),
+      (err) => resolve(err.code === 1 ? "denied" : "unknown"),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  });
+}
+
+// ── Refresh cache state kedua izin ─────────────────────────────────────────
+async function refreshPermStates() {
+  _permState.camera   = await queryPermState("camera");
+  _permState.location = await queryPermState("geolocation");
+  return _permState;
+}
+
+// ── Update tampilan item di modal ───────────────────────────────────────────
+function updatePermItemUI(type, state) {
+  // type: "camera" | "location"
+  const badge = document.getElementById(`perm-badge-${type}`);
+  const icon  = document.getElementById(`perm-icon-${type}`);
+  const item  = document.getElementById(`perm-item-${type}`);
+  if (!badge) return;
+
+  if (state === "granted") {
+    badge.textContent        = "✅ Diizinkan";
+    badge.style.background   = "#e8f5e9";
+    badge.style.color        = "#1b5e20";
+    item.style.borderColor   = "#a5d6a7";
+    icon.textContent         = type === "camera" ? "📷" : "📍";
+  } else if (state === "denied") {
+    badge.textContent        = "❌ Ditolak";
+    badge.style.background   = "#ffebee";
+    badge.style.color        = "#b71c1c";
+    item.style.borderColor   = "#ef9a9a";
+    icon.textContent         = type === "camera" ? "🚫" : "🚫";
+  } else {
+    badge.textContent        = "⏳ Belum diizinkan";
+    badge.style.background   = "#fff3e0";
+    badge.style.color        = "#e65100";
+    item.style.borderColor   = "#e8eaf0";
+    icon.textContent         = type === "camera" ? "📷" : "📍";
+  }
+}
+
+// ── Render ulang seluruh modal berdasarkan state terkini ────────────────────
+function renderPermGateModal(neededCamera, neededLocation) {
+  const titleEl    = document.getElementById("perm-gate-title");
+  const descEl     = document.getElementById("perm-gate-desc");
+  const btnEl      = document.getElementById("perm-gate-btn");
+  const retryBtn   = document.getElementById("perm-retry-btn");
+  const settingsDiv = document.getElementById("perm-settings-guide");
+  const settingsBtn = document.getElementById("perm-open-settings-btn");
+  const stepsEl    = document.getElementById("perm-settings-steps");
+  const iconEl     = document.getElementById("perm-gate-icon");
+
+  // Tampilkan hanya item yang diperlukan
+  document.getElementById("perm-item-camera").style.display =
+    neededCamera ? "flex" : "none";
+  document.getElementById("perm-item-location").style.display =
+    neededLocation ? "flex" : "none";
+
+  // Update badge masing-masing
+  if (neededCamera)   updatePermItemUI("camera",   _permState.camera);
+  if (neededLocation) updatePermItemUI("location", _permState.location);
+
+  // Tentukan izin mana yang masih kurang
+  const camDenied  = neededCamera  && _permState.camera   === "denied";
+  const locDenied  = neededLocation && _permState.location === "denied";
+  const camNeeded  = neededCamera  && _permState.camera   !== "granted";
+  const locNeeded  = neededLocation && _permState.location !== "granted";
+  const anyDenied  = camDenied || locDenied;
+
+  // Buat deskripsi izin yang masih kurang
+  const missingLabels = [];
+  if (camNeeded)  missingLabels.push("Kamera");
+  if (locNeeded)  missingLabels.push("Lokasi");
+
+  if (missingLabels.length === 0) {
+    // Semua sudah granted — tutup modal
+    closePermGate(true);
+    return;
   }
 
-  // Lokasi — coba sampai 3x dengan timeout bertambah (penting untuk TWA Android)
-  // Di TWA, GPS butuh waktu "warm up" setelah izin pertama kali diberikan
-  result.location = await new Promise(resolve => {
-    if (!navigator.geolocation) return resolve(false);
-    let attempts = 0;
-    const maxAttempts = 3;
-    const timeouts = [8000, 12000, 15000];
+  iconEl.textContent = anyDenied ? "⛔" : "🔐";
+  titleEl.textContent = anyDenied
+    ? "Izin Ditolak"
+    : `Izin ${missingLabels.join(" & ")} Diperlukan`;
 
-    function tryGet() {
-      attempts++;
-      navigator.geolocation.getCurrentPosition(
-        () => resolve(true),
-        (err) => {
-          // Jika user menolak (PERMISSION_DENIED), langsung berhenti
-          if (err.code === 1) return resolve(false);
-          // Jika timeout/unavailable, coba lagi dengan low accuracy
-          if (attempts < maxAttempts) {
-            setTimeout(tryGet, 500);
-          } else {
-            resolve(false);
-          }
-        },
-        {
-          enableHighAccuracy: attempts === 1,  // high accuracy hanya percobaan pertama
-          timeout: timeouts[attempts - 1] || 15000,
-          maximumAge: 60000
-        }
-      );
+  // Tentukan izin mana yang akan diminta BERIKUTNYA (sequential)
+  // Kamera dulu, baru lokasi
+  let nextPerm = null;
+  if (neededCamera  && _permState.camera   === "prompt") nextPerm = "camera";
+  else if (neededLocation && _permState.location === "prompt") nextPerm = "location";
+
+  if (anyDenied && !nextPerm) {
+    // Semua yang tersisa = denied, tidak bisa pakai popup
+    const deniedLabels = [];
+    if (camDenied)  deniedLabels.push("Kamera");
+    if (locDenied)  deniedLabels.push("Lokasi");
+    descEl.textContent =
+      `Izin ${deniedLabels.join(" & ")} telah ditolak sebelumnya. ` +
+      `Aktifkan secara manual lewat pengaturan HP Anda.`;
+    btnEl.style.display    = "none";
+    retryBtn.style.display = "block";
+
+    // Panduan Settings
+    const steps = [];
+    if (camDenied)  steps.push("• Buka Pengaturan → Aplikasi → Absensi Smart → Izin → Kamera → Izinkan");
+    if (locDenied)  steps.push("• Buka Pengaturan → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan Selalu");
+    stepsEl.innerHTML = steps.join("<br>");
+    settingsDiv.style.display = "block";
+    settingsBtn.style.display = "block";
+
+  } else if (nextPerm) {
+    // Ada izin yang bisa di-prompt
+    const label = nextPerm === "camera" ? "Kamera" : "Lokasi";
+    descEl.textContent =
+      `Aplikasi memerlukan izin ${missingLabels.join(" & ")} untuk berjalan. ` +
+      `Ketuk tombol di bawah dan pilih "Izinkan" pada popup yang muncul.`;
+    btnEl.textContent      = `📲 Izinkan ${label}`;
+    btnEl.style.display    = "block";
+    settingsDiv.style.display = "none";
+    settingsBtn.style.display = "none";
+    retryBtn.style.display = "none";
+
+  } else {
+    // Mixed: sebagian denied, sebagian prompt — tampilkan yang bisa di-prompt dulu
+    descEl.textContent =
+      `Beberapa izin belum diberikan. Ketuk "Izinkan" untuk melanjutkan.`;
+    btnEl.textContent      = "📲 Izinkan Akses";
+    btnEl.style.display    = "block";
+    settingsDiv.style.display = anyDenied ? "block" : "none";
+    settingsBtn.style.display = anyDenied ? "block" : "none";
+    retryBtn.style.display = "none";
+  }
+}
+
+// ── Aksi tombol utama di modal ──────────────────────────────────────────────
+// Dipanggil saat user klik "Izinkan ..."
+let _permNeededCamera = true;
+let _permNeededLocation = true;
+let _permRequesting = false;
+
+async function permGateAction() {
+  if (_permRequesting) return;
+  _permRequesting = true;
+
+  const btn = document.getElementById("perm-gate-btn");
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⏳ Menunggu izin...";
+
+  // Minta izin SATU PER SATU — kamera dulu jika belum granted
+  if (_permNeededCamera && _permState.camera !== "granted") {
+    updatePermItemUI("camera", "prompt");
+    const camResult = await requestCameraPermission();
+    _permState.camera = camResult;
+    updatePermItemUI("camera", camResult);
+
+    // Jika kamera baru saja granted, cek apakah lokasi juga perlu
+    if (camResult === "granted" && _permNeededLocation && _permState.location !== "granted") {
+      // Kamera beres — sekarang minta lokasi
+      btn.textContent = "⏳ Menunggu izin lokasi...";
+      updatePermItemUI("location", "prompt");
+      const locResult = await requestLocationPermission();
+      _permState.location = locResult;
+      updatePermItemUI("location", locResult);
     }
-    tryGet();
-  });
+  } else if (_permNeededLocation && _permState.location !== "granted") {
+    // Kamera sudah granted, langsung minta lokasi
+    btn.textContent = "⏳ Menunggu izin lokasi...";
+    updatePermItemUI("location", "prompt");
+    const locResult = await requestLocationPermission();
+    _permState.location = locResult;
+    updatePermItemUI("location", locResult);
+  }
 
-  return result;
+  btn.disabled  = false;
+  btn.textContent = origText;
+  _permRequesting = false;
+
+  // Render ulang modal dengan state terbaru
+  renderPermGateModal(_permNeededCamera, _permNeededLocation);
+}
+
+// ── Tombol "Sudah diizinkan, coba lagi" ────────────────────────────────────
+async function permGateRetry() {
+  const retryBtn = document.getElementById("perm-retry-btn");
+  retryBtn.disabled = true;
+  retryBtn.textContent = "⏳ Memeriksa...";
+
+  await refreshPermStates();
+  renderPermGateModal(_permNeededCamera, _permNeededLocation);
+
+  retryBtn.disabled = false;
+  retryBtn.textContent = "🔄 Sudah diizinkan, coba lagi";
+}
+
+// ── Buka pengaturan aplikasi (Android intent) ───────────────────────────────
+function openAppSettings() {
+  // TWA Android: intent ke settings aplikasi
+  // Di browser biasa akan diabaikan — tidak ada cara lintas platform
+  try {
+    window.location.href = "intent://settings#Intent;scheme=android-app;end";
+  } catch {
+    // fallback: beri panduan teks
+  }
+  showToast("Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin", "warning", 8000);
+}
+
+// ── Tutup permission gate ───────────────────────────────────────────────────
+function closePermGate(success) {
+  const overlay = document.getElementById("perm-gate-overlay");
+  if (overlay) overlay.style.display = "none";
+  if (success && typeof _permResolve === "function") {
+    _permResolve(true);
+    _permResolve = null;
+  }
+}
+
+// ── Fungsi utama: tampilkan gate dan tunggu hingga izin lengkap ─────────────
+// needCamera: bool, needLocation: bool
+// Return: Promise<boolean> — true jika semua izin granted
+async function requirePermissions(needCamera = true, needLocation = true) {
+  _permNeededCamera   = needCamera;
+  _permNeededLocation = needLocation;
+
+  // Refresh state terkini dari Permissions API
+  await refreshPermStates();
+
+  // Cek apakah semua yang diperlukan sudah granted
+  const camOk = !needCamera  || _permState.camera   === "granted";
+  const locOk = !needLocation || _permState.location === "granted";
+  if (camOk && locOk) return true;
+
+  // Jika ada yang belum granted, tampilkan gate modal
+  const overlay = document.getElementById("perm-gate-overlay");
+  overlay.style.display = "flex";
+  renderPermGateModal(needCamera, needLocation);
+
+  // Tunggu sampai closePermGate(true) dipanggil
+  return new Promise(resolve => {
+    _permResolve = resolve;
+    // Auto-resolve jika user tidak melakukan apa-apa (dipantau tiap 1 detik)
+    // Ini menangani kasus: user izinkan dari luar app lalu kembali
+    const interval = setInterval(async () => {
+      await refreshPermStates();
+      const cOk = !needCamera  || _permState.camera   === "granted";
+      const lOk = !needLocation || _permState.location === "granted";
+      if (cOk && lOk) {
+        clearInterval(interval);
+        updatePermItemUI("camera",   _permState.camera);
+        updatePermItemUI("location", _permState.location);
+        closePermGate(true);
+      } else {
+        // Refresh tampilan badge tanpa re-render seluruh modal
+        if (needCamera)   updatePermItemUI("camera",   _permState.camera);
+        if (needLocation) updatePermItemUI("location", _permState.location);
+      }
+    }, 1500);
+
+    // Simpan interval id agar bisa di-clear saat gate ditutup paksa
+    overlay._checkInterval = interval;
+  });
+}
+
+// ── Backward-compat: requestPermissions() → sekarang pakai gate ─────────────
+// Dipakai oleh toggleAuthMode dan doSignUp lama
+async function requestPermissions() {
+  const granted = await requirePermissions(true, true);
+  await refreshPermStates();
+  return {
+    camera:   _permState.camera   === "granted",
+    location: _permState.location === "granted"
+  };
 }
 
 // ─── Ambil koordinat — return null jika izin ditolak (jangan silent fallback ke 0,0) ───

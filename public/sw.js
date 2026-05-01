@@ -50,9 +50,14 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/anggota") ||
     url.pathname.startsWith("/timesheet") ||
     url.pathname.startsWith("/kuota-cuti") ||
+    url.pathname.startsWith("/kebijakan-cuti") ||
+    url.pathname.startsWith("/pengajuan-cuti") ||
+    url.pathname.startsWith("/rekap") ||
     url.pathname.startsWith("/libur") ||
     url.pathname.startsWith("/areas") ||
     url.pathname.startsWith("/groups") ||
+    url.pathname.startsWith("/divisi") ||
+    url.pathname.startsWith("/tracking") ||
     url.pathname.startsWith("/roles")
   ) {
     event.respondWith(fetch(event.request));
