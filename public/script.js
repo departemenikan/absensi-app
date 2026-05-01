@@ -307,6 +307,27 @@ async function doSignUp(u, p) {
       stopCam("video-signup");
       if (status) status.innerText = "✅ Akun berhasil dibuat!";
       showToast("✅ Akun berhasil dibuat! Silakan login");
+
+      // ── Pastikan izin lokasi sudah diminta dalam konteks gesture signup ──
+      // Di TWA Android, izin hanya bisa diminta saat ada user gesture aktif.
+      // Ini adalah momen terbaik karena user baru saja tap tombol Sign Up.
+      if (navigator.geolocation && navigator.permissions) {
+        navigator.permissions.query({ name: "geolocation" }).then(permStatus => {
+          if (permStatus.state !== "granted") {
+            // Minta izin lokasi sekali — popup OS akan muncul
+            navigator.geolocation.getCurrentPosition(
+              () => { /* granted — simpan ke cache OS */ },
+              () => { /* denied/error — akan ditangani saat Clock In */ },
+              { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+            );
+          }
+        }).catch(() => {});
+      } else if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+          enableHighAccuracy: true, timeout: 8000, maximumAge: 0
+        });
+      }
+
       setTimeout(() => toggleAuthMode(), 1500);
     } else if (d.status === "EXIST") {
       showToast("⚠️ Username sudah terdaftar!", "warning");
@@ -373,6 +394,35 @@ function enterApp(menus, group, level) {
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
   if (ad) ad.value = new Date().toISOString().split("T")[0];
+
+  // ── Warm-up izin lokasi (silent, background) ────────────────────────────
+  // Dilakukan setelah login agar TWA/Android sudah menyimpan izin sebelum
+  // user menekan Clock In. Tidak blokir UI, tidak tampilkan gate modal.
+  // Hanya memicu browser/OS untuk menyimpan state "granted" lebih awal.
+  setTimeout(() => {
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "geolocation" }).then(status => {
+        if (status.state === "granted") {
+          // Sudah granted — ambil satu kali agar GPS lock lebih cepat
+          navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+            enableHighAccuracy: true, timeout: 10000, maximumAge: 30000
+          });
+        } else if (status.state === "prompt") {
+          // Belum pernah diminta — trigger silent agar OS tahu app ini butuh lokasi
+          // (tidak blokir UI, tidak tampilkan gate — gate akan muncul saat Clock In)
+          navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+            enableHighAccuracy: false, timeout: 5000, maximumAge: 60000
+          });
+        }
+        // Jika "denied" — biarkan, gate akan muncul saat Clock In
+      }).catch(() => {});
+    } else if (navigator.geolocation) {
+      // Browser lama tanpa Permissions API — coba silent request
+      navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+        enableHighAccuracy: false, timeout: 5000, maximumAge: 60000
+      });
+    }
+  }, 1500); // delay 1.5s setelah UI selesai render
 }
 
 // Sinkronisasi foto profil ke semua avatar di header
@@ -727,8 +777,15 @@ async function sendAbsen(type, label) {
       return;
     }
     if (loc.timedOut && loc.lat === 0 && loc.lng === 0) {
-      showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif, lalu coba lagi.", "error", 5000);
+      // GPS timeout — tunjukkan pesan tapi beri opsi retry
+      showToast("⚠️ GPS lambat. Pastikan lokasi aktif & sinyal GPS kuat, lalu coba lagi.", "error", 6000);
       [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+      // Coba warm-up GPS di background agar attempt berikutnya lebih cepat
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 0
+        });
+      }
       return;
     }
 
