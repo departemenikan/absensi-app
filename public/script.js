@@ -307,27 +307,6 @@ async function doSignUp(u, p) {
       stopCam("video-signup");
       if (status) status.innerText = "✅ Akun berhasil dibuat!";
       showToast("✅ Akun berhasil dibuat! Silakan login");
-
-      // ── Pastikan izin lokasi sudah diminta dalam konteks gesture signup ──
-      // Di TWA Android, izin hanya bisa diminta saat ada user gesture aktif.
-      // Ini adalah momen terbaik karena user baru saja tap tombol Sign Up.
-      if (navigator.geolocation && navigator.permissions) {
-        navigator.permissions.query({ name: "geolocation" }).then(permStatus => {
-          if (permStatus.state !== "granted") {
-            // Minta izin lokasi sekali — popup OS akan muncul
-            navigator.geolocation.getCurrentPosition(
-              () => { /* granted — simpan ke cache OS */ },
-              () => { /* denied/error — akan ditangani saat Clock In */ },
-              { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-            );
-          }
-        }).catch(() => {});
-      } else if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
-          enableHighAccuracy: true, timeout: 8000, maximumAge: 0
-        });
-      }
-
       setTimeout(() => toggleAuthMode(), 1500);
     } else if (d.status === "EXIST") {
       showToast("⚠️ Username sudah terdaftar!", "warning");
@@ -394,35 +373,6 @@ function enterApp(menus, group, level) {
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
   if (ad) ad.value = new Date().toISOString().split("T")[0];
-
-  // ── Warm-up izin lokasi (silent, background) ────────────────────────────
-  // Dilakukan setelah login agar TWA/Android sudah menyimpan izin sebelum
-  // user menekan Clock In. Tidak blokir UI, tidak tampilkan gate modal.
-  // Hanya memicu browser/OS untuk menyimpan state "granted" lebih awal.
-  setTimeout(() => {
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: "geolocation" }).then(status => {
-        if (status.state === "granted") {
-          // Sudah granted — ambil satu kali agar GPS lock lebih cepat
-          navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
-            enableHighAccuracy: true, timeout: 10000, maximumAge: 30000
-          });
-        } else if (status.state === "prompt") {
-          // Belum pernah diminta — trigger silent agar OS tahu app ini butuh lokasi
-          // (tidak blokir UI, tidak tampilkan gate — gate akan muncul saat Clock In)
-          navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
-            enableHighAccuracy: false, timeout: 5000, maximumAge: 60000
-          });
-        }
-        // Jika "denied" — biarkan, gate akan muncul saat Clock In
-      }).catch(() => {});
-    } else if (navigator.geolocation) {
-      // Browser lama tanpa Permissions API — coba silent request
-      navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
-        enableHighAccuracy: false, timeout: 5000, maximumAge: 60000
-      });
-    }
-  }, 1500); // delay 1.5s setelah UI selesai render
 }
 
 // Sinkronisasi foto profil ke semua avatar di header
@@ -777,15 +727,8 @@ async function sendAbsen(type, label) {
       return;
     }
     if (loc.timedOut && loc.lat === 0 && loc.lng === 0) {
-      // GPS timeout — tunjukkan pesan tapi beri opsi retry
-      showToast("⚠️ GPS lambat. Pastikan lokasi aktif & sinyal GPS kuat, lalu coba lagi.", "error", 6000);
+      showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif, lalu coba lagi.", "error", 5000);
       [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
-      // Coba warm-up GPS di background agar attempt berikutnya lebih cepat
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
-          enableHighAccuracy: true, timeout: 15000, maximumAge: 0
-        });
-      }
       return;
     }
 
@@ -3168,23 +3111,33 @@ function switchAreaTab(tab) {
   if (isTambah) {
     setTimeout(() => {
       if (!_areaMap) {
+        // ── Init map langsung dengan koordinat default (Bali) ─────────────
+        // Tidak tunggu GPS agar map langsung muncul dan search bisa dipakai
         const defLat = -8.6500000, defLng = 115.2200000;
+        initAreaMap(defLat, defLng);
+
+        // ── GPS hanya untuk update bias search — TIDAK paksa pindah map ──
+        // Ini penting agar admin bisa cari lokasi cabang di kota lain
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             p => {
+              // Hanya update bias koordinat untuk relevansi search
               _updateLocationBias(p.coords.latitude, p.coords.longitude);
-              initAreaMap(p.coords.latitude, p.coords.longitude);
+              // Tampilkan info di coords display
+              const coordEl = document.getElementById("area-coords-display");
+              if (coordEl && coordEl.textContent.includes("Belum")) {
+                coordEl.textContent = `📡 GPS siap — gunakan search atau klik peta`;
+              }
             },
-            () => initAreaMap(defLat, defLng),
-            { enableHighAccuracy: true, timeout: 5000 }
+            () => { /* GPS gagal — bias tetap default, tidak masalah */ },
+            { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
           );
-        } else {
-          initAreaMap(defLat, defLng);
         }
       } else {
+        // Map sudah ada — pastikan render ulang setelah panel visible
         _areaMap.invalidateSize();
       }
-    }, 200);
+    }, 250); // sedikit lebih lama agar panel sudah fully visible
   }
 }
 
@@ -3249,19 +3202,49 @@ function updateAreaCircle() {
 }
 
 function getMyLoc() {
-  navigator.geolocation.getCurrentPosition(p => {
-    const lat = p.coords.latitude;
-    const lng = p.coords.longitude;
-    _updateLocationBias(lat, lng);
-    if (_areaMap) {
-      _areaMap.invalidateSize();
-      _areaMap.setView([lat, lng], 17);
-      _setAreaMarker(lat, lng);
-    } else {
-      initAreaMap(lat, lng);
-    }
-    showToast("📍 Lokasi berhasil diambil!");
-  }, () => showToast("❌ Gagal ambil lokasi. Izinkan akses lokasi.", "error"), {enableHighAccuracy:true});
+  const btn = document.querySelector("button[onclick='getMyLoc()']");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Mengambil..."; }
+
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      const lat = p.coords.latitude;
+      const lng = p.coords.longitude;
+      _updateLocationBias(lat, lng);
+
+      // Kosongkan search input agar user tahu posisi diambil dari GPS
+      const searchEl = document.getElementById("area-search-input");
+      if (searchEl) searchEl.value = "";
+      const suggestEl = document.getElementById("area-search-suggest");
+      if (suggestEl) suggestEl.style.display = "none";
+
+      if (_areaMap) {
+        _areaMap.invalidateSize();
+        _areaMap.setView([lat, lng], 17);
+        _setAreaMarker(lat, lng);
+      } else {
+        initAreaMap(lat, lng);
+      }
+
+      // Update coords display dengan label jelas
+      const coordEl = document.getElementById("area-coords-display");
+      if (coordEl) {
+        const acc = p.coords.accuracy ? ` ±${Math.round(p.coords.accuracy)}m` : "";
+        coordEl.textContent = `📍 Lokasi saya: ${lat.toFixed(6)}, ${lng.toFixed(6)}${acc}`;
+      }
+
+      showToast("📍 Lokasi berhasil diambil!");
+      if (btn) { btn.disabled = false; btn.innerHTML = "📍 Lokasi Saya"; }
+    },
+    err => {
+      if (btn) { btn.disabled = false; btn.innerHTML = "📍 Lokasi Saya"; }
+      if (err.code === 1) {
+        showToast("❌ Izin lokasi ditolak. Aktifkan di Pengaturan HP.", "error");
+      } else {
+        showToast("❌ Gagal ambil lokasi. Pastikan GPS aktif.", "error");
+      }
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
 }
 
 // ─── Search lokasi via Photon (Komoot) ───
@@ -3313,26 +3296,64 @@ async function areaSearchSuggest() {
   const box = document.getElementById("area-search-suggest");
   if (!box) return;
   clearTimeout(_searchTimeout);
-  if (q.length < 3) { box.style.display = "none"; return; }
+  if (q.length < 2) { box.style.display = "none"; return; }
+
+  // Tampilkan loading di dropdown
+  box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--muted);">🔍 Mencari...</div>`;
+  box.style.display = "block";
 
   _searchTimeout = setTimeout(async () => {
     try {
-      // Photon dengan location bias koordinat user — hasil lebih relevan & lokal
-      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`
-                + `&lat=${_userLat}&lon=${_userLng}`;
-      const res = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!res.ok) throw new Error("network");
-      const json = await res.json();
-      const features = json.features || [];
-      if (!features.length) { box.style.display = "none"; return; }
+      let features = [];
+
+      // ── Coba Photon dulu ──────────────────────────────────────────────────
+      try {
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`
+                  + `&lat=${_userLat}&lon=${_userLng}`;
+        const res = await fetch(url, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        });
+        if (res.ok) {
+          const json = await res.json();
+          features = json.features || [];
+        }
+      } catch { /* fallback ke nominatim */ }
+
+      // ── Fallback Nominatim jika Photon kosong ─────────────────────────────
+      if (!features.length) {
+        try {
+          const nmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
+                      + `&format=json&limit=6&accept-language=id`;
+          const nmRes = await fetch(nmUrl, {
+            headers: { "Accept": "application/json", "User-Agent": "AbsensiSmartApp/1.0" }
+          });
+          if (nmRes.ok) {
+            const nmData = await nmRes.json();
+            // Konversi format Nominatim ke format Photon-like untuk reuse renderer
+            features = nmData.map(d => ({
+              geometry: { coordinates: [parseFloat(d.lon), parseFloat(d.lat)] },
+              properties: {
+                name: d.display_name.split(",")[0],
+                _fullName: d.display_name
+              }
+            }));
+          }
+        } catch { /* gagal semua */ }
+      }
+
+      if (!features.length) {
+        box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--muted);">Tidak ditemukan</div>`;
+        return;
+      }
 
       box.innerHTML = features.map(f => {
         const [lng, lat] = f.geometry.coordinates;
         const props      = f.properties;
         const title      = props.name || props.street || q;
-        const subtitle   = _photonDisplayName(props);
-        const safeTitle  = JSON.stringify(subtitle).replace(/"/g, "'");
-        return `<div onclick="areaSelectSuggest(${lat},${lng},${safeTitle})"
+        const subtitle   = props._fullName || _photonDisplayName(props);
+        const safeSubtitle = JSON.stringify(subtitle).replace(/"/g, "'");
+        return `<div onclick="areaSelectSuggest(${lat},${lng},${safeSubtitle})"
           style="padding:10px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid #f5f5f5;
                  color:var(--text);line-height:1.4;"
           onmouseenter="this.style.background='#f8f9ff'"
@@ -3344,7 +3365,9 @@ async function areaSearchSuggest() {
         </div>`;
       }).join("");
       box.style.display = "block";
-    } catch { box.style.display = "none"; }
+    } catch {
+      box.style.display = "none";
+    }
   }, 400);
 }
 
@@ -3361,32 +3384,75 @@ async function searchAreaLocation() {
   const q = document.getElementById("area-search-input")?.value.trim();
   if (!q) return showToast("⚠️ Masukkan nama lokasi yang ingin dicari", "warning");
 
-  const box = document.getElementById("area-search-suggest");
+  const box     = document.getElementById("area-search-suggest");
+  const inputEl = document.getElementById("area-search-input");
   if (box) box.style.display = "none";
 
+  // Loading state
+  if (inputEl) inputEl.style.opacity = "0.5";
   showToast("🔍 Mencari lokasi...", "info", 3000);
-  try {
-    // Photon dengan location bias
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=id`
-              + `&lat=${_userLat}&lon=${_userLng}`;
-    const res = await fetch(url, { headers: { "Accept": "application/json" } });
-    if (!res.ok) throw new Error("network");
-    const json = await res.json();
-    const features = json.features || [];
 
-    if (!features.length) {
+  try {
+    let lat, lng, displayNameResult;
+    let found = false;
+
+    // ── Coba Photon (Komoot) dulu — lebih akurat & support Bahasa Indonesia ──
+    try {
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=id`
+                + `&lat=${_userLat}&lon=${_userLng}`;
+      const res = await fetch(url, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const features = json.features || [];
+        if (features.length) {
+          const best = features[0];
+          [lng, lat] = best.geometry.coordinates;
+          displayNameResult = _photonDisplayName(best.properties);
+          found = true;
+        }
+      }
+    } catch (photonErr) {
+      console.warn("Photon gagal, coba Nominatim:", photonErr.message);
+    }
+
+    // ── Fallback ke Nominatim (OpenStreetMap) jika Photon gagal/kosong ──
+    if (!found) {
+      try {
+        const nmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
+                    + `&format=json&limit=5&accept-language=id`
+                    + `&viewbox=${_userLng-1},${_userLat+1},${_userLng+1},${_userLat-1}&bounded=0`;
+        const nmRes = await fetch(nmUrl, {
+          headers: { "Accept": "application/json", "User-Agent": "AbsensiSmartApp/1.0" }
+        });
+        if (nmRes.ok) {
+          const nmData = await nmRes.json();
+          if (nmData.length) {
+            lat = parseFloat(nmData[0].lat);
+            lng = parseFloat(nmData[0].lon);
+            displayNameResult = nmData[0].display_name;
+            found = true;
+          }
+        }
+      } catch (nmErr) {
+        console.warn("Nominatim juga gagal:", nmErr.message);
+      }
+    }
+
+    if (inputEl) inputEl.style.opacity = "1";
+
+    if (!found) {
       showToast("❌ Lokasi tidak ditemukan. Coba nama jalan, gedung, atau kota.", "error");
       return;
     }
 
-    // Ambil hasil pertama yang paling relevan
-    const best = features[0];
-    const [lng, lat] = best.geometry.coordinates;
-    const displayNameResult = _photonDisplayName(best.properties);
-
     await areaSelectSuggest(lat, lng, displayNameResult);
     showToast("✅ Lokasi ditemukan!");
+
   } catch (err) {
+    if (inputEl) inputEl.style.opacity = "1";
     console.error("Search error:", err);
     showToast("❌ Gagal mencari lokasi. Periksa koneksi internet.", "error");
   }
