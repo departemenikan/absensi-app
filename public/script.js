@@ -3273,6 +3273,55 @@ function _photonDisplayName(props) {
   return parts.join(", ");
 }
 
+// ─── Bounding box — filter hasil hanya Indonesia & prioritaskan Bali ───────────
+const BBOX_INDONESIA = { minLat: -11.0, maxLat:  6.0, minLng:  95.0, maxLng: 141.0 };
+const BBOX_BALI      = { minLat: -8.85, maxLat: -8.05, minLng: 114.4, maxLng: 115.75 };
+
+// Photon pakai format: "lon_min,lat_min,lon_max,lat_max"
+const PHOTON_BBOX_ID   = `${BBOX_INDONESIA.minLng},${BBOX_INDONESIA.minLat},${BBOX_INDONESIA.maxLng},${BBOX_INDONESIA.maxLat}`;
+const PHOTON_BBOX_BALI = `${BBOX_BALI.minLng},${BBOX_BALI.minLat},${BBOX_BALI.maxLng},${BBOX_BALI.maxLat}`;
+
+// Nominatim pakai format: "lon_min,lat_max,lon_max,lat_min"
+const NM_BBOX_ID   = `${BBOX_INDONESIA.minLng},${BBOX_INDONESIA.maxLat},${BBOX_INDONESIA.maxLng},${BBOX_INDONESIA.minLat}`;
+const NM_BBOX_BALI = `${BBOX_BALI.minLng},${BBOX_BALI.maxLat},${BBOX_BALI.maxLng},${BBOX_BALI.minLat}`;
+
+function _inBbox(lat, lng, bbox) {
+  return lat >= bbox.minLat && lat <= bbox.maxLat && lng >= bbox.minLng && lng <= bbox.maxLng;
+}
+
+// Fetch Photon — coba bbox tertentu, filter ketat hanya Indonesia
+async function _fetchPhoton(q, bbox, limit = 6) {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=${limit}&lang=id&bbox=${bbox}`;
+  const res = await fetch(url, {
+    headers: { "Accept": "application/json" },
+    signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json.features || []).filter(f => {
+    const [lng, lat] = f.geometry.coordinates;
+    return _inBbox(lat, lng, BBOX_INDONESIA); // buang hasil luar Indonesia
+  });
+}
+
+// Fetch Nominatim — selalu filter countrycodes=id + viewbox Indonesia
+async function _fetchNominatim(q, bbox, bounded = 1, limit = 6) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
+            + `&format=json&limit=${limit}&accept-language=id,en`
+            + `&countrycodes=id&viewbox=${bbox}&bounded=${bounded}`;
+  const res = await fetch(url, {
+    headers: { "Accept": "application/json", "User-Agent": "AbsensiSmartApp/1.0" }
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data
+    .filter(d => _inBbox(parseFloat(d.lat), parseFloat(d.lon), BBOX_INDONESIA))
+    .map(d => ({
+      geometry: { coordinates: [parseFloat(d.lon), parseFloat(d.lat)] },
+      properties: { name: d.display_name.split(",")[0], _fullName: d.display_name }
+    }));
+}
+
 // Helper: pastikan map sudah init dan visible sebelum setView
 function _ensureMapReady(lat, lng, zoom) {
   return new Promise(resolve => {
@@ -3306,44 +3355,33 @@ async function areaSearchSuggest() {
     try {
       let features = [];
 
-      // ── Coba Photon dulu ──────────────────────────────────────────────────
-      try {
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=id`
-                  + `&lat=${_userLat}&lon=${_userLng}`;
-        const res = await fetch(url, {
-          headers: { "Accept": "application/json" },
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
-        });
-        if (res.ok) {
-          const json = await res.json();
-          features = json.features || [];
-        }
-      } catch { /* fallback ke nominatim */ }
+      // ── Strategi: Bali dulu → seluruh Indonesia → Nominatim Indonesia ──────
+      // Langkah 1: Photon dengan bbox Bali (prioritas utama)
+      try { features = await _fetchPhoton(q, PHOTON_BBOX_BALI, 6); } catch {}
 
-      // ── Fallback Nominatim jika Photon kosong ─────────────────────────────
+      // Langkah 2: Photon seluruh Indonesia jika hasil Bali kosong
       if (!features.length) {
-        try {
-          const nmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
-                      + `&format=json&limit=6&accept-language=id`;
-          const nmRes = await fetch(nmUrl, {
-            headers: { "Accept": "application/json", "User-Agent": "AbsensiSmartApp/1.0" }
-          });
-          if (nmRes.ok) {
-            const nmData = await nmRes.json();
-            // Konversi format Nominatim ke format Photon-like untuk reuse renderer
-            features = nmData.map(d => ({
-              geometry: { coordinates: [parseFloat(d.lon), parseFloat(d.lat)] },
-              properties: {
-                name: d.display_name.split(",")[0],
-                _fullName: d.display_name
-              }
-            }));
-          }
-        } catch { /* gagal semua */ }
+        try { features = await _fetchPhoton(q, PHOTON_BBOX_ID, 6); } catch {}
       }
 
+      // Langkah 3: Nominatim Indonesia (bounded ke Bali dulu)
       if (!features.length) {
-        box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--muted);">Tidak ditemukan</div>`;
+        try { features = await _fetchNominatim(q, NM_BBOX_BALI, 1, 6); } catch {}
+      }
+
+      // Langkah 4: Nominatim seluruh Indonesia
+      if (!features.length) {
+        try { features = await _fetchNominatim(q, NM_BBOX_ID, 1, 6); } catch {}
+      }
+
+      // Pastikan sekali lagi tidak ada hasil luar Indonesia yang lolos
+      features = features.filter(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        return _inBbox(lat, lng, BBOX_INDONESIA);
+      });
+
+      if (!features.length) {
+        box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--muted);">Tidak ditemukan di Indonesia. Coba tambah nama kota/kabupaten.</div>`;
         return;
       }
 
@@ -3396,55 +3434,44 @@ async function searchAreaLocation() {
     let lat, lng, displayNameResult;
     let found = false;
 
-    // ── Coba Photon (Komoot) dulu — lebih akurat & support Bahasa Indonesia ──
-    try {
-      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=id`
-                + `&lat=${_userLat}&lon=${_userLng}`;
-      const res = await fetch(url, {
-        headers: { "Accept": "application/json" },
-        signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const features = json.features || [];
-        if (features.length) {
-          const best = features[0];
-          [lng, lat] = best.geometry.coordinates;
-          displayNameResult = _photonDisplayName(best.properties);
-          found = true;
-        }
-      }
-    } catch (photonErr) {
-      console.warn("Photon gagal, coba Nominatim:", photonErr.message);
+    // ── Strategi bertahap: Bali → Indonesia → tidak ketemu ──────────────────
+    let features = [];
+
+    // Langkah 1: Photon bbox Bali (paling presisi untuk lokasi Bali)
+    try { features = await _fetchPhoton(q, PHOTON_BBOX_BALI, 5); } catch {}
+
+    // Langkah 2: Photon seluruh Indonesia
+    if (!features.length) {
+      try { features = await _fetchPhoton(q, PHOTON_BBOX_ID, 5); } catch {}
     }
 
-    // ── Fallback ke Nominatim (OpenStreetMap) jika Photon gagal/kosong ──
-    if (!found) {
-      try {
-        const nmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
-                    + `&format=json&limit=5&accept-language=id`
-                    + `&viewbox=${_userLng-1},${_userLat+1},${_userLng+1},${_userLat-1}&bounded=0`;
-        const nmRes = await fetch(nmUrl, {
-          headers: { "Accept": "application/json", "User-Agent": "AbsensiSmartApp/1.0" }
-        });
-        if (nmRes.ok) {
-          const nmData = await nmRes.json();
-          if (nmData.length) {
-            lat = parseFloat(nmData[0].lat);
-            lng = parseFloat(nmData[0].lon);
-            displayNameResult = nmData[0].display_name;
-            found = true;
-          }
-        }
-      } catch (nmErr) {
-        console.warn("Nominatim juga gagal:", nmErr.message);
-      }
+    // Langkah 3: Nominatim bounded Bali
+    if (!features.length) {
+      try { features = await _fetchNominatim(q, NM_BBOX_BALI, 1, 5); } catch {}
+    }
+
+    // Langkah 4: Nominatim seluruh Indonesia
+    if (!features.length) {
+      try { features = await _fetchNominatim(q, NM_BBOX_ID, 1, 5); } catch {}
+    }
+
+    // Filter terakhir — pastikan tidak ada yang lolos dari luar Indonesia
+    features = features.filter(f => {
+      const [fLng, fLat] = f.geometry.coordinates;
+      return _inBbox(fLat, fLng, BBOX_INDONESIA);
+    });
+
+    if (features.length) {
+      const best = features[0];
+      [lng, lat] = best.geometry.coordinates;
+      displayNameResult = best.properties._fullName || _photonDisplayName(best.properties);
+      found = true;
     }
 
     if (inputEl) inputEl.style.opacity = "1";
 
     if (!found) {
-      showToast("❌ Lokasi tidak ditemukan. Coba nama jalan, gedung, atau kota.", "error");
+      showToast("❌ Lokasi tidak ditemukan di Indonesia. Coba tambahkan nama kota/kabupaten (contoh: 'Reefmaster Klungkung Bali').", "error", 6000);
       return;
     }
 
