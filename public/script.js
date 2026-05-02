@@ -2871,6 +2871,13 @@ function switchAksesTab(tab) {
     btnAkses.style.background = "transparent";
     btnAkses.style.color      = "var(--muted)";
     btnAkses.style.boxShadow  = "none";
+    // Buka section Rules otomatis
+    const gbody = document.getElementById("gbody-rules-absensi");
+    const chev  = document.getElementById("chev-rules-absensi");
+    if (gbody && !gbody.classList.contains("open")) {
+      gbody.classList.add("open");
+      if (chev) chev.style.transform = "rotate(90deg)";
+    }
     loadRules();
   }
 }
