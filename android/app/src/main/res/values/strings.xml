@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">absensi-smart</string>
+    <string name="title_activity_main">absensi-smart</string>
+    <string name="package_name">com.sukodo.absensi</string>
+    <string name="custom_url_scheme">com.sukodo.absensi</string>
+</resources>

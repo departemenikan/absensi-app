@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "256102109985",
+    "project_id": "absensi-smart",
+    "storage_bucket": "absensi-smart.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:256102109985:android:4f5d1cf9f8f62eee1be460",
+        "android_client_info": {
+          "package_name": "com.sukodo.absensi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARV83_U7XZgB9wo9LfSNCQaoMWV_jpmuY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
