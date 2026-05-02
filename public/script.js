@@ -2901,7 +2901,8 @@ async function loadRules() {
       .filter(u => u.group !== "owner") // owner tidak perlu diatur
       .map(u => {
         const isMess   = _rulesMessList.includes(u.username);
-        const initials = (u.nama || u.username).charAt(0).toUpperCase();
+        const nama     = u.namaLengkap || u.username;
+        const initials = nama.charAt(0).toUpperCase();
         const avatar   = u.photo
           ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
           : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
@@ -2914,8 +2915,8 @@ async function loadRules() {
           <div style="display:flex;align-items:center;gap:10px;">
             ${avatar}
             <div>
-              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${u.nama || u.username}</div>
-              <div style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
+              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</div>
+              <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
                 ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
               </div>
             </div>
@@ -2941,14 +2942,11 @@ function onMessToggle(username, checked) {
   } else {
     _rulesMessList = _rulesMessList.filter(u => u !== username);
   }
-  // Update label langsung
-  const row = document.querySelector(`#mess-cb-${username}`)?.closest("div[style*='border-bottom']");
-  if (row) {
-    const label = row.querySelector("div > div:last-child");
-    if (label) {
-      label.style.color = checked ? "#e67e22" : "var(--muted)";
-      label.textContent = checked ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess";
-    }
+  // Update label langsung via id
+  const label = document.getElementById(`mess-label-${username}`);
+  if (label) {
+    label.style.color = checked ? "#e67e22" : "var(--muted)";
+    label.textContent = checked ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess";
   }
 }
 
