@@ -1536,8 +1536,9 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
   const tahun    = parseInt(req.query.tahun) || new Date().getFullYear();
   const data     = load(F.data, []);
   const kuota    = load(F.kuotaCuti, {});
+  const pengajuan = load(F.pengajuanCuti, []);
 
-  // Kumpulkan jam per minggu untuk user di tahun ini
+  // Kumpulkan jam absensi fisik per minggu untuk user di tahun ini
   const weekMap = {};
   data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
     .forEach(d => {
@@ -1545,6 +1546,32 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
       if (!weekMap[wk]) weekMap[wk] = 0;
       weekMap[wk] += hitungJamKerja(d);
     });
+
+  // Tambahkan jam cuti tahunan yang disetujui ke weekMap
+  // agar hari cuti ikut dihitung sebagai jam kerja dalam akumulasi 40 jam/minggu
+  const cutiUser = pengajuan.filter(p =>
+    p.username === username &&
+    p.status === "disetujui" &&
+    p.kuotaKey === "tahunan" &&
+    p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
+  );
+  cutiUser.forEach(p => {
+    const tMulai = p.tanggalMulai;
+    const tAkhir = p.tanggalAkhir || tMulai;
+    // Iterasi setiap hari dalam rentang cuti
+    let cur = new Date(tMulai + "T00:00:00");
+    const end = new Date(tAkhir + "T00:00:00");
+    while (cur <= end) {
+      const dateStr = cur.toISOString().split("T")[0];
+      const jamHari = cutiHariKeJam(dateStr);
+      if (jamHari > 0) {
+        const wk = weekKey(dateStr);
+        if (!weekMap[wk]) weekMap[wk] = 0;
+        weekMap[wk] += jamHari;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
 
   // Total jam overtime = kelebihan di atas 40 jam per minggu
   let totalOvertimeJam = 0;
@@ -1564,8 +1591,10 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   const data  = load(F.data, []);
   const kuota = load(F.kuotaCuti, {});
+  const pengajuan = load(F.pengajuanCuti, []);
 
   Object.keys(users).forEach(username => {
+    // Jam absensi fisik per minggu
     const weekMap = {};
     data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
       .forEach(d => {
@@ -1573,6 +1602,31 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
         if (!weekMap[wk]) weekMap[wk] = 0;
         weekMap[wk] += hitungJamKerja(d);
       });
+
+    // Tambahkan jam cuti tahunan yang disetujui ke weekMap
+    const cutiUser = pengajuan.filter(p =>
+      p.username === username &&
+      p.status === "disetujui" &&
+      p.kuotaKey === "tahunan" &&
+      p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
+    );
+    cutiUser.forEach(p => {
+      const tMulai = p.tanggalMulai;
+      const tAkhir = p.tanggalAkhir || tMulai;
+      let cur = new Date(tMulai + "T00:00:00");
+      const end = new Date(tAkhir + "T00:00:00");
+      while (cur <= end) {
+        const dateStr = cur.toISOString().split("T")[0];
+        const jamHari = cutiHariKeJam(dateStr);
+        if (jamHari > 0) {
+          const wk = weekKey(dateStr);
+          if (!weekMap[wk]) weekMap[wk] = 0;
+          weekMap[wk] += jamHari;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
     let totalOvertimeJam = 0;
     Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU); });
     const k = initKuotaUser(kuota, username, tahun);
@@ -1726,8 +1780,8 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
 
   // Validasi & kurangi saldo
   if (kuotaKey === "tahunan") {
-    // durasi dikirim dalam JAM dari frontend, konversi ke HARI (1 hari = 8 jam)
-    const durasiHari = satuanDurasi === "jam" ? parseFloat(durasi) / 8 : parseFloat(durasi);
+    // durasi dikirim dalam HARI KERJA dari frontend (satuanDurasi="hari")
+    const durasiHari = parseFloat(durasi);
     const sisa = k.tahunan.total - k.tahunan.terpakai;
     if (durasiHari > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
     k.tahunan.terpakai += durasiHari;
@@ -1831,9 +1885,8 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, p.username, tahun);
   if (p.kuotaKey === "tahunan") {
-    // durasi tersimpan dalam JAM jika satuanDurasi "jam", konversi ke hari saat kembalikan saldo
-    const hariKembali = p.satuanDurasi === "jam" ? p.durasi / 8 : p.durasi;
-    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - hariKembali);
+    // durasi tersimpan dalam HARI, kembalikan langsung
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
     k.overtime.jamAkumulasi += jamKembali;
@@ -1871,9 +1924,8 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, p.username, tahun);
   if (p.kuotaKey === "tahunan") {
-    // durasi tersimpan dalam JAM jika satuanDurasi "jam", konversi ke hari saat kembalikan saldo
-    const hariKembali = p.satuanDurasi === "jam" ? p.durasi / 8 : p.durasi;
-    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - hariKembali);
+    // durasi tersimpan dalam HARI, kembalikan langsung
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
     k.overtime.jamAkumulasi += jamKembali;

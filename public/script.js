@@ -6461,16 +6461,24 @@ async function saveTambahCuti() {
   let durasi, satuanDurasi, tanggalMulai, tanggalAkhir, jamMulai, jamAkhir;
 
   if (kuotaKey === "tahunan") {
-    // ── Cuti Tahunan: durasi JAM dihitung otomatis dari rentang tanggal ──────
+    // ── Cuti Tahunan: durasi HARI KERJA dihitung dari rentang tanggal ──────
     tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
     tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
     if (!tanggalMulai) return showToast("⚠️ Pilih tanggal mulai cuti!", "warning");
 
-    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    // Hitung hari kerja aktual (Minggu = 0, tidak dihitung)
+    let hariKerja = 0;
+    const _cur = new Date(tanggalMulai + "T00:00:00");
+    const _end = new Date((tanggalAkhir || tanggalMulai) + "T00:00:00");
+    while (_cur <= _end) {
+      if (_cur.getDay() !== 0) hariKerja++; // Minggu dilewati
+      _cur.setDate(_cur.getDate() + 1);
+    }
+    durasi = hariKerja;
     if (!durasi || durasi <= 0)
       return showToast("⚠️ Tidak ada hari kerja dalam rentang tanggal yang dipilih!", "warning");
 
-    satuanDurasi = "jam";   // selalu jam — sudah dikonversi berdasarkan hari kerja
+    satuanDurasi = "hari";  // satuan hari — server simpan & kurangi saldo dalam hari
     jamMulai     = null;
     jamAkhir     = null;
 
@@ -6509,16 +6517,24 @@ async function saveTambahCuti() {
     tanggalAkhir = null;
 
   } else {
-    // ── Kebijakan custom satuan HARI: form seperti cuti tahunan ─────────────
+    // ── Kebijakan custom satuan HARI: hitung hari kerja aktual ─────────────
     tanggalMulai = document.getElementById("tc-tgl-mulai").value || null;
     tanggalAkhir = document.getElementById("tc-tgl-akhir").value || null;
     if (!tanggalMulai) return showToast("⚠️ Pilih tanggal mulai cuti!", "warning");
 
-    durasi = parseFloat(document.getElementById("tc-durasi-computed").value);
+    // Hitung hari kerja aktual (Minggu tidak dihitung)
+    let hariKerja = 0;
+    const _cur2 = new Date(tanggalMulai + "T00:00:00");
+    const _end2 = new Date((tanggalAkhir || tanggalMulai) + "T00:00:00");
+    while (_cur2 <= _end2) {
+      if (_cur2.getDay() !== 0) hariKerja++;
+      _cur2.setDate(_cur2.getDate() + 1);
+    }
+    durasi = hariKerja;
     if (!durasi || durasi <= 0)
       return showToast("⚠️ Tidak ada hari kerja dalam rentang tanggal yang dipilih!", "warning");
 
-    satuanDurasi = "jam";
+    satuanDurasi = "hari";
     jamMulai     = null;
     jamAkhir     = null;
   }
