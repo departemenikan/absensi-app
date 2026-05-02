@@ -2915,7 +2915,6 @@ async function loadRules() {
   }
 
   el.innerHTML = anggota
-    .filter(u => u.group !== "owner")
     .map(u => {
       const isMess   = _rulesMessList.includes(u.username);
       const nama     = u.namaLengkap || u.username;
@@ -2932,7 +2931,11 @@ async function loadRules() {
         <div style="display:flex;align-items:center;gap:10px;">
           ${avatar}
           <div>
-            <div style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</span>
+              <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;color:white;
+                background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
+            </div>
             <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
               ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
             </div>
