@@ -570,10 +570,9 @@
 <!-- ============================================================ -->
 <div id="view-rekap" class="view">
   <div class="page-wrap">
-    <div class="top-header">
-      
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>📋 Rekap Absensi</h3>
-      <p>Jam kerja seluruh anggota per bulan</p>
       <button class="hdr-avatar-btn" onclick="navTo('profil')" id="hdr-avatar-rekap" title="Profil Saya">👤</button>
     </div>
 
@@ -1891,7 +1890,7 @@
 <div id="view-profil" class="view">
   <div class="page-wrap">
     <div class="sub-header">
-      <button class="back-btn" onclick="history.back()">‹</button>
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
       <h3>👤 Profil Saya</h3>
     </div>
     <div style="margin-top:36px;">
