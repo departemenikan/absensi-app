@@ -1014,11 +1014,19 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const days = dates.map(dateStr => {
       const rec = data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
+      let isActive = false;
       if (rec && rec.jamMasuk && rec.jamKeluar) {
         const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
         let bt = 0;
         (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
         jamKerja = Math.max(0, work - bt);
+      } else if (rec && rec.jamMasuk && !rec.jamKeluar) {
+        // Masih aktif — hitung sampai sekarang, client update realtime tiap menit
+        const work = (Date.now() - new Date(rec.jamMasuk).getTime()) / 3600000;
+        let bt = 0;
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        jamKerja = Math.max(0, work - bt);
+        isActive = true;
       }
 
       // Cari semua cuti yang berlaku di tanggal ini
@@ -1029,7 +1037,11 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
       return {
         date: dateStr,
         dow:  new Date(dateStr + "T00:00:00").getDay(), // 0=Min
-        jamKerja: parseFloat(jamKerja.toFixed(2)),
+        jamKerja:  parseFloat(jamKerja.toFixed(2)),
+        isActive,  // true jika masih clock in (realtime di client)
+        jamMasuk:  rec?.jamMasuk  || null,
+        breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
+                      .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
         jamCuti:  parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
         absenId: rec ? rec.date : null, // untuk edit modal

@@ -101,6 +101,9 @@ function openView(viewId) {
   }
   if (viewId === "view-profil")     loadProfil();
   if (viewId === "view-tracking")   loadTracking();
+  // Stop ts ticker saat meninggalkan timesheet
+  if (viewId !== "view-timesheet" && typeof stopTsTicker === "function") stopTsTicker();
+
   if (viewId === "view-timesheet")  {
     if (!_tsWeekStart) _tsWeekStart = tsGetMonday();
     loadTimesheet();
@@ -4433,6 +4436,33 @@ let _tsCurrent    = null;  // {username, date} untuk modal edit
 const DOW_LABEL = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
 const DOW_COLOR = { 0:"#e53935", 6:"#9c27b0" }; // Minggu merah, Sabtu ungu
 
+// ─── TIMESHEET REALTIME TICKER ───────────────────────────────
+let _tsTicker = null;
+
+function startTsTicker() {
+  stopTsTicker();
+  const cells = document.querySelectorAll(".ts-active-cell");
+  if (!cells.length) return;
+
+  function tickCells() {
+    const now = Date.now();
+    document.querySelectorAll(".ts-active-cell").forEach(cell => {
+      const jamMasuk   = cell.getAttribute("data-jammasuk");
+      const breakDetik = parseFloat(cell.getAttribute("data-breakdetik") || "0");
+      if (!jamMasuk) return;
+      const elapsedJam = Math.max(0, (now - new Date(jamMasuk).getTime()) / 3600000 - breakDetik / 3600);
+      cell.textContent = fmtJamRealtime(elapsedJam);
+    });
+  }
+  tickCells();
+  _tsTicker = setInterval(tickCells, 30000); // update tiap 30 detik
+}
+
+function stopTsTicker() {
+  if (_tsTicker) { clearInterval(_tsTicker); _tsTicker = null; }
+}
+// ─────────────────────────────────────────────────────────────
+
 function tsGetMonday(d = new Date()) {
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
@@ -4458,6 +4488,15 @@ function fmtJam(jam) {
   const h = Math.floor(jam);
   const m = Math.round((jam - h) * 60);
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// Format jam realtime HH:MM — tanpa detik, untuk sel aktif timesheet
+function fmtJamRealtime(jam) {
+  if (!jam || jam < 0) return "0:00";
+  const totalMin = Math.floor(jam * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
 }
 
 function fmtTime(isoStr) {
@@ -4547,7 +4586,19 @@ function tsRender() {
           <div style="font-size:11px;color:#1565c0;font-weight:700;">${fmtJam(day.jamCuti)}</div>
           <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
       } else if (hasKerja) {
-        cellContent = `<div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>`;
+        if (day.isActive) {
+          // Hari ini masih aktif — tampilkan realtime (update tiap menit)
+          cellContent = `
+            <div class="ts-active-cell"
+              data-jammasuk="${day.jamMasuk || ''}"
+              data-breakdetik="${day.breakDetik || 0}"
+              style="font-size:12px;font-weight:700;color:#2e7d32;font-variant-numeric:tabular-nums;">
+              ${fmtJamRealtime(day.jamKerja)}
+            </div>
+            <div style="font-size:9px;color:#66bb6a;margin-top:1px;">▶ aktif</div>`;
+        } else {
+          cellContent = `<div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>`;
+        }
       } else {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
       }
@@ -4622,6 +4673,9 @@ function tsRender() {
       </table>
     </div>
 `;  // (legend dihapus per permintaan revisi)
+
+  // Start realtime ticker untuk sel aktif hari ini
+  setTimeout(startTsTicker, 100);
 
   // Hover listener: tampilkan/sembunyikan ikon pensil hanya untuk baris canEdit
   el.querySelectorAll("tr.ts-row[data-canedit='1']").forEach(row => {
