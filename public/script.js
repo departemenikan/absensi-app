@@ -2883,57 +2883,63 @@ async function loadRules() {
   if (!el) return;
   el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>';
 
+  // Fetch anggota dulu — wajib
+  let anggota = [];
   try {
-    const [rulesRes, anggotaRes] = await Promise.all([
-      authFetch("/rules"),
-      authFetch("/anggota")
-    ]);
-    const rules   = await rulesRes.json();
-    const anggota = await anggotaRes.json();
-    _rulesMessList = rules.messList || [];
+    const r = await authFetch("/anggota");
+    anggota  = await r.json();
+  } catch {
+    el.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;font-size:13px;">❌ Gagal memuat daftar anggota</p>';
+    return;
+  }
 
-    if (!anggota.length) {
-      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada anggota</p>';
-      return;
-    }
+  // Fetch rules — opsional, gagal = default kosong
+  try {
+    const r   = await authFetch("/rules");
+    const d   = await r.json();
+    _rulesMessList = d.messList || [];
+  } catch {
+    _rulesMessList = [];
+  }
 
-    el.innerHTML = anggota
-      .filter(u => u.group !== "owner") // owner tidak perlu diatur
-      .map(u => {
-        const isMess   = _rulesMessList.includes(u.username);
-        const nama     = u.namaLengkap || u.username;
-        const initials = nama.charAt(0).toUpperCase();
-        const avatar   = u.photo
-          ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-          : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
-               display:flex;align-items:center;justify-content:center;color:white;
-               font-weight:800;font-size:14px;flex-shrink:0;">${initials}</div>`;
+  if (!anggota.length) {
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada anggota</p>';
+    return;
+  }
 
-        return `
-        <div style="display:flex;align-items:center;justify-content:space-between;
-                    padding:10px 0;border-bottom:1px solid #f5f5f5;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            ${avatar}
-            <div>
-              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</div>
-              <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
-                ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
-              </div>
+  el.innerHTML = anggota
+    .filter(u => u.group !== "owner")
+    .map(u => {
+      const isMess   = _rulesMessList.includes(u.username);
+      const nama     = u.namaLengkap || u.username;
+      const initials = nama.charAt(0).toUpperCase();
+      const avatar   = u.photo
+        ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+             display:flex;align-items:center;justify-content:center;color:white;
+             font-weight:800;font-size:14px;flex-shrink:0;">${initials}</div>`;
+
+      return `
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:10px 0;border-bottom:1px solid #f5f5f5;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${avatar}
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</div>
+            <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
+              ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
             </div>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
-            <input type="checkbox" id="mess-cb-${u.username}"
-              ${isMess ? "checked" : ""}
-              onchange="onMessToggle('${u.username}', this.checked)"
-              style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
-            <span style="font-size:12px;color:var(--muted);">Mess</span>
-          </label>
-        </div>`;
-      }).join("");
-
-  } catch {
-    el.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;font-size:13px;">❌ Gagal memuat</p>';
-  }
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="mess-cb-${u.username}"
+            ${isMess ? "checked" : ""}
+            onchange="onMessToggle('${u.username}', this.checked)"
+            style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
+          <span style="font-size:12px;color:var(--muted);">Mess</span>
+        </label>
+      </div>`;
+    }).join("");
 }
 
 function onMessToggle(username, checked) {
