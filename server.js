@@ -57,10 +57,11 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 // Kirim push ke satu user (berdasarkan username)
 async function sendPushToUser(username, title, body, data = {}) {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) { console.log("[PUSH] VAPID tidak aktif"); return; }
   const subs = load(F.pushSubs, {});
   const userSubs = subs[username];
-  if (!userSubs || userSubs.length === 0) return;
+  console.log(`[PUSH] Kirim ke ${username}, subs:`, userSubs ? userSubs.length : 0);
+  if (!userSubs || userSubs.length === 0) { console.log(`[PUSH] Tidak ada subscription untuk ${username}`); return; }
 
   const payload = JSON.stringify({ title, body, ...data });
   const deadSubs = [];
@@ -68,13 +69,13 @@ async function sendPushToUser(username, title, body, data = {}) {
   for (const sub of userSubs) {
     try {
       await webpush.sendNotification(sub, payload);
+      console.log(`[PUSH] Berhasil kirim ke ${username}`);
     } catch (err) {
-      // 410 Gone = subscription sudah tidak valid, hapus
+      console.log(`[PUSH] Gagal kirim ke ${username}:`, err.statusCode, err.message);
       if (err.statusCode === 410 || err.statusCode === 404) deadSubs.push(sub.endpoint);
     }
   }
 
-  // Bersihkan subscription mati
   if (deadSubs.length > 0) {
     subs[username] = userSubs.filter(s => !deadSubs.includes(s.endpoint));
     save(F.pushSubs, subs);
