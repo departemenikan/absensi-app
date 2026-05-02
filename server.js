@@ -4,6 +4,7 @@ const path     = require("path");
 const bcrypt   = require("bcryptjs");
 const webpush  = require("web-push");
 const app      = express();
+const { dbLoad, dbSave, migrateFromTmp } = require("./db");
 
 const BCRYPT_ROUNDS = 10;
 
@@ -14,27 +15,86 @@ const DATA_DIR = IS_CLOUD ? "/tmp" : ".";
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("public"));
 
+// ── Key Supabase (string pendek) ↔ path file /tmp (untuk fallback & migrasi) ──
 const F = {
-  data:           path.join(DATA_DIR, "data.json"),
-  users:          path.join(DATA_DIR, "users.json"),
-  areas:          path.join(DATA_DIR, "areas.json"),
-  libur:          path.join(DATA_DIR, "libur.json"),
-  aktivitas:      path.join(DATA_DIR, "aktivitas.json"),
-  groups:         path.join(DATA_DIR, "groups.json"),
-  divisi:         path.join(DATA_DIR, "divisi.json"),
-  tracking:       path.join(DATA_DIR, "tracking.json"),
-  kebijakanCuti:  path.join(DATA_DIR, "kebijakan_cuti.json"),
-  kuotaCuti:      path.join(DATA_DIR, "kuota_cuti.json"),
-  pengajuanCuti:  path.join(DATA_DIR, "pengajuan_cuti.json"),
-  aktivitasKustom: path.join(DATA_DIR, "aktivitas_kustom.json"),
-  rules:           path.join(DATA_DIR, "rules.json"),
-  pushSubs:        path.join(DATA_DIR, "push_subscriptions.json"),
+  data:            "data",
+  users:           "users",
+  areas:           "areas",
+  libur:           "libur",
+  aktivitas:       "aktivitas",
+  groups:          "groups",
+  divisi:          "divisi",
+  tracking:        "tracking",
+  kebijakanCuti:   "kebijakan_cuti",
+  kuotaCuti:       "kuota_cuti",
+  pengajuanCuti:   "pengajuan_cuti",
+  aktivitasKustom: "aktivitas_kustom",
+  rules:           "rules",
+  pushSubs:        "push_subscriptions",
 };
 
-function load(file, def) {
-  if (!fs.existsSync(file)) return def;
-  try { return JSON.parse(fs.readFileSync(file)); } catch { return def; }
-}function save(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+// Path file /tmp untuk keperluan migrasi data lama
+const F_TMP = Object.fromEntries(
+  Object.entries(F).map(([k, v]) => [v, path.join(DATA_DIR, `${v}.json`)])
+);
+
+// ── load() dan save() sekarang SYNC-compatible menggunakan in-memory cache ───
+// Cara kerja:
+//   - Semua data di-load ke RAM saat server start (loadAll)
+//   - load() dan save() baca/tulis ke RAM — tetap sync, tidak perlu ubah 180 baris
+//   - save() juga trigger async write ke Supabase di background
+//   - RAM state reset saat server restart → di-load ulang dari Supabase
+
+const _store = {}; // In-memory store
+
+function load(key, def) {
+  if (key in _store) return _store[key];
+  return def;
+}
+
+function save(key, data) {
+  _store[key] = data;
+  // Write ke Supabase di background — tidak block response
+  dbSave(key, data).catch(e => console.error(`[SAVE] Gagal persist "${key}":`, e.message));
+}
+
+// ── Preload semua data dari Supabase ke RAM saat server start ─────────────────
+async function loadAll() {
+  console.log("[DB] Memuat semua data dari Supabase...");
+  const keys = Object.values(F);
+  const defaults = {
+    data: [], users: {}, areas: [], libur: [],
+    aktivitas: [], groups: [], divisi: [],
+    tracking: {}, kebijakan_cuti: [], kuota_cuti: {},
+    pengajuan_cuti: [], aktivitas_kustom: [],
+    rules: { messList: [] }, push_subscriptions: {},
+  };
+
+  await Promise.all(
+    keys.map(async key => {
+      const val = await dbLoad(key, defaults[key] ?? null);
+      if (val !== null) _store[key] = val;
+      else if (defaults[key] !== undefined) _store[key] = defaults[key];
+    })
+  );
+
+  console.log("[DB] ✅ Semua data berhasil dimuat ke RAM");
+}
+
+// ── Jalankan: migrasi data lama + load ke RAM sebelum server siap ─────────────
+async function initDB() {
+  await migrateFromTmp(F_TMP); // pindahkan data /tmp ke Supabase jika ada
+  await loadAll();              // muat semua data ke RAM
+}
+
+// Server mulai setelah DB siap
+initDB().then(() => {
+  app.listen(PORT, () => console.log(`✅ Server jalan di port ${PORT}`));
+}).catch(e => {
+  console.error("[DB] Gagal inisialisasi database:", e);
+  // Tetap jalankan server meski DB gagal (pakai data default)
+  app.listen(PORT, () => console.log(`⚠️  Server jalan tanpa DB di port ${PORT}`));
+});
 
 // ========================
 // WEB PUSH (VAPID)
@@ -2330,16 +2390,6 @@ app.get("/push/vapid-public-key", (req, res) => {
   res.json({ key: VAPID_PUBLIC });
 });
 
-// POST: cek apakah subscription endpoint masih terdaftar di server
-app.post("/push/check", requireLevel(99), (req, res) => {
-  const username = req._requester;
-  const { endpoint } = req.body;
-  const subs = load(F.pushSubs, {});
-  const userSubs = subs[username] || [];
-  const found = userSubs.some(s => s.endpoint === endpoint);
-  res.json({ status: found ? "OK" : 410 });
-});
-
 // POST: simpan subscription baru
 app.post("/push/subscribe", requireLevel(99), (req, res) => {
   const username = req._requester;
@@ -2387,6 +2437,6 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
 });
 
 // ========================
-// START SERVER
+// START SERVER — dipindah ke initDB().then() di bagian atas file
 // ========================
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
