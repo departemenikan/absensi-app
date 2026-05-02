@@ -1579,13 +1579,13 @@ async function getLoc() {
     try {
       const permStatus = await navigator.permissions.query({ name: "geolocation" });
       if (permStatus.state === "denied") {
-        showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+        showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
         return { lat: 0, lng: 0, accuracy: 0, denied: true };
       }
     } catch { /* browser lama tidak support, lanjut */ }
   }
 
-  // Helper: coba ambil posisi dengan opsi tertentu — sertakan accuracy
+  // Helper: getCurrentPosition biasa
   const tryGetPos = (highAccuracy, timeoutMs, maxAge) => new Promise(resolve => {
     if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: 0, denied: true });
     navigator.geolocation.getCurrentPosition(
@@ -1593,8 +1593,7 @@ async function getLoc() {
         lat: p.coords.latitude,
         lng: p.coords.longitude,
         accuracy: p.coords.accuracy || 0,
-        denied: false,
-        timedOut: false
+        denied: false, timedOut: false
       }),
       err => resolve({
         lat: 0, lng: 0, accuracy: 0,
@@ -1605,35 +1604,73 @@ async function getLoc() {
     );
   });
 
-  // Strategi bertahap — hanya lanjut ke step berikut jika belum dapat koordinat
-  // dan bukan karena izin ditolak (denied)
-  showToast("📍 Mendeteksi lokasi GPS...", "warning", 5000);
-  let result = await tryGetPos(true, 15000, 5000);    // 1. GPS presisi, tunggu 15 detik
+  // Helper: watchPosition — lebih andal untuk Android cold-start GPS
+  // Menunggu sampai dapat fix pertama atau timeout
+  const tryWatch = (timeoutMs) => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: 0, denied: true });
+    let watchId;
+    const timer = setTimeout(() => {
+      navigator.geolocation.clearWatch(watchId);
+      resolve({ lat: 0, lng: 0, accuracy: 0, denied: false, timedOut: true });
+    }, timeoutMs);
 
+    watchId = navigator.geolocation.watchPosition(
+      p => {
+        clearTimeout(timer);
+        navigator.geolocation.clearWatch(watchId);
+        resolve({
+          lat: p.coords.latitude,
+          lng: p.coords.longitude,
+          accuracy: p.coords.accuracy || 0,
+          denied: false, timedOut: false
+        });
+      },
+      err => {
+        clearTimeout(timer);
+        navigator.geolocation.clearWatch(watchId);
+        resolve({
+          lat: 0, lng: 0, accuracy: 0,
+          denied: err.code === 1,
+          timedOut: err.code === 3 || err.code === 2
+        });
+      },
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
+    );
+  });
+
+  showToast("📍 Mendeteksi lokasi GPS...", "warning", 6000);
+
+  // Step 1: Coba cache GPS terakhir dulu (cepat, < 5 detik)
+  let result = await tryGetPos(true, 5000, 10000);
   if (result.denied) {
-    showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+    showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
     return result;
   }
 
+  // Step 2: Jika cache kosong, pakai watchPosition (andal untuk cold-start Android)
   if (result.lat === 0 && result.lng === 0) {
-    showToast("📍 Beralih ke sinyal jaringan...", "warning", 4000);
-    result = await tryGetPos(false, 10000, 60000);    // 2. Network/WiFi, tunggu 10 detik
+    showToast("📍 Menunggu sinyal GPS...", "warning", 8000);
+    result = await tryWatch(20000);   // tunggu sampai 20 detik
   }
 
+  // Step 3: Fallback ke network/WiFi
+  if (!result.denied && result.lat === 0 && result.lng === 0) {
+    showToast("📍 Beralih ke sinyal jaringan...", "warning", 4000);
+    result = await tryGetPos(false, 12000, 60000);
+  }
+
+  // Step 4: Terakhir, ambil cache lama (sampai 5 menit)
   if (!result.denied && result.lat === 0 && result.lng === 0) {
     showToast("📍 Mencoba lokasi tersimpan...", "warning", 3000);
-    result = await tryGetPos(false, 8000, 300000);    // 3. Cache sampai 5 menit
+    result = await tryGetPos(false, 8000, 300000);
   }
 
-  // Terima hasil meski accuracy buruk — server yang tentukan toleransi
-  // Jangan buang hasil hanya karena accuracy tinggi (ratusan meter)
   if (result.denied) {
-    showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+    showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
   } else if (result.lat === 0 && result.lng === 0) {
-    showToast("\u274C Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+    showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
     result.timedOut = true;
   }
-  // Jika dapat koordinat (meski accuracy buruk), tetap kembalikan — biarkan server validasi
   return result;
 }
 
@@ -5460,17 +5497,17 @@ async function sendTrackPing() {
   const user = localStorage.getItem("user");
   if (!user) return;
   try {
-    // Untuk tracking ping, pakai maximumAge 60 detik (hemat baterai, tidak perlu presisi tinggi)
+    // Pakai maximumAge 25 detik agar selaras dengan interval 30 detik
+    // Jika cache terlalu lama, paksa ambil baru
     const pos = await new Promise((resolve, reject) => {
       if (!navigator.geolocation) return reject(new Error("no geolocation"));
       navigator.geolocation.getCurrentPosition(
         p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy || 0 }),
         err => reject(err),
-        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        { enableHighAccuracy: false, timeout: 20000, maximumAge: 25000 }
       );
     });
     if (!pos.lat && !pos.lng) return;
-    // Gunakan authFetch agar X-User header disertakan; identitas user divalidasi di server
     await authFetch("/tracking/ping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

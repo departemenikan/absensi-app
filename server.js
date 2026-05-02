@@ -427,9 +427,9 @@ app.post("/absen", requireLevel(99), (req, res) => {
     const activeAreas = areas.filter(a => a.active !== false);
     if (activeAreas.length > 0) {
       // Perlebar radius validasi sebesar nilai accuracy GPS user (agar tidak false-reject
-      // saat sinyal lemah). Maksimal toleransi accuracy yang ditambahkan: 200 m.
-      // Android indoor bisa accuracy 150-300m, 200m lebih toleran tanpa terlalu longgar.
-      const accTolerance = Math.min(accuracy != null ? accuracy : 0, 200);
+      // saat sinyal lemah). Maksimal toleransi: 350m — Android TWA dalam gedung bisa
+      // menghasilkan accuracy 300-500m, naik dari 200m agar tidak banyak false OUT_OF_AREA.
+      const accTolerance = Math.min(accuracy != null ? accuracy : 0, 350);
       const inAny = activeAreas.some(a => dist(lat, lng, a.lat, a.lng) <= (a.radius + accTolerance));
       if (!inAny) {
         const nearest = activeAreas.reduce((best, a) => {
@@ -868,7 +868,7 @@ app.post("/areas/check", requireLevel(99), (req, res) => {
     if (d < nearestDist) { nearestDist = d; nearest = a; }
   });
 
-  const accTolerance = Math.min(accuracy != null ? accuracy : 0, 200);
+  const accTolerance = Math.min(accuracy != null ? accuracy : 0, 350);
   const radius = (nearest.radius || 100) + accTolerance;
 
   if (nearestDist <= radius) {
