@@ -2648,71 +2648,122 @@
 // SWIPE GESTURE — Geser kiri/kanan untuk pindah navbar
 // ============================================================
 (function(){
-  // Urutan halaman navbar
   const NAV_PAGES = ['home','timesheet','cuti','setting'];
   let touchStartX = 0;
   let touchStartY = 0;
-  let isSwiping = false;
+  let startTarget  = null;
+  let cancelled    = false;
 
-  // Halaman aktif saat ini
   function currentNavIndex() {
     const activeBtn = document.querySelector('.nav-btn.active');
     if (!activeBtn) return 0;
-    const id = activeBtn.id.replace('nav-','');
-    const idx = NAV_PAGES.indexOf(id);
+    const idx = NAV_PAGES.indexOf(activeBtn.id.replace('nav-',''));
     return idx >= 0 ? idx : 0;
   }
 
-  // Hanya swipe di halaman navbar (bukan di dalam modal/map/scroll horizontal)
   function isNavPage() {
-    const activeView = document.querySelector('.view.active');
-    if (!activeView) return false;
-    const id = activeView.id.replace('view-','');
-    return NAV_PAGES.includes(id);
+    const v = document.querySelector('.view.active');
+    return v ? NAV_PAGES.includes(v.id.replace('view-','')) : false;
   }
 
-  document.addEventListener('touchstart', function(e){
-    // Abaikan jika target di dalam elemen scroll horizontal atau modal
-    if (e.target.closest('#trk-live-list, #trk-timeline, #rekap-content, #u-modal-overlay, #chat-panel, .group-body, select')) return;
+  // Cek apakah elemen target berada di dalam kontainer yang bisa di-scroll horizontal
+  // atau elemen interaktif yang perlu gesture sendiri
+  function isScrollableTarget(el) {
+    if (!el) return false;
+
+    // Selector elemen yang HARUS diabaikan oleh swipe nav
+    const BLOCKED = [
+      // Modal & overlay
+      '#u-modal-overlay', '.modal-overlay', '[id$="-modal-overlay"]',
+      // Tabel & konten scroll horizontal
+      'table', '.table-wrap', '.scroll-x', '[style*="overflow-x"]',
+      '[style*="overflow: auto"]', '[style*="overflow:auto"]',
+      // List & panel spesifik
+      '#trk-live-list', '#trk-timeline', '#rekap-content',
+      '#chat-panel', '.group-body',
+      // Elemen interaktif
+      'input', 'textarea', 'select', 'button',
+      // Map Leaflet
+      '.leaflet-container', '#area-map', '[id*="-map"]',
+      // Kalender & grid scroll
+      '#kalender-submenu-wrap', '.timesheet-wrap',
+      // Swipeable list item (geser untuk aksi)
+      '.swipeable', '[data-swipe]'
+    ];
+
+    // Cek target dan semua ancestor-nya
+    for (const selector of BLOCKED) {
+      try { if (el.closest(selector)) return true; } catch {}
+    }
+
+    // Cek apakah elemen atau parent punya overflow-x scroll/auto
+    let node = el;
+    let depth = 0;
+    while (node && node !== document.body && depth < 8) {
+      const style = window.getComputedStyle(node);
+      const overflowX = style.overflowX;
+      const scrollW   = node.scrollWidth;
+      const clientW   = node.clientWidth;
+      if ((overflowX === 'auto' || overflowX === 'scroll') && scrollW > clientW) {
+        return true; // elemen ini bisa di-scroll horizontal — jangan swipe nav
+      }
+      node = node.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  document.addEventListener('touchstart', function(e) {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
-    isSwiping = false;
-  }, {passive:true});
+    startTarget  = e.target;
+    cancelled    = false;
 
-  document.addEventListener('touchmove', function(e){
-    if (!touchStartX) return;
+    // Batalkan langsung jika mulai dari area yang tidak boleh
+    if (isScrollableTarget(startTarget)) {
+      cancelled = true;
+      touchStartX = 0;
+    }
+  }, {passive: true});
+
+  document.addEventListener('touchmove', function(e) {
+    if (cancelled || !touchStartX) return;
     const dx = e.touches[0].clientX - touchStartX;
     const dy = e.touches[0].clientY - touchStartY;
-    // Pastikan ini gerakan horizontal bukan scroll vertikal
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) {
-      isSwiping = true;
+
+    // Jika gerakan lebih vertikal dari horizontal → batalkan swipe nav
+    if (Math.abs(dy) > Math.abs(dx)) {
+      cancelled = true;
+      return;
     }
-  }, {passive:true});
 
-  document.addEventListener('touchend', function(e){
-    if (!isSwiping || !isNavPage()) return;
+    // Jika horizontal tapi kurang dari 8px — belum bisa tentukan, lanjut tunggu
+  }, {passive: true});
+
+  document.addEventListener('touchend', function(e) {
+    if (cancelled || !touchStartX || !isNavPage()) {
+      touchStartX = 0; cancelled = false; startTarget = null;
+      return;
+    }
+
     const dx = e.changedTouches[0].clientX - touchStartX;
-    const THRESHOLD = 60; // minimal pixel untuk trigger swipe
+    const dy = e.changedTouches[0].clientY - touchStartY;
 
+    // Reset state
+    touchStartX = 0; cancelled = false; startTarget = null;
+
+    // Harus lebih dominan horizontal & melewati threshold
+    const THRESHOLD = 72; // px — lebih tinggi = lebih susah trigger tidak sengaja
     if (Math.abs(dx) < THRESHOLD) return;
+    if (Math.abs(dy) > Math.abs(dx) * 0.6) return; // masih terlalu diagonal
 
     const cur = currentNavIndex();
     let next = cur;
+    if (dx < 0 && cur < NAV_PAGES.length - 1) next = cur + 1;
+    else if (dx > 0 && cur > 0) next = cur - 1;
 
-    if (dx < 0 && cur < NAV_PAGES.length - 1) {
-      // Swipe kiri → halaman berikutnya
-      next = cur + 1;
-    } else if (dx > 0 && cur > 0) {
-      // Swipe kanan → halaman sebelumnya
-      next = cur - 1;
-    }
-
-    if (next !== cur) {
-      navTo(NAV_PAGES[next]);
-    }
-    touchStartX = 0;
-    isSwiping = false;
-  }, {passive:true});
+    if (next !== cur) navTo(NAV_PAGES[next]);
+  }, {passive: true});
 })();
 </script>
 </html>
