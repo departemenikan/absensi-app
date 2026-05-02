@@ -1,8 +1,9 @@
-const express = require("express");
-const fs      = require("fs");
-const path    = require("path");
-const bcrypt  = require("bcryptjs");
-const app     = express();
+const express  = require("express");
+const fs       = require("fs");
+const path     = require("path");
+const bcrypt   = require("bcryptjs");
+const webpush  = require("web-push");
+const app      = express();
 
 const BCRYPT_ROUNDS = 10;
 
@@ -27,17 +28,71 @@ const F = {
   pengajuanCuti:  path.join(DATA_DIR, "pengajuan_cuti.json"),
   aktivitasKustom: path.join(DATA_DIR, "aktivitas_kustom.json"),
   rules:           path.join(DATA_DIR, "rules.json"),
+  pushSubs:        path.join(DATA_DIR, "push_subscriptions.json"),
 };
 
 function load(file, def) {
   if (!fs.existsSync(file)) return def;
   try { return JSON.parse(fs.readFileSync(file)); } catch { return def; }
-}
-function save(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+}function save(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
 
 // ========================
-// AUTH HELPER
+// WEB PUSH (VAPID)
 // ========================
+// VAPID keys — generate sekali dengan: node -e "const wp=require('web-push');const k=wp.generateVAPIDKeys();console.log(JSON.stringify(k))"
+// Lalu set sebagai environment variable di Railway:
+//   VAPID_PUBLIC_KEY  = key yang dihasilkan
+//   VAPID_PRIVATE_KEY = key yang dihasilkan
+//   VAPID_EMAIL       = mailto:emailkamu@domain.com
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || "";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_EMAIL   = process.env.VAPID_EMAIL        || "mailto:admin@absensi.app";
+
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
+  console.log("✅ Web Push VAPID aktif");
+} else {
+  console.warn("⚠️  VAPID keys belum diset — push notification tidak aktif");
+}
+
+// Kirim push ke satu user (berdasarkan username)
+async function sendPushToUser(username, title, body, data = {}) {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
+  const subs = load(F.pushSubs, {});
+  const userSubs = subs[username];
+  if (!userSubs || userSubs.length === 0) return;
+
+  const payload = JSON.stringify({ title, body, ...data });
+  const deadSubs = [];
+
+  for (const sub of userSubs) {
+    try {
+      await webpush.sendNotification(sub, payload);
+    } catch (err) {
+      // 410 Gone = subscription sudah tidak valid, hapus
+      if (err.statusCode === 410 || err.statusCode === 404) deadSubs.push(sub.endpoint);
+    }
+  }
+
+  // Bersihkan subscription mati
+  if (deadSubs.length > 0) {
+    subs[username] = userSubs.filter(s => !deadSubs.includes(s.endpoint));
+    save(F.pushSubs, subs);
+  }
+}
+
+// Kirim push ke semua user yang punya role tertentu (array of groupNames)
+async function sendPushToGroups(groupNames, title, body, data = {}) {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
+  const users = load(F.users, {});
+  const targets = Object.keys(users).filter(u => {
+    const g = getUserGroup(u);
+    return groupNames.includes(g);
+  });
+  for (const u of targets) await sendPushToUser(u, title, body, data);
+}
+
+
 
 /** Ambil level user dari users.json + groups.json */
 function getRequesterLevel(username) {
@@ -408,6 +463,12 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
   save(F.data, data);
   logAktivitas(user, type, time);
+
+  // Push notification — konfirmasi absen ke user
+  const labelPush = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Istirahat dimulai ☕", BREAK_END: "Selesai istirahat, kerja lagi! 💪" };
+  const jamFmt = new Date(time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  sendPushToUser(user, "Absensi Smart", `${labelPush[type] || type} — ${jamFmt}`).catch(() => {});
+
   res.send({ status: "OK" });
 });
 
@@ -1870,6 +1931,16 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
   pengajuan.push(entry);
   save(F.pengajuanCuti, pengajuan);
   logAktivitas(username, "CUTI_AJUKAN", new Date().toISOString());
+
+  // Push ke admin/owner/manager — ada pengajuan cuti baru
+  const users = load(F.users, {});
+  const namaUser = users[username]?.nama || username;
+  const tglLabel = tanggalMulai ? (tanggalAkhir && tanggalAkhir !== tanggalMulai ? `${tanggalMulai} s/d ${tanggalAkhir}` : tanggalMulai) : "";
+  sendPushToGroups(["owner", "admin", "manager"],
+    "Pengajuan Cuti Baru 📋",
+    `${namaUser} mengajukan ${kebijakanNama}${tglLabel ? " — " + tglLabel : ""}`
+  ).catch(() => {});
+
   res.send({ status: "OK", id });
 });
 
@@ -1903,6 +1974,14 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
   p.approvedAt = new Date().toISOString();
   save(F.pengajuanCuti, pengajuan);
   logAktivitas(approver, "CUTI_APPROVE", new Date().toISOString());
+
+  // Push ke pengaju — cutinya disetujui
+  const tglLabel = p.tanggalMulai ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai) : "";
+  sendPushToUser(p.username,
+    "Cuti Disetujui ✅",
+    `${p.kebijakanNama} kamu${tglLabel ? " (" + tglLabel + ")" : ""} telah disetujui`
+  ).catch(() => {});
+
   res.send({ status: "OK" });
 });
 
@@ -1953,6 +2032,14 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   p.rejectedReason = reason || "";
   save(F.pengajuanCuti, pengajuan);
   logAktivitas(approver, "CUTI_REJECT", new Date().toISOString());
+
+  // Push ke pengaju — cutinya ditolak
+  const tglLabelR = p.tanggalMulai ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai) : "";
+  sendPushToUser(p.username,
+    "Cuti Ditolak ❌",
+    `${p.kebijakanNama}${tglLabelR ? " (" + tglLabelR + ")" : ""} ditolak${reason ? ": " + reason : ""}`
+  ).catch(() => {});
+
   res.send({ status: "OK" });
 });
 
@@ -2233,6 +2320,45 @@ app.get('/manifest.json', (req, res) => {
 
 // ========================
 // TWA — DIGITAL ASSET LINKS
+// ========================
+// PUSH NOTIFICATION ENDPOINTS
+// ========================
+
+// GET: ambil VAPID public key (dibutuhkan frontend untuk subscribe)
+app.get("/push/vapid-public-key", (req, res) => {
+  res.json({ key: VAPID_PUBLIC });
+});
+
+// POST: simpan subscription baru
+app.post("/push/subscribe", requireLevel(99), (req, res) => {
+  const username = req._requester;
+  const { subscription } = req.body;
+  if (!subscription || !subscription.endpoint) return res.status(400).json({ status: "ERROR" });
+
+  const subs = load(F.pushSubs, {});
+  if (!subs[username]) subs[username] = [];
+
+  // Hindari duplikat endpoint
+  const exists = subs[username].some(s => s.endpoint === subscription.endpoint);
+  if (!exists) {
+    subs[username].push(subscription);
+    save(F.pushSubs, subs);
+  }
+  res.json({ status: "OK" });
+});
+
+// DELETE: hapus subscription (saat user logout)
+app.post("/push/unsubscribe", requireLevel(99), (req, res) => {
+  const username = req._requester;
+  const { endpoint } = req.body;
+  const subs = load(F.pushSubs, {});
+  if (subs[username]) {
+    subs[username] = subs[username].filter(s => s.endpoint !== endpoint);
+    save(F.pushSubs, subs);
+  }
+  res.json({ status: "OK" });
+});
+
 // ========================
 app.get('/.well-known/assetlinks.json', (req, res) => {
   res.json([

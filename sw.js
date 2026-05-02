@@ -105,3 +105,37 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
+
+// ── Push Notification Handler ──────────────────────────────────────────────
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  let payload = {};
+  try { payload = JSON.parse(event.data.text()); } catch { payload = { title: "Absensi Smart", body: event.data.text() }; }
+
+  const title   = payload.title || "Absensi Smart";
+  const options = {
+    body:    payload.body  || "",
+    icon:    "/icons/icon-192.png",
+    badge:   "/icons/icon-96.png",
+    vibrate: [200, 100, 200],
+    tag:     payload.tag   || "absensi-notif",
+    renotify: true,
+    data:    { url: payload.url || "/" }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Klik notifikasi → buka app ─────────────────────────────────────────────
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+      // Kalau app sudah terbuka, fokuskan
+      const existing = list.find(c => c.url.includes(self.location.origin));
+      if (existing) return existing.focus();
+      // Kalau belum terbuka, buka baru
+      return clients.openWindow(targetUrl);
+    })
+  );
+});
