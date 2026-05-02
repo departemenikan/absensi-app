@@ -1304,11 +1304,58 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
   const result = Object.keys(users).map(username => {
     const recs = data.filter(d => d.user === username && d.date.startsWith(month) && d.jamKeluar);
     let totalJam = 0, overtime = 0;
+
+    // Kumpulkan jam absensi fisik per hari
+    const jamPerHari = {};
     recs.forEach(d => {
       const work = (new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000;
       let bt = 0; d.breaks.forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
-      const net = work-bt; totalJam += net; overtime += Math.max(0, net-8);
+      const net = Math.max(0, work-bt);
+      jamPerHari[d.date] = (jamPerHari[d.date] || 0) + net;
+      totalJam += net;
     });
+
+    // Tambahkan jam cuti yang disetujui (hari yang tidak ada absen fisik)
+    const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
+    // Ambil semua hari dalam bulan ini
+    const [yr, mn] = month.split("-").map(Number);
+    const daysInMonth = new Date(yr, mn, 0).getDate();
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${month}-${String(i).padStart(2,"0")}`;
+      const jamCutiHari = userPengajuan.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
+      if (jamCutiHari > 0) totalJam += jamCutiHari;
+    }
+
+    // Hitung overtime berdasarkan total efektif per minggu
+    const weekMap = {};
+    // Jam absensi fisik per minggu
+    recs.forEach(d => {
+      const wk = weekKey(d.date);
+      if (!weekMap[wk]) weekMap[wk] = 0;
+      const work = (new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000;
+      let bt = 0; d.breaks.forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
+      weekMap[wk] += Math.max(0, work-bt);
+    });
+    // Tambahkan jam cuti per minggu
+    userPengajuan.forEach(p => {
+      const tMulai = p.tanggalMulai;
+      const tAkhir = p.tanggalAkhir || tMulai;
+      if (!tMulai || !tMulai.startsWith(month.slice(0,4))) return;
+      let cur = new Date(tMulai + "T00:00:00");
+      const end = new Date(tAkhir + "T00:00:00");
+      while (cur <= end) {
+        const dateStr = cur.toISOString().split("T")[0];
+        const jamHari = jamCutiUntukTanggal(p, dateStr);
+        if (jamHari > 0) {
+          const wk = weekKey(dateStr);
+          if (!weekMap[wk]) weekMap[wk] = 0;
+          weekMap[wk] += jamHari;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+    Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) overtime += (jam - JAM_WAJIB_MINGGU); });
+
     return { user: username, totalDays: recs.length, totalJam: totalJam.toFixed(1), overtime: overtime.toFixed(1) };
   });
   res.send(result);
