@@ -1,6 +1,6 @@
 // Service Worker — Absensi Smart
 // Versi: update ini setiap kali ada perubahan besar
-const CACHE_NAME = "absensi-smart-v2";
+const CACHE_NAME = "absensi-smart-v3";
 
 // File yang di-cache untuk offline
 const CACHE_URLS = [
@@ -55,10 +55,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Selalu ke network untuk API calls internal
+  // Selalu ke network untuk API calls internal — jangan pernah dari cache
   if (
     url.pathname.startsWith("/absen") ||
     url.pathname.startsWith("/login") ||
+    url.pathname.startsWith("/logout") ||
     url.pathname.startsWith("/signup") ||
     url.pathname.startsWith("/status") ||
     url.pathname.startsWith("/history") ||
@@ -66,10 +67,18 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/anggota") ||
     url.pathname.startsWith("/timesheet") ||
     url.pathname.startsWith("/kuota-cuti") ||
+    url.pathname.startsWith("/pengajuan-cuti") ||
+    url.pathname.startsWith("/kebijakan-cuti") ||
+    url.pathname.startsWith("/tracking") ||
     url.pathname.startsWith("/libur") ||
     url.pathname.startsWith("/areas") ||
     url.pathname.startsWith("/groups") ||
-    url.pathname.startsWith("/roles")
+    url.pathname.startsWith("/roles") ||
+    url.pathname.startsWith("/rekap") ||
+    url.pathname.startsWith("/admin") ||
+    url.pathname.startsWith("/divisi") ||
+    url.pathname.startsWith("/aktivitas") ||
+    url.pathname.startsWith("/verify")
   ) {
     event.respondWith(fetch(event.request));
     return;

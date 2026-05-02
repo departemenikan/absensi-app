@@ -720,7 +720,6 @@ async function sendAbsen(type, label) {
     }
 
     // Ambil lokasi (izin sudah granted)
-    showToast("📍 Mendeteksi lokasi...", "warning", 3000);
     loc = await getLoc();
 
     if (loc.denied) {
@@ -1549,21 +1548,35 @@ async function getLoc() {
     );
   });
 
-  // Strategi bertahap: high accuracy → low accuracy → cached (maximumAge lebih besar)
-  let result = await tryGetPos(true, 12000, 10000);   // 1. GPS presisi, tunggu 12 detik
-  if (result.timedOut || result.denied) {
-    result = await tryGetPos(false, 8000, 30000);       // 2. Network/WiFi, tunggu 8 detik
-  }
-  if (result.timedOut || result.denied) {
-    result = await tryGetPos(false, 5000, 120000);      // 3. Cached sampai 2 menit
-  }
+  // Strategi bertahap — hanya lanjut ke step berikut jika belum dapat koordinat
+  // dan bukan karena izin ditolak (denied)
+  showToast("📍 Mendeteksi lokasi GPS...", "warning", 5000);
+  let result = await tryGetPos(true, 15000, 5000);    // 1. GPS presisi, tunggu 15 detik
 
   if (result.denied) {
     showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
-  } else if (result.timedOut) {
-    showToast("\u274C Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+    return result;
   }
 
+  if (result.lat === 0 && result.lng === 0) {
+    showToast("📍 Beralih ke sinyal jaringan...", "warning", 4000);
+    result = await tryGetPos(false, 10000, 60000);    // 2. Network/WiFi, tunggu 10 detik
+  }
+
+  if (!result.denied && result.lat === 0 && result.lng === 0) {
+    showToast("📍 Mencoba lokasi tersimpan...", "warning", 3000);
+    result = await tryGetPos(false, 8000, 300000);    // 3. Cache sampai 5 menit
+  }
+
+  // Terima hasil meski accuracy buruk — server yang tentukan toleransi
+  // Jangan buang hasil hanya karena accuracy tinggi (ratusan meter)
+  if (result.denied) {
+    showToast("\u274C Izin lokasi ditolak. Buka Pengaturan HP \u2192 Aplikasi \u2192 Absensi Smart \u2192 Izin \u2192 Lokasi \u2192 Izinkan.", "error", 8000);
+  } else if (result.lat === 0 && result.lng === 0) {
+    showToast("\u274C Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+    result.timedOut = true;
+  }
+  // Jika dapat koordinat (meski accuracy buruk), tetap kembalikan — biarkan server validasi
   return result;
 }
 
