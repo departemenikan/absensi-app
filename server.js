@@ -26,6 +26,7 @@ const F = {
   kuotaCuti:      path.join(DATA_DIR, "kuota_cuti.json"),
   pengajuanCuti:  path.join(DATA_DIR, "pengajuan_cuti.json"),
   aktivitasKustom: path.join(DATA_DIR, "aktivitas_kustom.json"),
+  rules:           path.join(DATA_DIR, "rules.json"),
 };
 
 function load(file, def) {
@@ -93,6 +94,89 @@ function logAktivitas(user, type, time) {
   if (log.length > 500) log.splice(0, log.length - 500);
   save(F.aktivitas, log);
 }
+
+// ========================
+// RULES HELPERS
+// ========================
+function getRules() {
+  return load(F.rules, { messList: [] });
+}
+
+function isUserMess(username) {
+  const rules = getRules();
+  return (rules.messList || []).includes(username);
+}
+
+// ========================
+// AUTO CLOCK-OUT SCHEDULER
+// ========================
+// Berjalan setiap menit, aktif setelah jam 17:00 WIB
+setInterval(() => {
+  const now   = new Date();
+  const hour  = now.getHours();
+  const min   = now.getMinutes();
+
+  // Hanya aktif mulai 17:00
+  if (hour < 17) return;
+
+  const today    = now.toISOString().split("T")[0];
+  const data     = load(F.data, []);
+  const users    = load(F.users, {});
+  const areas    = load(F.areas, []).filter(a => a.active !== false);
+  const tracking = load(F.tracking, {});
+  const rules    = getRules();
+  const messList = rules.messList || [];
+
+  let changed = false;
+
+  data.forEach(rec => {
+    // Hanya proses yang masih clock in hari ini
+    if (rec.date !== today || rec.jamKeluar) return;
+
+    const username = rec.user;
+    const user     = users[username];
+    if (!user) return;
+
+    // Skip jika Tugas Luar
+    if ((user.statusKerja || "").toLowerCase().includes("tugas luar")) return;
+
+    const isMess = messList.includes(username);
+    const clockOutTime = new Date().toISOString();
+
+    if (isMess) {
+      // Karyawan mess: auto clock-out tepat jam 17:00 (run saat 17:00 - 17:01)
+      if (hour === 17 && min === 0) {
+        rec.jamKeluar = clockOutTime;
+        rec.autoClockOut = true;
+        rec.autoClockOutReason = "mess-17:00";
+        logAktivitas(username, "AUTO_OUT_MESS", clockOutTime);
+        changed = true;
+      }
+    } else {
+      // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
+      const todayPoints = (tracking[today] || {})[username] || [];
+      if (!todayPoints.length) return; // Tidak ada data GPS → skip (aman)
+
+      const lastPoint = todayPoints[todayPoints.length - 1];
+      const { lat, lng } = lastPoint;
+
+      // Cek apakah masih dalam salah satu area aktif
+      const inRadius = areas.some(a =>
+        dist(lat, lng, a.lat, a.lng) <= (a.radius || 100)
+      );
+
+      if (!inRadius) {
+        rec.jamKeluar = clockOutTime;
+        rec.autoClockOut = true;
+        rec.autoClockOutReason = "luar-radius-after-17:00";
+        logAktivitas(username, "AUTO_OUT_LUAR", clockOutTime);
+        changed = true;
+      }
+    }
+  });
+
+  if (changed) save(F.data, data);
+}, 60000); // cek setiap 1 menit
 
 // Inisialisasi default groups jika belum ada
 function initGroups() {
@@ -683,6 +767,27 @@ app.get("/areas/info", requireLevel(99), (req, res) => {
 });
 
 // POST /areas/check — semua user login bisa pakai. Kirim lat/lng user, server kembalikan
+// ========================
+// RULES
+// ========================
+// GET rules — hanya owner/admin
+app.get("/rules", requireLevel(2), (req, res) => {
+  res.send(getRules());
+});
+
+// PUT rules — update daftar mess
+app.put("/rules/mess", requireLevel(2), (req, res) => {
+  const { messList } = req.body;
+  if (!Array.isArray(messList)) return res.send({ status: "ERROR" });
+  const rules = getRules();
+  rules.messList = messList;
+  save(F.rules, rules);
+  res.send({ status: "OK" });
+});
+
+// ========================
+// AREA
+// ========================
 // status (IN_AREA / NEAR / OUT) + nama area + jarak. Koordinat area TIDAK dikirim ke client.
 app.post("/areas/check", requireLevel(99), (req, res) => {
   const { lat, lng, accuracy } = req.body;

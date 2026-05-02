@@ -79,7 +79,7 @@ function openView(viewId) {
     const hasMonitor = userMenus.includes("aktivitas.monitor") || userMenus.includes("aktivitas");
     switchAktivitasTab(hasDaftar ? "daftar" : hasMonitor ? "monitor" : "daftar");
   }
-  if (viewId === "view-aksesibilitas")  loadGroups();
+  if (viewId === "view-aksesibilitas")  { switchAksesTab("akses"); loadGroups(); }
   if (viewId === "view-area") {
     if (!userMenus.includes("area") && !userMenus.includes("area.daftar")) {
       showToast("⛔ Akses ditolak", "error"); return;
@@ -2847,6 +2847,129 @@ function menusBySection() {
 
 // State lokal sementara sebelum disimpan: { [groupId]: Set<menuKey> }
 const _aksesTemp = {};
+
+// ─── TAB SWITCHER AKSESIBILITAS ──────────────────────────────
+function switchAksesTab(tab) {
+  const isAkses = tab === "akses";
+  document.getElementById("panel-akses-kontrol").style.display = isAkses ? "" : "none";
+  document.getElementById("panel-akses-rules").style.display   = isAkses ? "none" : "";
+
+  const btnAkses = document.getElementById("tab-btn-akses");
+  const btnRules = document.getElementById("tab-btn-rules");
+
+  if (isAkses) {
+    btnAkses.style.background = "linear-gradient(135deg,#4f8ef7,#1a237e)";
+    btnAkses.style.color      = "white";
+    btnAkses.style.boxShadow  = "0 2px 8px rgba(79,142,247,.4)";
+    btnRules.style.background = "transparent";
+    btnRules.style.color      = "var(--muted)";
+    btnRules.style.boxShadow  = "none";
+  } else {
+    btnRules.style.background = "linear-gradient(135deg,#4f8ef7,#1a237e)";
+    btnRules.style.color      = "white";
+    btnRules.style.boxShadow  = "0 2px 8px rgba(79,142,247,.4)";
+    btnAkses.style.background = "transparent";
+    btnAkses.style.color      = "var(--muted)";
+    btnAkses.style.boxShadow  = "none";
+    loadRules();
+  }
+}
+
+// ─── RULES ───────────────────────────────────────────────────
+let _rulesMessList = []; // cache server state
+
+async function loadRules() {
+  const el = document.getElementById("rules-mess-list");
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>';
+
+  try {
+    const [rulesRes, anggotaRes] = await Promise.all([
+      authFetch("/rules"),
+      authFetch("/anggota")
+    ]);
+    const rules   = await rulesRes.json();
+    const anggota = await anggotaRes.json();
+    _rulesMessList = rules.messList || [];
+
+    if (!anggota.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada anggota</p>';
+      return;
+    }
+
+    el.innerHTML = anggota
+      .filter(u => u.group !== "owner") // owner tidak perlu diatur
+      .map(u => {
+        const isMess   = _rulesMessList.includes(u.username);
+        const initials = (u.nama || u.username).charAt(0).toUpperCase();
+        const avatar   = u.photo
+          ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+          : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+               display:flex;align-items:center;justify-content:center;color:white;
+               font-weight:800;font-size:14px;flex-shrink:0;">${initials}</div>`;
+
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:10px 0;border-bottom:1px solid #f5f5f5;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${avatar}
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${u.nama || u.username}</div>
+              <div style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
+                ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
+              </div>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+            <input type="checkbox" id="mess-cb-${u.username}"
+              ${isMess ? "checked" : ""}
+              onchange="onMessToggle('${u.username}', this.checked)"
+              style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
+            <span style="font-size:12px;color:var(--muted);">Mess</span>
+          </label>
+        </div>`;
+      }).join("");
+
+  } catch {
+    el.innerHTML = '<p style="color:var(--danger);text-align:center;padding:20px;font-size:13px;">❌ Gagal memuat</p>';
+  }
+}
+
+function onMessToggle(username, checked) {
+  if (checked) {
+    if (!_rulesMessList.includes(username)) _rulesMessList.push(username);
+  } else {
+    _rulesMessList = _rulesMessList.filter(u => u !== username);
+  }
+  // Update label langsung
+  const row = document.querySelector(`#mess-cb-${username}`)?.closest("div[style*='border-bottom']");
+  if (row) {
+    const label = row.querySelector("div > div:last-child");
+    if (label) {
+      label.style.color = checked ? "#e67e22" : "var(--muted)";
+      label.textContent = checked ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess";
+    }
+  }
+}
+
+async function saveRulesMess() {
+  try {
+    const r = await authFetch("/rules/mess", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messList: _rulesMessList })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Aturan absensi berhasil disimpan!");
+      loadRules(); // refresh tampilan
+    } else {
+      showToast("❌ Gagal menyimpan", "error");
+    }
+  } catch {
+    showToast("❌ Gagal menyimpan", "error");
+  }
+}
 
 async function loadGroups() {
   try {
