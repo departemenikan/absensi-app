@@ -125,7 +125,7 @@ async function loadFaceModels() {
   const el = document.getElementById("faceStatus");
   if (el) el.innerText = "⏳ Memuat model wajah...";
   try {
-    const URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+    const URL = "/model";
     await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
     await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
     await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
