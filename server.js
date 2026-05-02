@@ -2330,6 +2330,16 @@ app.get("/push/vapid-public-key", (req, res) => {
   res.json({ key: VAPID_PUBLIC });
 });
 
+// POST: cek apakah subscription endpoint masih terdaftar di server
+app.post("/push/check", requireLevel(99), (req, res) => {
+  const username = req._requester;
+  const { endpoint } = req.body;
+  const subs = load(F.pushSubs, {});
+  const userSubs = subs[username] || [];
+  const found = userSubs.some(s => s.endpoint === endpoint);
+  res.json({ status: found ? "OK" : 410 });
+});
+
 // POST: simpan subscription baru
 app.post("/push/subscribe", requireLevel(99), (req, res) => {
   const username = req._requester;

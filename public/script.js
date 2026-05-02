@@ -1524,42 +1524,72 @@ async function requestPermissions() {
 // PUSH NOTIFICATION
 // ========================
 async function subscribePushNotification() {
-  // Cek support
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  // Cek support dasar
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    console.warn("[PUSH] PushManager tidak didukung di perangkat ini");
+    return;
+  }
 
   try {
     // Ambil VAPID public key dari server
     const r = await fetch("/push/vapid-public-key");
+    if (!r.ok) return; // Server belum setup VAPID
     const { key } = await r.json();
-    if (!key) return; // VAPID belum diset di server
+    if (!key) return;
 
-    // Minta izin notifikasi dari user
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return;
+    // ── TWA Android: Notification.permission mungkin "default" tapi izin sudah diberikan
+    // Selalu coba requestPermission — di TWA tidak muncul dialog jika sudah diizinkan
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== "granted") {
+      console.warn("[PUSH] Izin notifikasi tidak diberikan:", permission);
+      return;
+    }
 
-    // Ambil service worker yang aktif
-    const reg = await navigator.serviceWorker.ready;
+    // Tunggu service worker siap (penting di TWA — SW perlu waktu aktivasi)
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("SW timeout")), 10000))
+    ]);
 
-    // Cek apakah sudah subscribe
+    // Hapus subscription lama jika ada (untuk menghindari stale subscription di TWA)
     let sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      // Cek apakah endpoint masih valid dengan server
+      const check = await authFetch("/push/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub.endpoint })
+      }).catch(() => null);
+
+      // Jika server bilang subscription sudah expired, unsubscribe dan buat baru
+      if (!check || check.status === 410) {
+        await sub.unsubscribe().catch(() => {});
+        sub = null;
+      }
+    }
+
+    // Buat subscription baru jika belum ada
     if (!sub) {
-      // Buat subscription baru
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key)
+        applicationServerKey: urlBase64ToUint8Array(key),
       });
     }
 
-    // Kirim subscription ke server
-    const user = localStorage.getItem("user") || "";
+    // Kirim ke server
     await authFetch("/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON() })
+      body: JSON.stringify({ subscription: sub.toJSON() }),
     });
+
+    console.log("[PUSH] ✅ Push subscription berhasil");
   } catch (e) {
-    // Gagal subscribe — tidak perlu error ke user, fitur opsional
-    console.warn("Push subscribe gagal:", e);
+    // Tidak perlu error ke user — fitur opsional
+    console.warn("[PUSH] Subscribe gagal:", e.message || e);
   }
 }
 
@@ -1574,7 +1604,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function getLoc() {
-  // Cek status permission via Permissions API (support Android/TWA)
+  // ── Cek izin dulu via Permissions API ──────────────────────────────────────
   if (navigator.permissions) {
     try {
       const permStatus = await navigator.permissions.query({ name: "geolocation" });
@@ -1582,96 +1612,122 @@ async function getLoc() {
         showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
         return { lat: 0, lng: 0, accuracy: 0, denied: true };
       }
-    } catch { /* browser lama tidak support, lanjut */ }
+    } catch { /* browser lama, lanjut */ }
   }
 
-  // Helper: getCurrentPosition biasa
-  const tryGetPos = (highAccuracy, timeoutMs, maxAge) => new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: 0, denied: true });
+  if (!navigator.geolocation) {
+    return { lat: 0, lng: 0, accuracy: 0, denied: true };
+  }
+
+  showToast("📍 Mendeteksi lokasi...", "warning", 12000);
+
+  // ── Strategi: RACE antara 3 metode sekaligus ────────────────────────────────
+  // Metode 1: Cache terbaru (paling cepat — hasilnya instan jika GPS sudah warm)
+  // Metode 2: Network/WiFi low-accuracy (cepat, ~2-5 detik)
+  // Metode 3: watchPosition GPS high-accuracy (paling akurat, tapi butuh ~10 detik cold-start)
+  // → Siapa yang berhasil pertama dengan accuracy ≤ 200m, itu yang dipakai
+  // → Jika semua gagal, ambil hasil terbaik yang ada
+
+  return new Promise(resolve => {
+    let settled  = false;
+    let bestResult = null;
+    let pending  = 0;
+    const watchIds = [];
+
+    function makeResult(p) {
+      return {
+        lat:      p.coords.latitude,
+        lng:      p.coords.longitude,
+        accuracy: p.coords.accuracy || 999,
+        denied:   false,
+        timedOut: false,
+      };
+    }
+
+    function tryDone(result, force = false) {
+      if (settled) return;
+      // Simpan hasil terbaik (accuracy terkecil)
+      if (!bestResult || result.accuracy < bestResult.accuracy) bestResult = result;
+      // Selesai jika: accuracy bagus (≤200m) atau dipaksa selesai
+      if (result.accuracy <= 200 || force) {
+        settled = true;
+        watchIds.forEach(id => { try { navigator.geolocation.clearWatch(id); } catch {} });
+        resolve(bestResult);
+      }
+    }
+
+    function onError(err) {
+      pending--;
+      if (err.code === 1) { // PERMISSION_DENIED
+        settled = true;
+        watchIds.forEach(id => { try { navigator.geolocation.clearWatch(id); } catch {} });
+        showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
+        resolve({ lat: 0, lng: 0, accuracy: 0, denied: true, timedOut: false });
+      } else if (pending <= 0 && !settled) {
+        // Semua metode gagal
+        if (bestResult) {
+          tryDone(bestResult, true);
+        } else {
+          settled = true;
+          showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+          resolve({ lat: 0, lng: 0, accuracy: 0, denied: false, timedOut: true });
+        }
+      }
+    }
+
+    // Metode 1: getCurrentPosition dengan cache (cepat — untuk GPS yang sudah warm)
+    pending++;
     navigator.geolocation.getCurrentPosition(
-      p => resolve({
-        lat: p.coords.latitude,
-        lng: p.coords.longitude,
-        accuracy: p.coords.accuracy || 0,
-        denied: false, timedOut: false
-      }),
-      err => resolve({
-        lat: 0, lng: 0, accuracy: 0,
-        denied: err.code === 1,
-        timedOut: err.code === 3 || err.code === 2
-      }),
-      { enableHighAccuracy: highAccuracy, timeout: timeoutMs, maximumAge: maxAge }
+      p => { pending--; tryDone(makeResult(p)); },
+      err => onError(err),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 15000 }
     );
-  });
 
-  // Helper: watchPosition — lebih andal untuk Android cold-start GPS
-  // Menunggu sampai dapat fix pertama atau timeout
-  const tryWatch = (timeoutMs) => new Promise(resolve => {
-    if (!navigator.geolocation) return resolve({ lat: 0, lng: 0, accuracy: 0, denied: true });
-    let watchId;
-    const timer = setTimeout(() => {
-      navigator.geolocation.clearWatch(watchId);
-      resolve({ lat: 0, lng: 0, accuracy: 0, denied: false, timedOut: true });
-    }, timeoutMs);
+    // Metode 2: Network/WiFi low-accuracy (cepat untuk Android dalam gedung)
+    pending++;
+    navigator.geolocation.getCurrentPosition(
+      p => { pending--; tryDone(makeResult(p)); },
+      err => onError(err),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+    );
 
-    watchId = navigator.geolocation.watchPosition(
+    // Metode 3: watchPosition high-accuracy — paling andal untuk Android cold-start
+    // Ambil update pertama yang datang
+    pending++;
+    let watchGotFirst = false;
+    const watchTimer = setTimeout(() => {
+      if (!watchGotFirst) onError({ code: 3 }); // timeout
+    }, 15000);
+
+    const wid = navigator.geolocation.watchPosition(
       p => {
-        clearTimeout(timer);
-        navigator.geolocation.clearWatch(watchId);
-        resolve({
-          lat: p.coords.latitude,
-          lng: p.coords.longitude,
-          accuracy: p.coords.accuracy || 0,
-          denied: false, timedOut: false
-        });
+        if (!watchGotFirst) {
+          watchGotFirst = true;
+          clearTimeout(watchTimer);
+          pending--;
+        }
+        tryDone(makeResult(p)); // update terus jika accuracy membaik
       },
       err => {
-        clearTimeout(timer);
-        navigator.geolocation.clearWatch(watchId);
-        resolve({
-          lat: 0, lng: 0, accuracy: 0,
-          denied: err.code === 1,
-          timedOut: err.code === 3 || err.code === 2
-        });
+        clearTimeout(watchTimer);
+        if (!watchGotFirst) onError(err);
       },
-      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+    watchIds.push(wid);
+
+    // Safety: paksa selesai setelah 18 detik apapun yang terjadi
+    setTimeout(() => {
+      if (!settled) {
+        if (bestResult) tryDone(bestResult, true);
+        else {
+          settled = true;
+          showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
+          resolve({ lat: 0, lng: 0, accuracy: 0, denied: false, timedOut: true });
+        }
+      }
+    }, 18000);
   });
-
-  showToast("📍 Mendeteksi lokasi GPS...", "warning", 6000);
-
-  // Step 1: Coba cache GPS terakhir dulu (cepat, < 5 detik)
-  let result = await tryGetPos(true, 5000, 10000);
-  if (result.denied) {
-    showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
-    return result;
-  }
-
-  // Step 2: Jika cache kosong, pakai watchPosition (andal untuk cold-start Android)
-  if (result.lat === 0 && result.lng === 0) {
-    showToast("📍 Menunggu sinyal GPS...", "warning", 8000);
-    result = await tryWatch(20000);   // tunggu sampai 20 detik
-  }
-
-  // Step 3: Fallback ke network/WiFi
-  if (!result.denied && result.lat === 0 && result.lng === 0) {
-    showToast("📍 Beralih ke sinyal jaringan...", "warning", 4000);
-    result = await tryGetPos(false, 12000, 60000);
-  }
-
-  // Step 4: Terakhir, ambil cache lama (sampai 5 menit)
-  if (!result.denied && result.lat === 0 && result.lng === 0) {
-    showToast("📍 Mencoba lokasi tersimpan...", "warning", 3000);
-    result = await tryGetPos(false, 8000, 300000);
-  }
-
-  if (result.denied) {
-    showToast("❌ Izin lokasi ditolak. Buka Pengaturan HP → Aplikasi → Absensi Smart → Izin → Lokasi → Izinkan.", "error", 8000);
-  } else if (result.lat === 0 && result.lng === 0) {
-    showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif dan coba lagi.", "error", 5000);
-    result.timedOut = true;
-  }
-  return result;
 }
 
 function fmt(iso) {
