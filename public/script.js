@@ -4450,12 +4450,15 @@ function startTsTicker() {
       const jamMasuk   = cell.getAttribute("data-jammasuk");
       const breakDetik = parseFloat(cell.getAttribute("data-breakdetik") || "0");
       if (!jamMasuk) return;
-      const elapsedJam = Math.max(0, (now - new Date(jamMasuk).getTime()) / 3600000 - breakDetik / 3600);
-      cell.textContent = fmtJamRealtime(elapsedJam);
+      const elapsedSec = Math.max(0, (now - new Date(jamMasuk).getTime()) / 1000 - breakDetik);
+      const h = Math.floor(elapsedSec / 3600);
+      const m = Math.floor((elapsedSec % 3600) / 60);
+      cell.textContent = `${h}:${String(m).padStart(2,"0")}`;
     });
   }
   tickCells();
-  _tsTicker = setInterval(tickCells, 30000); // update tiap 30 detik
+  // Update tiap 60 detik (cukup karena format HH:MM, tanpa detik)
+  _tsTicker = setInterval(tickCells, 60000);
 }
 
 function stopTsTicker() {
@@ -4901,7 +4904,8 @@ async function saveTsAbsen() {
     if (d.status === "OK") {
       showToast("✅ Absen berhasil disimpan!");
       closeTsModal();
-      loadTimesheet();
+      await loadTimesheet(); // reload data + render ulang (termasuk data-jammasuk terbaru)
+      startTsTicker();       // restart ticker agar hitung dari jamMasuk yg sudah diedit
     } else {
       showToast("❌ " + (d.msg || "Gagal menyimpan"), "error");
     }
