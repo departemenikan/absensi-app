@@ -1726,9 +1726,11 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
 
   // Validasi & kurangi saldo
   if (kuotaKey === "tahunan") {
+    // durasi dikirim dalam JAM dari frontend, konversi ke HARI (1 hari = 8 jam)
+    const durasiHari = satuanDurasi === "jam" ? parseFloat(durasi) / 8 : parseFloat(durasi);
     const sisa = k.tahunan.total - k.tahunan.terpakai;
-    if (parseFloat(durasi) > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
-    k.tahunan.terpakai += parseFloat(durasi);
+    if (durasiHari > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
+    k.tahunan.terpakai += durasiHari;
   } else if (kuotaKey === "overtime") {
     const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 8;
     if (satuanJam > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: `Jam overtime tidak cukup (sisa: ${k.overtime.jamAkumulasi.toFixed(1)} jam)` });
@@ -1829,7 +1831,9 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, p.username, tahun);
   if (p.kuotaKey === "tahunan") {
-    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - p.durasi);
+    // durasi tersimpan dalam JAM jika satuanDurasi "jam", konversi ke hari saat kembalikan saldo
+    const hariKembali = p.satuanDurasi === "jam" ? p.durasi / 8 : p.durasi;
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - hariKembali);
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
     k.overtime.jamAkumulasi += jamKembali;
@@ -1867,7 +1871,9 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, p.username, tahun);
   if (p.kuotaKey === "tahunan") {
-    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - p.durasi);
+    // durasi tersimpan dalam JAM jika satuanDurasi "jam", konversi ke hari saat kembalikan saldo
+    const hariKembali = p.satuanDurasi === "jam" ? p.durasi / 8 : p.durasi;
+    k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - hariKembali);
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
     k.overtime.jamAkumulasi += jamKembali;
