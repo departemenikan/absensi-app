@@ -333,6 +333,8 @@ async function checkLoginStatus() {
       localStorage.setItem("group", d.group || "anggota");
       localStorage.setItem("level", d.level || 99);
       enterApp(d.menus || [], d.group, d.level);
+      // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
+      subscribePushNotification().catch(() => {});
     } else {
       localStorage.clear(); showAuthPage();
     }

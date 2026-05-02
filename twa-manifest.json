@@ -33,7 +33,7 @@
       "enabled": false
     }
   },
-  "enableNotifications": false,
+  "enableNotifications": true,
   "minSdkVersion": 19,
   "targetSdkVersion": 34,
   "isChromeOSOnly": false,
