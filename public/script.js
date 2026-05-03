@@ -4838,13 +4838,13 @@ function stopTsTicker() {
 // ─────────────────────────────────────────────────────────────
 
 function tsGetMonday(d = new Date()) {
-  // Gunakan tanggal lokal (bukan UTC) agar tidak geser akibat timezone
-  const localStr = d.toLocaleDateString("sv-SE"); // format YYYY-MM-DD local
-  const local = new Date(localStr + "T00:00:00");
+  // Pakai T12:00:00 agar tidak geser saat konversi timezone
+  const localStr = d.toLocaleDateString("sv-SE"); // YYYY-MM-DD lokal
+  const local = new Date(localStr + "T12:00:00"); // tengah hari, aman dari shift
   const day = local.getDay(); // 0=Minggu, 1=Senin, ...
-  const diff = day === 0 ? -6 : 1 - day; // geser ke Senin
+  const diff = day === 0 ? -6 : 1 - day;
   local.setDate(local.getDate() + diff);
-  return local.toISOString().split("T")[0];
+  return local.toLocaleDateString("sv-SE"); // kembalikan format lokal, bukan UTC
 }
 
 function tsNavWeek(delta) {
