@@ -117,10 +117,12 @@ async function connectWA() {
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       console.warn("[WA] ❌ Koneksi terputus, alasan:", reason);
 
-      if (reason === DisconnectReason.loggedOut) {
+      if (reason === DisconnectReason.loggedOut || reason === 401) {
         // Logout manual atau dari HP — hapus sesi, perlu scan ulang
         console.warn("[WA] ⚠️  Logged out! Hapus auth_wa dan scan ulang QR");
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        if (fs.existsSync(AUTH_DIR)) {
+          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        }
         setTimeout(connectWA, 3000);
       } else {
         // Error lain (network, timeout, dll) — reconnect otomatis
@@ -135,17 +137,24 @@ async function connectWA() {
 
 // ── Logout manual (untuk endpoint /wa/logout) ────────────────────────────────
 async function logoutWA() {
-  try {
-    if (sock) await sock.logout();
-  } catch {}
+  // Hentikan semua event agar tidak ada reconnect otomatis
+  try { if (sock) sock.ev.removeAllListeners(); } catch {}
+  try { if (sock) await sock.logout(); } catch {}
+  try { if (sock) sock.end(); } catch {}
+
   isConnected  = false;
   isConnecting = false;
   sock         = null;
   qrCode       = null;
-  fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+
+  // Hapus folder sesi
+  if (fs.existsSync(AUTH_DIR)) {
+    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  }
   console.log("[WA] 🔓 Logout berhasil, sesi dihapus");
-  // Reconnect untuk tampilkan QR baru
-  setTimeout(connectWA, 1000);
+
+  // Tunggu lebih lama sebelum reconnect agar sesi benar-benar bersih
+  setTimeout(connectWA, 3000);
 }
 
 // ── Mulai koneksi saat modul di-require ──────────────────────────────────────
