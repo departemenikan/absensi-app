@@ -90,7 +90,6 @@ async function connectWA() {
     version,
     auth:   state,
     logger: pino({ level: "silent" }), // matikan log Baileys agar terminal bersih
-    printQRInTerminal: true,           // QR tetap tampil di terminal Railway logs
     browser: ["Absensi Smart", "Chrome", "1.0"],
   });
 
