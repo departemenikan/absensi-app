@@ -2684,14 +2684,21 @@
 <script>
 // ============================================================
 // SWIPE GESTURE — Geser kiri/kanan untuk pindah navbar
+// FIX v2: dead zone tepi layar, threshold lebih besar,
+//         guard input/textarea, rasio dx/dy lebih ketat
 // ============================================================
 (function(){
-  const NAV_PAGES = ['home','timesheet','cuti','setting'];
+  const NAV_PAGES  = ['home','timesheet','cuti','setting'];
+  const EDGE_ZONE  = 35;   // px dari tepi kiri/kanan — milik Android back gesture
+  const THRESHOLD  = 90;   // minimal jarak geser horizontal (px)
+  const RATIO_MIN  = 2.0;  // dx harus minimal 2× lebih besar dari dy
+
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping   = false;
-  let isScrolling = false; // sedang scroll horizontal (bukan swipe halaman)
-  let decided     = false; // sudah diputuskan swipe atau scroll
+  let isScrolling = false;
+  let decided     = false;
+  let blocked     = false; // touchstart dimulai dari edge zone
 
   function currentNavIndex() {
     const activeBtn = document.querySelector('.nav-btn.active');
@@ -2706,7 +2713,7 @@
     return NAV_PAGES.includes(activeView.id.replace('view-',''));
   }
 
-  // Cek apakah elemen bisa di-scroll horizontal
+  // Cek apakah elemen atau leluhurnya bisa di-scroll horizontal
   function isHorizontalScrollable(el) {
     while (el && el !== document.body) {
       const style    = window.getComputedStyle(el);
@@ -2718,50 +2725,69 @@
     return false;
   }
 
+  // Cek apakah target adalah elemen input teks (jangan ganggu kursor)
+  function isTextInput(el) {
+    const tag = el ? el.tagName : '';
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   document.addEventListener('touchstart', function(e){
-    // Abaikan modal/overlay
-    if (e.target.closest('#u-modal-overlay, #chat-panel, select')) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    isSwiping   = false;
-    isScrolling = false;
-    decided     = false;
+    // Reset dulu
+    touchStartX = 0; touchStartY = 0;
+    isSwiping = false; isScrolling = false; decided = false; blocked = false;
+
+    // Abaikan modal/overlay dan elemen input
+    if (e.target.closest('#u-modal-overlay, #chat-panel')) return;
+    if (isTextInput(e.target)) return;
+
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+
+    // Abaikan jika mulai dari tepi layar kiri/kanan (Android back gesture zone)
+    if (x <= EDGE_ZONE || x >= window.innerWidth - EDGE_ZONE) {
+      blocked = true;
+      return;
+    }
+
+    touchStartX = x;
+    touchStartY = y;
   }, {passive:true});
 
   document.addEventListener('touchmove', function(e){
-    if (!touchStartX || decided) return;
-    const dx = e.touches[0].clientX - touchStartX;
-    const dy = e.touches[0].clientY - touchStartY;
+    if (blocked || !touchStartX || decided) return;
+
+    const dx    = e.touches[0].clientX - touchStartX;
+    const dy    = e.touches[0].clientY - touchStartY;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    // Tunggu minimal 10px sebelum memutuskan
-    if (absDx < 10 && absDy < 10) return;
+    // Tunggu minimal 12px sebelum memutuskan arah
+    if (absDx < 12 && absDy < 12) return;
     decided = true;
 
-    if (absDy > absDx) {
-      // Gerakan dominan vertikal → scroll biasa, abaikan
+    // Harus dominan horizontal DAN rasio dx/dy cukup besar
+    if (absDy > absDx || absDx < absDy * RATIO_MIN) {
       isScrolling = true;
       return;
     }
 
-    // Gerakan dominan horizontal — cek apakah elemen bisa scroll sendiri
+    // Biarkan elemen yang punya scroll horizontal sendiri
     if (isHorizontalScrollable(e.target)) {
-      isScrolling = true; // biarkan elemen scroll sendiri
+      isScrolling = true;
       return;
     }
 
-    // Bukan elemen scrollable → ini swipe halaman
     isSwiping = true;
   }, {passive:true});
 
   document.addEventListener('touchend', function(e){
     if (!isSwiping || !isNavPage()) {
-      touchStartX = 0; isSwiping = false; isScrolling = false; decided = false;
+      touchStartX = 0; isSwiping = false; isScrolling = false;
+      decided = false; blocked = false;
       return;
     }
+
     const dx = e.changedTouches[0].clientX - touchStartX;
-    const THRESHOLD = 70; // minimal pixel
 
     if (Math.abs(dx) >= THRESHOLD) {
       const cur  = currentNavIndex();
@@ -2771,7 +2797,8 @@
       if (next !== cur) navTo(NAV_PAGES[next]);
     }
 
-    touchStartX = 0; isSwiping = false; isScrolling = false; decided = false;
+    touchStartX = 0; isSwiping = false; isScrolling = false;
+    decided = false; blocked = false;
   }, {passive:true});
 })();
 </script>
