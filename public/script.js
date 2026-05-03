@@ -1942,7 +1942,7 @@ function rekapRender() {
         const day = u.days.find(d => d.date === date);
         const dow = day ? day.dow : new Date(date + "T00:00:00").getDay();
         const isToday  = date === today;
-        const isWeekend = dow === 0;
+        const isWeekend = dow === 0 && !hasKerja; // Minggu libur, tapi tampil jika ada clock in
         const jamKerja  = day ? day.jamKerja : 0;
         const jamCuti   = day ? day.jamCuti  : 0;
         const hasCuti   = jamCuti > 0;
@@ -4924,7 +4924,8 @@ function tsRender() {
       const hasCuti  = day.jamCuti  > 0;
       const isToday  = day.date === new Date().toISOString().split("T")[0];
       const dow      = day.dow;
-      const isWeekend = dow === 0; // Minggu
+      // Minggu = libur by default, tapi tampilkan jam jika ada clock in (misal: kejar jadwal flight)
+      const isWeekend = dow === 0 && !hasKerja;
 
       let cellContent = "";
       if (isWeekend) {
