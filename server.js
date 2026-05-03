@@ -224,18 +224,40 @@ function isUserMess(username) {
 }
 
 // ========================
-// AUTO CLOCK-OUT SCHEDULER
+// AUTO CLOCK-OUT SCHEDULER + PENGINGAT CLOCK IN
 // ========================
 // Berjalan setiap menit, aktif setelah jam 17:00 WIB
 setInterval(() => {
   const now   = new Date();
   const hour  = now.getHours();
   const min   = now.getMinutes();
+  const today = now.toISOString().split("T")[0];
+  const dow   = now.getDay(); // 0=Minggu, 6=Sabtu
 
-  // Hanya aktif mulai 17:00
+  // ── PENGINGAT CLOCK IN — jam 08:00, Senin–Jumat ─────────────────────────
+  if (hour === 8 && min === 0 && dow >= 1 && dow <= 5) {
+    const data  = load(F.data, []);
+    const users = load(F.users, {});
+
+    Object.keys(users).forEach(username => {
+      // Skip jika sudah clock in hari ini
+      const sudahAbsen = data.some(d => d.user === username && d.date === today);
+      if (sudahAbsen) return;
+
+      // Skip jika Tugas Luar
+      const user = users[username];
+      if ((user.statusKerja || "").toLowerCase().includes("tugas luar")) return;
+
+      sendPushToUser(username,
+        "⏰ Pengingat Absen",
+        "Kamu belum Clock In hari ini. Jangan lupa absen!"
+      ).catch(() => {});
+    });
+  }
+
+  // ── AUTO CLOCK-OUT — hanya aktif mulai jam 17:00 ─────────────────────────
   if (hour < 17) return;
 
-  const today    = now.toISOString().split("T")[0];
   const data     = load(F.data, []);
   const users    = load(F.users, {});
   const areas    = load(F.areas, []).filter(a => a.active !== false);
@@ -258,6 +280,7 @@ setInterval(() => {
 
     const isMess = messList.includes(username);
     const clockOutTime = new Date().toISOString();
+    const jamFmt = new Date(clockOutTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 
     if (isMess) {
       // Karyawan mess: auto clock-out tepat jam 17:00 (run saat 17:00 - 17:01)
@@ -267,6 +290,12 @@ setInterval(() => {
         rec.autoClockOutReason = "mess-17:00";
         logAktivitas(username, "AUTO_OUT_MESS", clockOutTime);
         changed = true;
+
+        // Notif ke user — auto clock-out berhasil
+        sendPushToUser(username,
+          "Clock Out Otomatis 🔴",
+          `Kamu otomatis di-Clock Out pukul ${jamFmt} (karyawan mess)`
+        ).catch(() => {});
       }
     } else {
       // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
@@ -287,6 +316,12 @@ setInterval(() => {
         rec.autoClockOutReason = "luar-radius-after-17:00";
         logAktivitas(username, "AUTO_OUT_LUAR", clockOutTime);
         changed = true;
+
+        // Notif ke user — auto clock-out karena di luar radius
+        sendPushToUser(username,
+          "Clock Out Otomatis 🔴",
+          `Kamu otomatis di-Clock Out pukul ${jamFmt} karena berada di luar radius area kantor`
+        ).catch(() => {});
       }
     }
   });
@@ -411,6 +446,15 @@ app.post("/signup", async (req, res) => {
     createdAt:   new Date().toISOString()
   };
   save(F.users, users);
+
+  // Push ke owner & admin — ada anggota baru (kecuali user pertama yg jadi owner)
+  if (!isFirst) {
+    sendPushToGroups(["owner", "admin"],
+      "Anggota Baru Mendaftar 🎉",
+      `${namaLengkap || username} baru saja mendaftar sebagai anggota`
+    ).catch(() => {});
+  }
+
   res.send({ status: "OK" });
 });
 
@@ -2139,6 +2183,24 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   p.canceledAt = new Date().toISOString();
   save(F.pengajuanCuti, pengajuan);
   logAktivitas(username, "CUTI_CANCEL", new Date().toISOString());
+
+  // Push ke pengaju — konfirmasi pembatalan
+  const tglLabelC = p.tanggalMulai
+    ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai)
+    : "";
+  sendPushToUser(username,
+    "Cuti Dibatalkan 🚫",
+    `${p.kebijakanNama}${tglLabelC ? " (" + tglLabelC + ")" : ""} berhasil dibatalkan`
+  ).catch(() => {});
+
+  // Push ke owner/admin — informasi ada cuti yang dibatalkan
+  const usersC = load(F.users, {});
+  const namaC  = usersC[username]?.namaLengkap || username;
+  sendPushToGroups(["owner", "admin"],
+    "Cuti Dibatalkan 🚫",
+    `${namaC} membatalkan ${p.kebijakanNama}${tglLabelC ? " — " + tglLabelC : ""}`
+  ).catch(() => {});
+
   res.send({ status: "OK" });
 });
 
