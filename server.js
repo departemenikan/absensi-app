@@ -2513,6 +2513,7 @@ app.post("/app-settings", (req, res) => {
 });
 
 
+app.get('/.well-known/assetlinks.json', (req, res) => {
   res.json([
     {
       relation: ["delegate_permission/common.handle_all_urls"],
