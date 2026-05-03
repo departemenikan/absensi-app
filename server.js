@@ -1,10 +1,5 @@
 // Timezone -- harus di baris pertama sebelum modul lain di-load
 process.env.TZ = process.env.TZ || "Asia/Makassar";
-// Helper: tanggal hari ini dalam timezone server (bukan UTC)
-function todayLocal() {
-  return new Date().toLocaleDateString("sv-SE");
-}
-
 
 const express  = require("express");
 const fs       = require("fs");
@@ -245,7 +240,7 @@ setInterval(() => {
   const now   = new Date();
   const hour  = now.getHours();
   const min   = now.getMinutes();
-  const today = todayLocal();
+  const today = now.toISOString().split("T")[0];
   const dow   = now.getDay(); // 0=Minggu, 6=Sabtu
 
   // ── PENGINGAT CLOCK IN — jam 08:00, Senin–Jumat ─────────────────────────
@@ -521,7 +516,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const user = req._requester;
   const { type, time, lat, lng, accuracy, photo } = req.body;
   if (!user) return res.status(401).send({ status: "UNAUTHORIZED" });
-  const today = todayLocal();
+  const today = new Date().toISOString().split("T")[0];
 
   // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
   const users    = load(F.users, {});
@@ -593,7 +588,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
 app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
-  const today = todayLocal();
+  const today = new Date().toISOString().split("T")[0];
   const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
@@ -632,7 +627,7 @@ app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
 app.get("/admin/today", requireLevel(3), (req, res) => {
   const data  = load(F.data, []);
   const users = load(F.users, {});
-  const date  = req.query.date || todayLocal();
+  const date  = req.query.date || new Date().toISOString().split("T")[0];
   const records = Object.keys(users).map(username => {
     const rec = data.find(d => d.user === username && d.date === date);
     let status = "OUT";
@@ -1299,7 +1294,9 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
     const days = dates.map(dateStr => {
-      const rec = data.find(d => d.user === username && d.date === dateStr);
+      // Prioritaskan record aktif (!jamKeluar), fallback ke record manapun
+      const rec = data.find(d => d.user === username && d.date === dateStr && !d.jamKeluar)
+             || data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
       let isActive = false;
       if (rec && rec.jamMasuk && rec.jamKeluar) {
@@ -1437,7 +1434,9 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
 
     // Semua hari dalam bulan (flat)
     const days = allDates.map(dateStr => {
-      const rec = data.find(d => d.user === username && d.date === dateStr);
+      // Prioritaskan record aktif (!jamKeluar), fallback ke record manapun
+      const rec = data.find(d => d.user === username && d.date === dateStr && !d.jamKeluar)
+             || data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
       if (rec && rec.jamMasuk && rec.jamKeluar) {
         const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
@@ -1973,7 +1972,7 @@ app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {
   // Filter waktu
   const now = new Date();
   if (filter === "hari") {
-    const today = todayLocal();
+    const today = now.toISOString().split("T")[0];
     list = list.filter(p => p.tanggalMulai === today);
   } else if (filter === "minggu") {
     const start = new Date(now); start.setDate(now.getDate() - now.getDay());
@@ -2241,7 +2240,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
   if (!user || lat == null || lng == null) return res.send({ status: "ERROR" });
 
   const tracking = load(F.tracking, {});
-  const today    = todayLocal();
+  const today    = new Date().toISOString().split("T")[0];
   const now      = new Date().toISOString();
 
   if (!tracking[today]) tracking[today] = {};
@@ -2254,7 +2253,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
   if (tracking[today][user].length > 500) tracking[today][user].splice(0, 1);
 
   // Hapus data lebih dari 7 hari lalu
-  const cutoff = new Date(Date.now() - 7 * 86400000).toLocaleDateString("sv-SE");
+  const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   Object.keys(tracking).forEach(d => { if (d < cutoff) delete tracking[d]; });
 
   save(F.tracking, tracking);
@@ -2263,7 +2262,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
 
 // GET rute anggota tertentu untuk tanggal tertentu
 app.get("/tracking/:user", requireSelfOrLevel("user", 3), (req, res) => {
-  const date     = req.query.date || todayLocal();
+  const date     = req.query.date || new Date().toISOString().split("T")[0];
   const tracking = load(F.tracking, {});
   const points   = (tracking[date] || {})[req.params.user] || [];
   res.send({ user: req.params.user, date, points });
@@ -2274,7 +2273,7 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
   const tracking = load(F.tracking, {});
   const users    = load(F.users, {});
   const data     = load(F.data, []);
-  const today    = todayLocal();
+  const today    = new Date().toISOString().split("T")[0];
   const todayData = (tracking[today] || {});
 
   const requester      = req._requester;
@@ -2344,7 +2343,7 @@ app.post("/chat", requireLevel(99), async (req, res) => {
   const level    = req._requesterLevel;
   const users    = load(F.users, {});
   const user     = users[username] || {};
-  const today    = todayLocal();
+  const today    = new Date().toISOString().split("T")[0];
 
   // Absensi hari ini
   const dataAbsen    = load(F.data, []);
