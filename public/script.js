@@ -4946,7 +4946,9 @@ function tsRender() {
       const isWeekend = dow === 0; // Minggu
 
       let cellContent = "";
-      if (isWeekend) {
+      // Minggu: tampil — hanya jika memang tidak ada absen/kerja
+      // Jika ada absen di hari Minggu, tetap tampilkan jam kerjanya
+      if (isWeekend && !hasKerja && !hasCuti) {
         cellContent = `<span style="color:#ddd;font-size:11px;">—</span>`;
       } else if (hasCuti && hasKerja) {
         // Kerja + cuti dalam hari sama
@@ -4977,16 +4979,18 @@ function tsRender() {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
       }
 
-      // Tombol edit (hanya jika canEdit + bukan weekend) — tampil saat row di-hover
-      const canEditCell = u.canEdit && !isWeekend;
+      // Tombol edit: admin bisa edit Minggu jika ada absen
+      const canEditCell = u.canEdit && (!isWeekend || hasKerja);
       const editBtn = canEditCell ? `
         <div class="ts-edit-btn"
           onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
           style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
                  opacity:0;transition:opacity .15s;pointer-events:none;">✏️</div>` : "";
 
+      // Minggu ada kerja → background oranye muda sebagai penanda kerja hari libur
+      const sundayBg = isWeekend && hasKerja ? "#fff8e1" : "";
       return `<td style="text-align:center;padding:7px 4px;border-bottom:1px solid #f5f5f5;
-                 background:${isToday?"#f1f8e9":hasCuti&&!hasKerja?"#fafeff":""};
+                 background:${isToday?"#f1f8e9":sundayBg||hasCuti&&!hasKerja?"#fafeff":""};
                  vertical-align:middle;">
         ${cellContent}${editBtn}
       </td>`;

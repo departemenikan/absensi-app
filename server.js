@@ -1303,9 +1303,15 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         jamKerja = Math.max(0, work - bt);
       } else if (rec && rec.jamMasuk && !rec.jamKeluar) {
         // Masih aktif — hitung sampai sekarang, client update realtime tiap menit
-        const work = (Date.now() - new Date(rec.jamMasuk).getTime()) / 3600000;
+        const nowMs = Date.now();
+        const work = (nowMs - new Date(rec.jamMasuk).getTime()) / 3600000;
         let bt = 0;
-        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        // FIX: break aktif (belum ada b.end) ikut dihitung sampai sekarang
+        (rec.breaks || []).forEach(b => {
+          const bStart = new Date(b.start).getTime();
+          const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
+          bt += (bEnd - bStart) / 3600000;
+        });
         jamKerja = Math.max(0, work - bt);
         isActive = true;
       }
@@ -1321,8 +1327,12 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
         isActive,  // true jika masih clock in (realtime di client)
         jamMasuk:  rec?.jamMasuk  || null,
-        breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
-                      .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
+        // FIX: breakDetik juga ikutkan break aktif yang sedang berjalan
+        breakDetik: isActive ? (rec?.breaks||[]).reduce((s,b) => {
+                      const bStart = new Date(b.start).getTime();
+                      const bEnd   = b.end ? new Date(b.end).getTime() : Date.now();
+                      return s + (bEnd - bStart) / 1000;
+                    }, 0) : 0,
         jamCuti:  parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
         absenId: rec ? rec.date : null, // untuk edit modal
