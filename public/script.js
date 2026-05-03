@@ -5259,20 +5259,27 @@ function closeTsModal() {
 async function hapusTsAbsen() {
   if (!_tsCurrent) return;
   const { username, date } = _tsCurrent;
-  const konfirm = await uConfirm(`Hapus semua entri absensi ${username} pada ${date}? Tindakan ini tidak bisa dibatalkan.`);
-  if (!konfirm) return;
-  try {
-    const res = await authFetch(`/timesheet/absen/${username}/${date}`, { method: "DELETE" });
-    const data = await res.json();
-    if (data.status === "OK") {
-      closeTsModal();
-      loadTimesheet();
-    } else {
-      alert("Gagal hapus: " + (data.message || "Unknown error"));
+  uConfirm({
+    icon: "🗑",
+    title: "Hapus Entri Absensi",
+    msg: `Hapus semua entri <b>${username}</b> pada <b>${date}</b>?<br>Tindakan ini tidak bisa dibatalkan.`,
+    btnOk: "Hapus",
+    btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const res = await authFetch(`/timesheet/absen/${username}/${date}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.status === "OK") {
+          closeTsModal();
+          loadTimesheet();
+        } else {
+          alert("Gagal hapus: " + (data.message || "Unknown error"));
+        }
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
     }
-  } catch (e) {
-    alert("Error: " + e.message);
-  }
+  });
 }
 
 function tsTambahBaru() {
