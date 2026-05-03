@@ -829,6 +829,7 @@ function updateBtns(status) {
     el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Sedang Istirahat';
     el.style.background="#fff3e0"; el.style.color="#f39c12";
     bBE.classList.remove("hidden");
+    bOut.classList.remove("hidden"); // FIX: tampilkan Clock Out saat istirahat
   } else {
     el.innerHTML = '<span class="status-dot" style="background:#95a5a6"></span> Belum Absen';
     el.style.background="#f0f2f5"; el.style.color="#95a5a6";
