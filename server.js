@@ -1,3 +1,6 @@
+// Timezone -- harus di baris pertama sebelum modul lain di-load
+process.env.TZ = process.env.TZ || "Asia/Makassar";
+
 const express  = require("express");
 const fs       = require("fs");
 const path     = require("path");
@@ -85,8 +88,12 @@ async function loadAll() {
 
 // ── Jalankan: migrasi data lama + load ke RAM sebelum server siap ─────────────
 async function initDB() {
+  // Terapkan timezone dari DB setelah data dimuat
+  // (overwrite default jika admin sudah set via UI)
   await migrateFromTmp(F_TMP); // pindahkan data /tmp ke Supabase jika ada
   await loadAll();              // muat semua data ke RAM
+  const savedTz = (_store["app_settings"] || {}).timezone;
+  if (savedTz) { process.env.TZ = savedTz; console.log("[TZ] Timezone diterapkan:", savedTz); }
 }
 
 // Server mulai setelah DB siap
