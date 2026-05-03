@@ -2554,7 +2554,7 @@ app.get("/wa/status", requireLevel(2), (req, res) => {
 });
 
 // GET: tampilkan QR dalam bentuk HTML (scan dari browser)
-app.get("/wa/qr", requireLevel(2), async (req, res) => {
+app.get("/wa/qr", async (req, res) => {
   const qr = getWAQR();
   if (!qr) {
     return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px">
