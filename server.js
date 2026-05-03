@@ -2496,7 +2496,11 @@ app.post("/app-settings", (req, res) => {
   const user = req.headers["x-user"] || "";
   const users = load(F.users, {});
   const u = users[user];
-  if (!u || (u.level || 99) > 2) return res.status(403).json({ status: "FORBIDDEN" });
+  if (!u) return res.status(403).json({ status: "FORBIDDEN" });
+  const groups = load(F.groups, []);
+  const grp = groups.find(g => g.id === (u.group || "anggota"));
+  const level = grp ? (grp.level || 99) : 99;
+  if (level > 2) return res.status(403).json({ status: "FORBIDDEN" });
 
   const current  = load(F.appSettings, { timezone: "Asia/Makassar" });
   const allowed  = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
