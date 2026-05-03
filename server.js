@@ -2586,7 +2586,7 @@ app.get("/wa/qr", async (req, res) => {
 });
 
 // POST: logout WA dan scan ulang
-app.post("/wa/logout", requireLevel(2), async (req, res) => {
+app.get("/wa/logout", async (req, res) => {
   await logoutWA();
   res.send({ status: "OK", msg: "Logout berhasil. Buka /wa/qr untuk scan ulang." });
 });
