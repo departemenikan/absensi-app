@@ -585,8 +585,6 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const jamFmt = new Date(time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   sendPushToUser(user, "Absensi Smart", `${labelPush[type] || type} — ${jamFmt}`).catch(() => {});
   // WA — konfirmasi absen ke user
-  const usersData = load(F.users, {});
-  const userData  = usersData[user] || {};
   const labelWA = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Mulai Istirahat ☕", BREAK_END: "Selesai Istirahat 💪" };
   if (userData.noHp) sendWA(userData.noHp, `*Absensi Smart*\n${labelWA[type] || type} — pukul *${jamFmt}*`).catch(() => {});
 
