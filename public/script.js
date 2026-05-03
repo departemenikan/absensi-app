@@ -124,15 +124,35 @@ function navTo(page) {
 async function loadFaceModels() {
   const el = document.getElementById("faceStatus");
   if (el) el.innerText = "⏳ Memuat model wajah...";
+
+  // Tunggu faceapi siap (maks 30 detik) — penting untuk Capacitor WebView
+  let waited = 0;
+  while (typeof faceapi === "undefined" && waited < 30000) {
+    await new Promise(r => setTimeout(r, 500));
+    waited += 500;
+  }
+  if (typeof faceapi === "undefined") {
+    if (el) el.innerText = "⚠️ Gagal load face-api.js";
+    console.error("[FaceModel] faceapi tidak tersedia setelah 30 detik");
+    return;
+  }
+
   try {
     const URL = "/model";
+    if (el) el.innerText = "⏳ Mengunduh model (1/3)...";
     await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
+    if (el) el.innerText = "⏳ Mengunduh model (2/3)...";
     await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
+    if (el) el.innerText = "⏳ Mengunduh model (3/3)...";
     await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
     faceModelsLoaded = true;
     if (el) el.innerText = "✅ Model wajah siap";
+    console.log("[FaceModel] ✅ Semua model berhasil dimuat");
   } catch (e) {
-    if (el) el.innerText = "⚠️ Gagal load model (butuh internet)";
+    console.error("[FaceModel] Gagal load model:", e);
+    if (el) el.innerText = "⚠️ Gagal load model: " + e.message;
+    // Coba ulang setelah 5 detik
+    setTimeout(loadFaceModels, 5000);
   }
 }
 
@@ -1211,28 +1231,14 @@ let _permResolve = null;
 let _permGateMode = "";
 
 // ── Cek state izin via Permissions API (non-blocking) ──────────────────────
-// FIX Capacitor: pakai flag internal agar tidak bolak-balik
-const _grantedFlags = { camera: false, geolocation: false };
-
 async function queryPermState(name) {
-  const key = name === "camera" ? "camera" : "geolocation";
-
-  // Kalau sudah pernah granted, langsung return granted tanpa query ulang
-  if (_grantedFlags[key]) return "granted";
-
-  // Di Capacitor, permissions.query tidak reliable — skip dan pakai flag saja
-  const isCapacitor = !!(window.Capacitor &&
-    window.Capacitor.isNativePlatform &&
-    window.Capacitor.isNativePlatform());
-  if (isCapacitor) return "prompt"; // akan di-request via native
-
+  // name: "camera" | "geolocation"
   if (!navigator.permissions) return "unknown";
   try {
     const status = await navigator.permissions.query({
-      name: key === "camera" ? "camera" : "geolocation"
+      name: name === "camera" ? "camera" : "geolocation"
     });
-    if (status.state === "granted") _grantedFlags[key] = true;
-    return status.state;
+    return status.state; // "granted" | "denied" | "prompt"
   } catch {
     return "unknown";
   }
@@ -1245,7 +1251,6 @@ async function requestCameraPermission() {
       video: { facingMode: "user" }, audio: false
     });
     stream.getTracks().forEach(t => t.stop());
-    _grantedFlags.camera = true; // FIX: simpan status granted permanen
     return "granted";
   } catch (e) {
     if (e.name === "NotAllowedError") return "denied";
@@ -1258,10 +1263,7 @@ async function requestLocationPermission() {
   return new Promise(resolve => {
     if (!navigator.geolocation) return resolve("unavailable");
     navigator.geolocation.getCurrentPosition(
-      () => {
-        _grantedFlags.geolocation = true; // FIX: simpan status granted permanen
-        resolve("granted");
-      },
+      () => resolve("granted"),
       (err) => resolve(err.code === 1 ? "denied" : "unknown"),
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     );
