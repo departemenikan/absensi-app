@@ -1211,14 +1211,28 @@ let _permResolve = null;
 let _permGateMode = "";
 
 // ── Cek state izin via Permissions API (non-blocking) ──────────────────────
+// FIX Capacitor: pakai flag internal agar tidak bolak-balik
+const _grantedFlags = { camera: false, geolocation: false };
+
 async function queryPermState(name) {
-  // name: "camera" | "geolocation"
+  const key = name === "camera" ? "camera" : "geolocation";
+
+  // Kalau sudah pernah granted, langsung return granted tanpa query ulang
+  if (_grantedFlags[key]) return "granted";
+
+  // Di Capacitor, permissions.query tidak reliable — skip dan pakai flag saja
+  const isCapacitor = !!(window.Capacitor &&
+    window.Capacitor.isNativePlatform &&
+    window.Capacitor.isNativePlatform());
+  if (isCapacitor) return "prompt"; // akan di-request via native
+
   if (!navigator.permissions) return "unknown";
   try {
     const status = await navigator.permissions.query({
-      name: name === "camera" ? "camera" : "geolocation"
+      name: key === "camera" ? "camera" : "geolocation"
     });
-    return status.state; // "granted" | "denied" | "prompt"
+    if (status.state === "granted") _grantedFlags[key] = true;
+    return status.state;
   } catch {
     return "unknown";
   }
@@ -1231,6 +1245,7 @@ async function requestCameraPermission() {
       video: { facingMode: "user" }, audio: false
     });
     stream.getTracks().forEach(t => t.stop());
+    _grantedFlags.camera = true; // FIX: simpan status granted permanen
     return "granted";
   } catch (e) {
     if (e.name === "NotAllowedError") return "denied";
@@ -1243,7 +1258,10 @@ async function requestLocationPermission() {
   return new Promise(resolve => {
     if (!navigator.geolocation) return resolve("unavailable");
     navigator.geolocation.getCurrentPosition(
-      () => resolve("granted"),
+      () => {
+        _grantedFlags.geolocation = true; // FIX: simpan status granted permanen
+        resolve("granted");
+      },
       (err) => resolve(err.code === 1 ? "denied" : "unknown"),
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     );
