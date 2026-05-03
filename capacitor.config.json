@@ -1,5 +1,9 @@
 {
   "appId": "com.sukodo.absensi",
   "appName": "absensi-smart",
-  "webDir": "public"
+  "webDir": "public",
+  "server": {
+    "url": "https://absensi-app-production-827c.up.railway.app",
+    "cleartext": false
+  }
 }

@@ -123,16 +123,40 @@ function navTo(page) {
 // ============================================================
 async function loadFaceModels() {
   const el = document.getElementById("faceStatus");
-  if (el) el.innerText = "⏳ Memuat model wajah...";
+
+  // Coba lokal dulu, fallback ke CDN jika gagal
+  const LOCAL_URL = "/model";
+  const CDN_URL   = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+
+  async function tryLoad(baseUrl, label) {
+    if (el) el.innerText = `⏳ Mengunduh model (1/3)...`;
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(baseUrl);
+    if (el) el.innerText = `⏳ Mengunduh model (2/3)...`;
+    await faceapi.nets.faceLandmark68Net.loadFromUri(baseUrl);
+    if (el) el.innerText = `⏳ Mengunduh model (3/3)...`;
+    await faceapi.nets.faceRecognitionNet.loadFromUri(baseUrl);
+  }
+
+  // Coba lokal
   try {
-    const URL = "/model";
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
+    await tryLoad(LOCAL_URL, "lokal");
     faceModelsLoaded = true;
     if (el) el.innerText = "✅ Model wajah siap";
-  } catch (e) {
-    if (el) el.innerText = "⚠️ Gagal load model (butuh internet)";
+    return;
+  } catch (e1) {
+    console.warn("[FaceAPI] Model lokal gagal, coba CDN:", e1.message);
+    if (el) el.innerText = "⏳ Mengunduh model dari internet...";
+  }
+
+  // Fallback ke CDN
+  try {
+    await tryLoad(CDN_URL, "CDN");
+    faceModelsLoaded = true;
+    if (el) el.innerText = "✅ Model wajah siap (CDN)";
+  } catch (e2) {
+    console.error("[FaceAPI] Model CDN juga gagal:", e2.message);
+    if (el) el.innerText = "⚠️ Model wajah gagal dimuat. Periksa koneksi internet.";
+    faceModelsLoaded = false;
   }
 }
 
@@ -183,25 +207,17 @@ function toggleAuthMode() {
     const status = document.getElementById("faceStatus");
     if (status) status.innerText = "🔐 Meminta izin kamera & lokasi...";
 
-    // Cek dan minta izin via gate — sequential, tidak blokir render UI
-    requirePermissions(true, true).then(granted => {
-      if (granted) {
-        if (status) status.innerText = "✅ Izin diberikan — kamera siap";
+    // Minta izin dulu — baru buka kamera setelah granted (sequential, bukan paralel)
+    requirePermissions(true, true).then(async granted => {
+      if (!granted) return; // gate masih terbuka
+      if (status) status.innerText = "📷 Membuka kamera...";
+      await startCam("video-signup");
+      try {
+        await waitVideoReady("video-signup", 8000);
+        if (status) status.innerText = "✅ Kamera siap — hadapkan wajah ke kamera";
+      } catch {
+        if (status) status.innerText = "⚠️ Gagal buka kamera. Pastikan izin kamera diberikan.";
       }
-      // Jika tidak granted, gate modal tetap terbuka — user tidak bisa lanjut
-    });
-
-    // Mulai kamera untuk scan wajah (paralel dengan permintaan izin)
-    startCam("video-signup").then(() => {
-      waitVideoReady("video-signup", 8000)
-        .then(() => {
-          const st = document.getElementById("faceStatus");
-          if (st) st.innerText = "✅ Kamera siap — hadapkan wajah ke kamera";
-        })
-        .catch(() => {
-          const st = document.getElementById("faceStatus");
-          if (st) st.innerText = "⚠️ Gagal buka kamera. Pastikan izin kamera diberikan.";
-        });
     });
   } else {
     stopCam("video-signup");
@@ -1209,6 +1225,14 @@ let _permState = { camera: "unknown", location: "unknown" };
 let _permResolve = null;
 // Mode gate: "signup" | "absen"
 let _permGateMode = "";
+
+// FIX: _grantedFlags HARUS dideklarasikan di sini — capacitor-bridge.js mengisinya
+// via window._grantedFlags setelah izin native diberikan
+if (typeof window._grantedFlags === "undefined") {
+  window._grantedFlags = { camera: false, geolocation: false };
+}
+// Alias lokal agar kode lama yang pakai _grantedFlags (tanpa window.) tetap jalan
+const _grantedFlags = window._grantedFlags;
 
 // ── Cek state izin via Permissions API (non-blocking) ──────────────────────
 async function queryPermState(name) {

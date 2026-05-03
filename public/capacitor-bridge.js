@@ -28,6 +28,10 @@
           enableHighAccuracy: options?.enableHighAccuracy ?? true,
           timeout: options?.timeout ?? 15000,
         });
+        // Tandai geolocation sudah granted agar script.js tidak query ulang
+        if (typeof window._grantedFlags !== "undefined") {
+          window._grantedFlags.geolocation = true;
+        }
         success({
           coords: {
             latitude:         pos.coords.latitude,
@@ -99,6 +103,10 @@
           const perm = await Camera.requestPermissions({ permissions: ["camera"] });
           console.log("[Bridge] Camera perm:", perm.camera);
           if (perm.camera === "denied") throw new DOMException("Permission denied", "NotAllowedError");
+          // Tandai camera sudah granted
+          if (perm.camera === "granted" && typeof window._grantedFlags !== "undefined") {
+            window._grantedFlags.camera = true;
+          }
         } catch (e) {
           if (e.name === "NotAllowedError") throw e;
         }
