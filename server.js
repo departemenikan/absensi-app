@@ -2180,11 +2180,11 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const tglLabelR = p.tanggalMulai ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai) : "";
   sendPushToUser(p.username,
     "Cuti Ditolak ❌",
+    `${p.kebijakanNama}${tglLabelR ? " (" + tglLabelR + ")" : ""} ditolak${reason ? ": " + reason : ""}`
+  ).catch(() => {});
   // WA ke pengaju — ditolak
   const usersAllR = load(F.users, {});
   if (usersAllR[p.username]?.noHp) sendWA(usersAllR[p.username].noHp, `❌ *Cuti Ditolak*\nHai *${usersAllR[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabelR ? " (" + tglLabelR + ")" : ""} *ditolak*${reason ? "\nAlasan: " + reason : ""}.`).catch(() => {});
-    `${p.kebijakanNama}${tglLabelR ? " (" + tglLabelR + ")" : ""} ditolak${reason ? ": " + reason : ""}`
-  ).catch(() => {});
 
   res.send({ status: "OK" });
 });
