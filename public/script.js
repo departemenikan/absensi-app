@@ -4850,7 +4850,8 @@ function tsGetMonday(d = new Date()) {
 function tsNavWeek(delta) {
   const d = new Date(_tsWeekStart + "T00:00:00");
   d.setDate(d.getDate() + delta * 7);
-  _tsWeekStart = d.toISOString().split("T")[0];
+  // Pakai tanggal lokal agar tidak geser UTC
+  _tsWeekStart = d.toLocaleDateString("sv-SE");
   loadTimesheet();
 }
 
@@ -4884,7 +4885,14 @@ function fmtTime(isoStr) {
 
 async function loadTimesheet() {
   const me = localStorage.getItem("user");
-  if (!_tsWeekStart) _tsWeekStart = tsGetMonday();
+  // Selalu validasi: pastikan _tsWeekStart adalah hari Senin yang valid
+  if (!_tsWeekStart) {
+    _tsWeekStart = tsGetMonday();
+  } else {
+    // Cek apakah nilai yang tersimpan benar-benar hari Senin
+    const d = new Date(_tsWeekStart + "T00:00:00");
+    if (d.getDay() !== 1) _tsWeekStart = tsGetMonday(); // bukan Senin → reset
+  }
 
   // Update label minggu
   const mon = new Date(_tsWeekStart + "T00:00:00");
