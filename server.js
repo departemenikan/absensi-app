@@ -1,6 +1,3 @@
-// Timezone -- harus di baris pertama sebelum modul lain di-load
-process.env.TZ = process.env.TZ || "Asia/Makassar";
-
 const express  = require("express");
 const fs       = require("fs");
 const path     = require("path");
@@ -34,7 +31,6 @@ const F = {
   aktivitasKustom: "aktivitas_kustom",
   rules:           "rules",
   pushSubs:        "push_subscriptions",
-  appSettings:     "app_settings",
 };
 
 // Path file /tmp untuk keperluan migrasi data lama
@@ -72,7 +68,6 @@ async function loadAll() {
     tracking: {}, kebijakan_cuti: [], kuota_cuti: {},
     pengajuan_cuti: [], aktivitas_kustom: [],
     rules: { messList: [] }, push_subscriptions: {},
-    app_settings: { timezone: "Asia/Makassar" },
   };
 
   await Promise.all(
@@ -88,12 +83,8 @@ async function loadAll() {
 
 // ── Jalankan: migrasi data lama + load ke RAM sebelum server siap ─────────────
 async function initDB() {
-  // Terapkan timezone dari DB setelah data dimuat
-  // (overwrite default jika admin sudah set via UI)
   await migrateFromTmp(F_TMP); // pindahkan data /tmp ke Supabase jika ada
   await loadAll();              // muat semua data ke RAM
-  const savedTz = (_store["app_settings"] || {}).timezone;
-  if (savedTz) { process.env.TZ = savedTz; console.log("[TZ] Timezone diterapkan:", savedTz); }
 }
 
 // Server mulai setelah DB siap
@@ -132,12 +123,20 @@ async function sendPushToUser(username, title, body, data = {}) {
   console.log(`[PUSH] Kirim ke ${username}, subs:`, userSubs ? userSubs.length : 0);
   if (!userSubs || userSubs.length === 0) { console.log(`[PUSH] Tidak ada subscription untuk ${username}`); return; }
 
-  const payload = JSON.stringify({ title, body, ...data });
+  // channelId harus sama dengan yang dibuat di capacitor-bridge.js
+  // TTL 0 = hanya deliver jika device online sekarang (tidak ditunda)
+  const payload = JSON.stringify({
+    title,
+    body,
+    channelId: "absensi-main",
+    ...data
+  });
+  const pushOptions = { TTL: 60 }; // tunggu max 60 detik jika device offline
   const deadSubs = [];
 
   for (const sub of userSubs) {
     try {
-      await webpush.sendNotification(sub, payload);
+      await webpush.sendNotification(sub, payload, pushOptions);
       console.log(`[PUSH] Berhasil kirim ke ${username}`);
     } catch (err) {
       console.log(`[PUSH] Gagal kirim ke ${username}:`, err.statusCode, err.message);
@@ -1228,11 +1227,10 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
   const requester = req._requester;
   if (!weekStart) return res.send({ error: "weekStart required" });
 
-  const monDate = new Date(weekStart + "T12:00:00"); // T12 agar tidak geser timezone
+  const monDate = new Date(weekStart + "T00:00:00");
   const dates = Array.from({length: 7}, (_, i) => {
     const d = new Date(monDate); d.setDate(monDate.getDate() + i);
-    // Gunakan tanggal lokal server (bukan UTC) agar tidak geser
-    return d.toLocaleDateString("sv-SE");
+    return d.toISOString().split("T")[0];
   }); // [Sen, Sel, Rab, Kam, Jum, Sab, Min]
 
   const data      = load(F.data, []);
@@ -1294,9 +1292,7 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
     const days = dates.map(dateStr => {
-      // Prioritaskan record aktif (!jamKeluar), fallback ke record manapun
-      const rec = data.find(d => d.user === username && d.date === dateStr && !d.jamKeluar)
-             || data.find(d => d.user === username && d.date === dateStr);
+      const rec = data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
       let isActive = false;
       if (rec && rec.jamMasuk && rec.jamKeluar) {
@@ -1306,15 +1302,9 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         jamKerja = Math.max(0, work - bt);
       } else if (rec && rec.jamMasuk && !rec.jamKeluar) {
         // Masih aktif — hitung sampai sekarang, client update realtime tiap menit
-        const nowMs = Date.now();
-        const work = (nowMs - new Date(rec.jamMasuk).getTime()) / 3600000;
+        const work = (Date.now() - new Date(rec.jamMasuk).getTime()) / 3600000;
         let bt = 0;
-        // FIX: break aktif (belum ada b.end) ikut dihitung sampai sekarang
-        (rec.breaks || []).forEach(b => {
-          const bStart = new Date(b.start).getTime();
-          const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
-          bt += (bEnd - bStart) / 3600000;
-        });
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
         jamKerja = Math.max(0, work - bt);
         isActive = true;
       }
@@ -1330,12 +1320,8 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
         isActive,  // true jika masih clock in (realtime di client)
         jamMasuk:  rec?.jamMasuk  || null,
-        // FIX: breakDetik juga ikutkan break aktif yang sedang berjalan
-        breakDetik: isActive ? (rec?.breaks||[]).reduce((s,b) => {
-                      const bStart = new Date(b.start).getTime();
-                      const bEnd   = b.end ? new Date(b.end).getTime() : Date.now();
-                      return s + (bEnd - bStart) / 1000;
-                    }, 0) : 0,
+        breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
+                      .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
         jamCuti:  parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
         absenId: rec ? rec.date : null, // untuk edit modal
@@ -1434,9 +1420,7 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
 
     // Semua hari dalam bulan (flat)
     const days = allDates.map(dateStr => {
-      // Prioritaskan record aktif (!jamKeluar), fallback ke record manapun
-      const rec = data.find(d => d.user === username && d.date === dateStr && !d.jamKeluar)
-             || data.find(d => d.user === username && d.date === dateStr);
+      const rec = data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
       if (rec && rec.jamMasuk && rec.jamKeluar) {
         const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
@@ -2507,38 +2491,6 @@ app.post("/push/unsubscribe", requireLevel(99), (req, res) => {
 });
 
 // ========================
-// APP SETTINGS (Timezone, dll) — hanya Owner/Admin (level <= 2)
-// ========================
-app.get("/app-settings", (req, res) => {
-  const settings = load(F.appSettings, { timezone: "Asia/Makassar" });
-  res.json(settings);
-});
-
-app.post("/app-settings", (req, res) => {
-  const user = req.headers["x-user"] || "";
-  const users = load(F.users, {});
-  const u = users[user];
-  if (!u) return res.status(403).json({ status: "FORBIDDEN" });
-  const groups = load(F.groups, []);
-  const grp = groups.find(g => g.id === (u.group || "anggota"));
-  const level = grp ? (grp.level || 99) : 99;
-  if (level > 2) return res.status(403).json({ status: "FORBIDDEN" });
-
-  const current  = load(F.appSettings, { timezone: "Asia/Makassar" });
-  const allowed  = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
-  const { timezone } = req.body;
-  if (!allowed.includes(timezone)) return res.status(400).json({ status: "INVALID_TZ" });
-
-  const updated = { ...current, timezone };
-  save(F.appSettings, updated);
-
-  // Update process timezone agar langsung efektif tanpa restart
-  process.env.TZ = timezone;
-
-  res.json({ status: "OK", settings: updated });
-});
-
-
 app.get('/.well-known/assetlinks.json', (req, res) => {
   res.json([
     {

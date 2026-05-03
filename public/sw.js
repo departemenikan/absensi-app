@@ -89,16 +89,29 @@ self.addEventListener("push", (event) => {
   catch { payload = { title: "Absensi Smart", body: event.data.text() }; }
 
   const title = payload.title || "Absensi Smart";
+
+  // Tag unik per notif agar tidak saling timpa antar user/event
+  // Gunakan timestamp sehingga setiap notif muncul sebagai entri baru
+  const uniqueTag = (payload.tag || "absensi") + "-" + Date.now();
+
   const options = {
-    body:     payload.body || "",
-    icon:     "/icons/icon-192.png",
-    badge:    "/icons/icon-96.png",
-    vibrate:  [200, 100, 200],
-    tag:      payload.tag || "absensi-notif",
-    renotify: true,
-    silent:   false,
-    data:     { url: payload.url || "/" },
+    body:               payload.body || "",
+    icon:               "/icons/icon-192.png",
+    badge:              "/icons/icon-96.png",
+    vibrate:            [300, 100, 300, 100, 300], // pola getar lebih terasa
+    tag:                uniqueTag,
+    renotify:           true,   // selalu tampil meskipun tag sama
+    silent:             false,  // HARUS false agar bersuara
+    requireInteraction: true,   // notif tidak hilang otomatis — user harus swipe
+    data:               { url: payload.url || "/" },
+    // Android channel ID — harus sama dengan yang dibuat di capacitor-bridge.js
+    // (Chrome Android & TWA membaca field ini)
+    ...(payload.channelId ? { tag: payload.channelId + "-" + Date.now() } : {}),
   };
+
+  // Tambahkan actions jika ada (tombol di notif)
+  if (payload.actions) options.actions = payload.actions;
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

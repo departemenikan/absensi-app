@@ -1,6 +1,5 @@
 /**
- * capacitor-bridge.js — v3
- * FIX: skip requestPermissions() jika sudah granted → tidak lambat lagi
+ * capacitor-bridge.js — v2
  * Pakai Web Push (VAPID) yang sudah ada di server, bukan FCM
  * Taruh di public/ dan load sebelum script.js di index.html
  */
@@ -17,25 +16,11 @@
     const { Geolocation } = Capacitor.Plugins;
     if (!Geolocation) { console.warn("[Bridge] Geolocation plugin tidak ada"); return; }
 
-    // ✅ FIX: helper — cek dulu, request hanya kalau belum granted
-    async function ensureLocationPermission() {
-      try {
-        const check = await Geolocation.checkPermissions();
-        if (check.location === "granted") {
-          console.log("[Bridge] Location: already granted, skip request");
-          return "granted";
-        }
-      } catch {}
-      // Belum granted → baru request
-      const perm = await Geolocation.requestPermissions();
-      console.log("[Bridge] Location perm:", perm.location);
-      return perm.location;
-    }
-
     async function nativeGetPosition(success, error, options) {
       try {
-        const status = await ensureLocationPermission();
-        if (status === "denied") {
+        const perm = await Geolocation.requestPermissions();
+        console.log("[Bridge] Location perm:", perm.location);
+        if (perm.location === "denied") {
           if (error) error({ code: 1, message: "Permission denied" });
           return;
         }
@@ -43,10 +28,6 @@
           enableHighAccuracy: options?.enableHighAccuracy ?? true,
           timeout: options?.timeout ?? 15000,
         });
-        // Tandai geolocation sudah granted agar script.js tidak query ulang
-        if (typeof window._grantedFlags !== "undefined") {
-          window._grantedFlags.geolocation = true;
-        }
         success({
           coords: {
             latitude:         pos.coords.latitude,
@@ -74,9 +55,8 @@
           const fakeId = Math.floor(Math.random() * 99999);
           (async () => {
             try {
-              // ✅ FIX: pakai ensureLocationPermission
-              const status = await ensureLocationPermission();
-              if (status === "denied") {
+              const perm = await Geolocation.requestPermissions();
+              if (perm.location === "denied") {
                 if (error) error({ code: 1, message: "Permission denied" });
                 return;
               }
@@ -84,14 +64,7 @@
                 { enableHighAccuracy: true },
                 (pos, err) => {
                   if (err) { if (error) error(err); return; }
-                  success({
-                    coords: {
-                      latitude:  pos.coords.latitude,
-                      longitude: pos.coords.longitude,
-                      accuracy:  pos.coords.accuracy,
-                    },
-                    timestamp: pos.timestamp,
-                  });
+                  success({ coords: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }, timestamp: pos.timestamp });
                 }
               );
               _watchIds.set(fakeId, id);
@@ -123,31 +96,11 @@
     navigator.mediaDevices.getUserMedia = async function (constraints) {
       if (constraints?.video) {
         try {
-          // ✅ FIX: cek dulu, request hanya kalau belum granted
-          let permStatus = "prompt";
-          try {
-            const check = await Camera.checkPermissions();
-            permStatus = check.camera;
-          } catch {}
-
-          if (permStatus !== "granted") {
-            const perm = await Camera.requestPermissions({ permissions: ["camera"] });
-            console.log("[Bridge] Camera perm:", perm.camera);
-            permStatus = perm.camera;
-            if (permStatus === "denied") {
-              throw new DOMException("Permission denied", "NotAllowedError");
-            }
-          } else {
-            console.log("[Bridge] Camera: already granted, skip request");
-          }
-
-          // Tandai camera sudah granted
-          if (permStatus === "granted" && typeof window._grantedFlags !== "undefined") {
-            window._grantedFlags.camera = true;
-          }
+          const perm = await Camera.requestPermissions({ permissions: ["camera"] });
+          console.log("[Bridge] Camera perm:", perm.camera);
+          if (perm.camera === "denied") throw new DOMException("Permission denied", "NotAllowedError");
         } catch (e) {
           if (e.name === "NotAllowedError") throw e;
-          // Error lain (misal plugin tidak support checkPermissions) — lanjut saja
         }
       }
       return _orig(constraints);
@@ -169,19 +122,46 @@
 
   // ── 4. PUSH NOTIFICATION — pakai Web Push VAPID yang sudah ada di server ─────
   function initWebPush() {
+    // Capacitor WebView support Service Worker & PushManager
+    // Kita pakai Web Push biasa — tidak perlu FCM
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       console.warn("[Bridge] Web Push tidak didukung di WebView ini");
       return;
     }
 
+    // ── Setup Android Notification Channel (IMPORTANCE_HIGH = heads-up + suara) ──
+    async function setupNotificationChannel() {
+      try {
+        const { LocalNotifications } = Capacitor.Plugins;
+        if (!LocalNotifications?.createChannel) return;
+        await LocalNotifications.createChannel({
+          id:          "absensi-main",
+          name:        "Absensi Smart",
+          description: "Notifikasi absensi, cuti, dan pengingat",
+          importance:  5,          // IMPORTANCE_HIGH — heads-up + suara + getaran
+          visibility:  1,          // VISIBILITY_PUBLIC — tampil di lock screen
+          sound:       "default",  // suara sistem default
+          vibration:   true,
+          lights:      true,
+          lightColor:  "#4f8ef7",
+        });
+        console.log("[Bridge] ✅ Android notification channel dibuat");
+      } catch (e) {
+        console.warn("[Bridge] createChannel error (mungkin bukan Android):", e.message);
+      }
+    }
+
     async function subscribePush() {
       try {
+        // Ambil VAPID key dari server
         const r = await fetch("/push/vapid-public-key");
         if (!r.ok) { console.warn("[Bridge] VAPID key tidak tersedia"); return; }
         const { key } = await r.json();
         if (!key) return;
 
         const reg = await navigator.serviceWorker.ready;
+
+        // Cek apakah sudah subscribe
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
           sub = await reg.pushManager.subscribe({
@@ -190,6 +170,7 @@
           });
         }
 
+        // Kirim subscription ke server (endpoint yang sudah ada)
         const user = localStorage.getItem("user") || "";
         await fetch("/push/subscribe", {
           method: "POST",
@@ -210,6 +191,7 @@
       return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
     }
 
+    // Request notification permission native (Android 13+)
     async function requestNotifPermission() {
       if ("Notification" in window && Notification.permission === "default") {
         const result = await Notification.requestPermission();
@@ -217,8 +199,10 @@
       }
     }
 
+    // Jalankan setelah app siap
     document.addEventListener("DOMContentLoaded", () => {
       setTimeout(async () => {
+        await setupNotificationChannel();   // ← channel dulu, baru minta izin
         await requestNotifPermission();
         await subscribePush();
       }, 3000);
@@ -233,8 +217,9 @@
     overrideCamera();
     fixPermissionsAPI();
     initWebPush();
-    console.log("[Bridge] 🚀 Capacitor Bridge v3 aktif");
+    console.log("[Bridge] 🚀 Capacitor Bridge v2 aktif");
   } else {
+    // Di browser biasa, tetap init Web Push
     initWebPush();
     console.log("[Bridge] 🌐 Browser mode — hanya Web Push aktif");
   }
