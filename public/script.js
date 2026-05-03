@@ -319,9 +319,10 @@ async function doSignUp(u, p) {
 
     const namaLengkap = (document.getElementById("signup-nama")?.value || "").trim();
     const agama       = document.getElementById("signup-agama")?.value || "";
+    const noHp        = (document.getElementById("signup-nohp")?.value || "").trim();
     const r = await fetch("/signup", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ username:u, password:p, faceDescriptor:Array.from(avgDescriptor), namaLengkap, agama })
+      body: JSON.stringify({ username:u, password:p, faceDescriptor:Array.from(avgDescriptor), namaLengkap, agama, noHp })
     });
     const d = await r.json();
     if (d.status === "OK") {
@@ -5413,6 +5414,7 @@ function renderProfil() {
   // Data diri
   document.getElementById("pf-nama").innerText    = d.namaLengkap  || "—";
   document.getElementById("pf-agama").innerText   = d.agama        || "—";
+  document.getElementById("pf-nohp").innerText    = d.noHp         || "—";
   document.getElementById("pf-jabatan").innerText = d.jabatan      || "—";
   // Peran hanya ditampilkan jika Owner atau Admin
   const peranRow = document.getElementById("pf-peran")?.closest(".profil-field-row");

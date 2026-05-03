@@ -5,6 +5,7 @@ const bcrypt   = require("bcryptjs");
 const webpush  = require("web-push");
 const app      = express();
 const { dbLoad, dbSave, migrateFromTmp } = require("./db");
+const { sendWA, waStatus, getWAQR, logoutWA } = require("./wa");
 
 const BCRYPT_ROUNDS = 10;
 
@@ -260,6 +261,7 @@ setInterval(() => {
         "⏰ Pengingat Absen",
         "Kamu belum Clock In hari ini. Jangan lupa absen!"
       ).catch(() => {});
+      if (user.noHp) sendWA(user.noHp, `⏰ *Pengingat Absen*\nHai *${user.nama || username}*, kamu belum Clock In hari ini. Jangan lupa absen!`).catch(() => {});
     });
   }
 
@@ -433,7 +435,7 @@ initKebijakanCutiDefault();
 // AUTH
 // ========================
 app.post("/signup", async (req, res) => {
-  const { username, password, faceDescriptor, namaLengkap, agama } = req.body;
+  const { username, password, faceDescriptor, namaLengkap, agama, noHp } = req.body;
   if (!username || !password) return res.send({ status: "ERROR" });
   const users = load(F.users, {});
   if (users[username]) return res.send({ status: "EXIST" });
@@ -446,6 +448,7 @@ app.post("/signup", async (req, res) => {
     peran:       isFirst ? "Owner"   : "Anggota",
     namaLengkap: namaLengkap || "",
     agama:       agama || "",
+    noHp:        noHp  || "",
     jabatan:     isFirst ? "Owner" : "Anggota",
     divisi:      "",
     statusKerja: "",
@@ -581,6 +584,11 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const labelPush = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Istirahat dimulai ☕", BREAK_END: "Selesai istirahat, kerja lagi! 💪" };
   const jamFmt = new Date(time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   sendPushToUser(user, "Absensi Smart", `${labelPush[type] || type} — ${jamFmt}`).catch(() => {});
+  // WA — konfirmasi absen ke user
+  const usersData = load(F.users, {});
+  const userData  = usersData[user] || {};
+  const labelWA = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Mulai Istirahat ☕", BREAK_END: "Selesai Istirahat 💪" };
+  if (userData.noHp) sendWA(userData.noHp, `*Absensi Smart*\n${labelWA[type] || type} — pukul *${jamFmt}*`).catch(() => {});
 
   res.send({ status: "OK" });
 });
@@ -651,6 +659,7 @@ app.get("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
     username:    req.params.username,
     namaLengkap: user.namaLengkap  || "",
     agama:       user.agama        || "",
+    noHp:        user.noHp         || "",
     jabatan:     user.jabatan      || "Anggota",
     peran:       user.peran || (user.group === "owner" ? "Owner" : user.group === "admin" ? "Admin" : ""),
     group:       user.group        || "anggota",
@@ -670,7 +679,7 @@ app.put("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   const users = load(F.users, {});
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
   // Field yang boleh diedit oleh siapa saja (termasuk user sendiri)
-  const allowedSelf  = ["namaLengkap", "agama"];
+  const allowedSelf  = ["namaLengkap", "agama", "noHp"];
   // Field yang hanya boleh diedit oleh Owner/Admin (level <= 2)
   const allowedAdmin = ["jabatan", "divisi", "statusKerja", "nominalGaji"];
   allowedSelf.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
@@ -2064,6 +2073,15 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     "Pengajuan Cuti Baru 📋",
     `${namaUser} mengajukan ${kebijakanNama}${tglLabel ? " — " + tglLabel : ""}`
   ).catch(() => {});
+  // WA — kirim ke semua admin/owner/manager yang punya noHp
+  const allUsers = load(F.users, {});
+  const groups   = load(F.groups, {});
+  Object.entries(allUsers).forEach(([uname, udata]) => {
+    const grp = (groups[uname] || {}).group || udata.group || "";
+    if (["owner","admin","manager"].includes(grp) && udata.noHp) {
+      sendWA(udata.noHp, `📋 *Pengajuan Cuti Baru*\n*${namaUser}* mengajukan *${kebijakanNama}*${tglLabel ? " — " + tglLabel : ""}\n\nSilakan buka aplikasi untuk menyetujui/menolak.`).catch(() => {});
+    }
+  });
 
   res.send({ status: "OK", id });
 });
@@ -2105,6 +2123,9 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
     "Cuti Disetujui ✅",
     `${p.kebijakanNama} kamu${tglLabel ? " (" + tglLabel + ")" : ""} telah disetujui`
   ).catch(() => {});
+  // WA ke pengaju — disetujui
+  const usersAll = load(F.users, {});
+  if (usersAll[p.username]?.noHp) sendWA(usersAll[p.username].noHp, `✅ *Cuti Disetujui*\nHai *${usersAll[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabel ? " (" + tglLabel + ")" : ""} telah *disetujui* oleh ${approver}.`).catch(() => {});
 
   res.send({ status: "OK" });
 });
@@ -2161,6 +2182,9 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const tglLabelR = p.tanggalMulai ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai) : "";
   sendPushToUser(p.username,
     "Cuti Ditolak ❌",
+  // WA ke pengaju — ditolak
+  const usersAllR = load(F.users, {});
+  if (usersAllR[p.username]?.noHp) sendWA(usersAllR[p.username].noHp, `❌ *Cuti Ditolak*\nHai *${usersAllR[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabelR ? " (" + tglLabelR + ")" : ""} *ditolak*${reason ? "\nAlasan: " + reason : ""}.`).catch(() => {});
     `${p.kebijakanNama}${tglLabelR ? " (" + tglLabelR + ")" : ""} ditolak${reason ? ": " + reason : ""}`
   ).catch(() => {});
 
@@ -2521,3 +2545,50 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
 // START SERVER — dipindah ke initDB().then() di bagian atas file
 // ========================
 
+
+// ========================
+// WHATSAPP ENDPOINTS
+// ========================
+
+// GET: status koneksi WA
+app.get("/wa/status", requireLevel(2), (req, res) => {
+  res.send(waStatus());
+});
+
+// GET: tampilkan QR dalam bentuk HTML (scan dari browser)
+app.get("/wa/qr", requireLevel(2), async (req, res) => {
+  const qr = getWAQR();
+  if (!qr) {
+    return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px">
+      <h2>✅ WhatsApp sudah terhubung</h2>
+      <p>Tidak ada QR yang perlu di-scan saat ini.</p>
+      <a href="/wa/status">Cek Status</a>
+    </body></html>`);
+  }
+  // Generate QR sebagai gambar menggunakan qrcode library
+  try {
+    const QRCode = require("qrcode");
+    const dataUrl = await QRCode.toDataURL(qr, { width: 300 });
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5">
+      <h2>📱 Scan QR WhatsApp</h2>
+      <p>Buka WA → Menu → Perangkat Tertaut → Tautkan Perangkat</p>
+      <img src="${dataUrl}" style="border:4px solid #25D366;border-radius:12px;padding:8px;background:white" />
+      <br/><br/>
+      <p style="color:#888;font-size:13px">QR otomatis refresh. Reload halaman ini jika QR expired.</p>
+      <a href="/wa/qr" style="background:#25D366;color:white;padding:10px 24px;border-radius:8px;text-decoration:none">🔄 Refresh QR</a>
+    </body></html>`);
+  } catch {
+    // Fallback: tampilkan string QR jika qrcode tidak terinstall
+    res.send(`<html><body style="font-family:sans-serif;padding:40px">
+      <h2>QR tersedia tapi qrcode library belum terinstall</h2>
+      <p>Jalankan: <code>npm install qrcode</code></p>
+      <pre style="font-size:10px;word-break:break-all">${qr}</pre>
+    </body></html>`);
+  }
+});
+
+// POST: logout WA dan scan ulang
+app.post("/wa/logout", requireLevel(2), async (req, res) => {
+  await logoutWA();
+  res.send({ status: "OK", msg: "Logout berhasil. Buka /wa/qr untuk scan ulang." });
+});
