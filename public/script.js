@@ -4812,24 +4812,60 @@ let _tsTicker = null;
 
 function startTsTicker() {
   stopTsTicker();
-  const cells = document.querySelectorAll(".ts-active-cell");
-  if (!cells.length) return;
+
+  function getActiveJam() {
+    // Baca dari t-dur beranda — satu-satunya sumber kebenaran durasi hari ini
+    const tDur = document.getElementById("t-dur");
+    if (tDur && tDur.innerText && tDur.innerText !== "00:00:00") {
+      const parts = tDur.innerText.split(":");
+      if (parts.length >= 2) {
+        const h = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        const s = parseInt(parts[2], 10) || 0;
+        return h + m / 60 + s / 3600;
+      }
+    }
+    // Fallback: hitung dari _todayRec jika t-dur belum terisi
+    if (typeof _todayRec !== "undefined" && _todayRec && _todayRec.jamMasuk && !_todayRec.jamKeluar) {
+      const now = Date.now();
+      const masuk = new Date(_todayRec.jamMasuk).getTime();
+      let breakSec = 0;
+      (_todayRec.breaks || []).forEach(b => {
+        const end = b.end ? new Date(b.end).getTime() : now;
+        breakSec += Math.max(0, end - new Date(b.start).getTime()) / 1000;
+      });
+      return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
+    }
+    return 0;
+  }
 
   function tickCells() {
-    const now = Date.now();
+    const activeJam = getActiveJam();
+    const h = Math.floor(activeJam);
+    const m = Math.floor((activeJam - h) * 60);
+    const display = `${h}:${String(m).padStart(2, "0")}`;
+
+    // Update sel durasi hari aktif
     document.querySelectorAll(".ts-active-cell").forEach(cell => {
-      const jamMasuk   = cell.getAttribute("data-jammasuk");
-      const breakDetik = parseFloat(cell.getAttribute("data-breakdetik") || "0");
-      if (!jamMasuk) return;
-      const elapsedSec = Math.max(0, (now - new Date(jamMasuk).getTime()) / 1000 - breakDetik);
-      const h = Math.floor(elapsedSec / 3600);
-      const m = Math.floor((elapsedSec % 3600) / 60);
-      cell.textContent = `${h}:${String(m).padStart(2,"0")}`;
+      cell.textContent = display;
+    });
+
+    // Update kolom total — jam hari lain (tersimpan) + jam hari ini (realtime)
+    document.querySelectorAll(".ts-total-cell").forEach(td => {
+      const nonActive = parseFloat(td.getAttribute("data-nonactive") || "0");
+      const total  = nonActive + activeJam;
+      const kurang = Math.max(0, 40 - total);
+      const lebih  = Math.max(0, total - 40);
+      const color  = kurang > 0 ? "#e53935" : lebih > 0 ? "#f57f17" : "#2e7d32";
+      td.style.color = color;
+      td.innerHTML =
+        `<div>${fmtJam(total)}</div>` +
+        (kurang > 0 ? `<div style="font-size:9px;color:#e53935;font-weight:600;">-${fmtJam(kurang)}</div>` : "") +
+        (lebih  > 0 ? `<div style="font-size:9px;color:#f57f17;font-weight:600;">+${fmtJam(lebih)}</div>`  : "");
     });
   }
   tickCells();
-  // Update tiap 60 detik (cukup karena format HH:MM, tanpa detik)
-  _tsTicker = setInterval(tickCells, 60000);
+  _tsTicker = setInterval(tickCells, 1000);
 }
 
 function stopTsTicker() {
@@ -5032,7 +5068,8 @@ function tsRender() {
       </td>
       ${dayCols}
       <!-- Total -->
-      <td style="text-align:center;padding:8px 10px;font-weight:900;font-size:13px;color:${totalColor};
+      <td class="ts-total-cell" data-nonactive="${u.totalEfektif - (u.days.find(d=>d.isActive)?.jamKerja||0)}"
+          style="text-align:center;padding:8px 10px;font-weight:900;font-size:13px;color:${totalColor};
                  border-left:2px solid #f0f2f5;min-width:70px;">
         <div>${fmtJam(totalEfektif)}</div>
         ${kurang > 0 ? `<div style="font-size:9px;color:#e53935;font-weight:600;">-${fmtJam(kurang)}</div>` : ""}
@@ -5063,7 +5100,7 @@ function tsRender() {
 `;  // (legend dihapus per permintaan revisi)
 
   // Start realtime ticker untuk sel aktif hari ini
-  setTimeout(startTsTicker, 100);
+  setTimeout(startTsTicker, 300);
 
   // Hover listener: tampilkan/sembunyikan ikon pensil hanya untuk baris canEdit
   el.querySelectorAll("tr.ts-row[data-canedit='1']").forEach(row => {
