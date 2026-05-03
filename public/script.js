@@ -1942,7 +1942,7 @@ function rekapRender() {
         const day = u.days.find(d => d.date === date);
         const dow = day ? day.dow : new Date(date + "T00:00:00").getDay();
         const isToday  = date === today;
-        const isWeekend = dow === 0 && !hasKerja; // Minggu libur, tapi tampil jika ada clock in
+        const isWeekend = dow === 0;
         const jamKerja  = day ? day.jamKerja : 0;
         const jamCuti   = day ? day.jamCuti  : 0;
         const hasCuti   = jamCuti > 0;
@@ -4924,8 +4924,7 @@ function tsRender() {
       const hasCuti  = day.jamCuti  > 0;
       const isToday  = day.date === new Date().toISOString().split("T")[0];
       const dow      = day.dow;
-      // Minggu = libur by default, tapi tampilkan jam jika ada clock in (misal: kejar jadwal flight)
-      const isWeekend = dow === 0 && !hasKerja;
+      const isWeekend = dow === 0; // Minggu
 
       let cellContent = "";
       if (isWeekend) {
@@ -7225,3 +7224,76 @@ async function sendChat() {
   const box = document.getElementById("chat-messages");
   box.scrollTop = box.scrollHeight;
 }
+
+// ============================================================
+// AUTO-POLLING — Sinkronisasi data antar perangkat
+// Fetch ulang data secara berkala agar Android & Web sinkron
+// Aman: cek view aktif dulu, tidak tumpuk request, stop saat tab hidden
+// ============================================================
+(function() {
+  const INTERVAL_MS   = 30000; // polling tiap 30 detik
+  let _pollTimer      = null;
+  let _isPollRunning  = false; // guard agar tidak tumpuk request
+
+  function getActiveView() {
+    const v = document.querySelector(".view.active");
+    return v ? v.id : null;
+  }
+
+  async function doPoll() {
+    // Jangan jalankan jika tab tidak aktif (hemat baterai & bandwidth)
+    if (document.hidden) return;
+
+    // Guard: skip jika request sebelumnya belum selesai
+    if (_isPollRunning) return;
+
+    // Hanya poll jika user sudah login
+    if (!localStorage.getItem("user")) return;
+
+    const view = getActiveView();
+    _isPollRunning = true;
+
+    try {
+      if (view === "view-home") {
+        // Refresh status tombol absen & durasi kerja
+        await loadStatus();
+      }
+      else if (view === "view-timesheet") {
+        // Refresh data timesheet (sinkron dengan clock in dari perangkat lain)
+        if (typeof loadTimesheet === "function") await loadTimesheet();
+      }
+      else if (view === "view-admin") {
+        // Refresh daftar kehadiran karyawan hari ini
+        if (typeof loadAdmin === "function") await loadAdmin();
+      }
+    } catch (e) {
+      // Silent fail — jangan tampilkan error ke user saat polling background
+      console.warn("[AutoPoll] gagal:", e.message || e);
+    } finally {
+      _isPollRunning = false;
+    }
+  }
+
+  function startPolling() {
+    if (_pollTimer) return; // sudah jalan
+    _pollTimer = setInterval(doPoll, INTERVAL_MS);
+  }
+
+  function stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    _isPollRunning = false;
+  }
+
+  // Start polling saat tab aktif, stop saat tab disembunyikan
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopPolling();
+    } else {
+      startPolling();
+      doPoll(); // langsung poll sekali saat kembali aktif
+    }
+  });
+
+  // Start saat halaman pertama kali dimuat
+  startPolling();
+})();
