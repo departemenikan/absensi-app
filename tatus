@@ -1,0 +1,162 @@
+[33m6b154f8[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix error
+[33mbf971f8[m file 96
+[33mb38cb14[m file 95
+[33m2ddf75a[m timesheet 5
+[33mb775428[m timesheet 4
+[33mdf6c7e0[m timesheet 3
+[33me396810[m timesheet 2
+[33ma041014[m timesheet
+[33m0e07437[m file 94
+[33m43d8227[m sync
+[33m8c278fe[m masuk minggu
+[33m8d4dfd2[m clock out
+[33mdf452f7[m capacitor bridge
+[33m9c5ec03[m swipe
+[33m1c35b9c[m notif
+[33me83048e[m file 92
+[33mad0a075[m fix permission bolak-balik permanent
+[33mba51ce6[m fix loadFaceModels tunggu faceapi siap
+[33mba31f39[m face-api lokal, hapus CDN
+[33m59ba908[m fix permission bolak-balik di Capacitor
+[33m847730b[m trigger redeploy
+[33m6d1bf05[m android
+[33mdad4032[m add face-api models local
+[33m9c82d4f[m fix
+[33m677f9f1[m db.js
+[33m9d371de[m file 91
+[33med9576d[m file 90
+[33mb2e4570[m file 89
+[33m25b80bd[m file 88
+[33mfc4e15d[m debug: tambah log push notification
+[33m3007df5[m fix: sw.js kembali ke public
+[33mc7ad3e5[m fix: sw.js pindah ke root
+[33m1b6efed[m fix Aksesibilitas
+[33mf4e7ed8[m file 86
+[33m876368e[m file 85
+[33m86e3076[m fix: pindahkan server.js ke root
+[33m1a264f8[m file 84
+[33mc0e1c93[m fix Cuti
+[33m106b4b9[m fix karyawan mess
+[33mfac7bed[m file 79
+[33m544ab9e[m fix load rules
+[33m42a3abc[m Fix Rules
+[33mde92625[m file 76 Rules
+[33m74d739b[m Back Button
+[33ma150eb6[m file 75
+[33mba191f0[m pindah Logout ke Profil
+[33md3a9cca[m file 74
+[33m847f9ab[m fix swipe
+[33m9b3f366[m Fix Map Area
+[33m6825ae1[m Update Service Worker
+[33ma20f5c4[m file 71
+[33m47f286c[m Lokasi fix
+[33mcb12d7a[m file 70
+[33mceb7118[m file 69
+[33mdbdad63[m fix Map
+[33m25649f5[m file 68
+[33me746fd5[m edit tombol
+[33mcbe6861[m Belum absen
+[33m18c97a5[m Scroll samping
+[33mfffd1e6[m Back to ikon Back
+[33m659a03a[m Fix Back Button
+[33m3fe827e[m Perbaiki Beranda
+[33mecb0859[m Update Beranda
+[33m10bc2d7[m fix: izin lokasi Android TWA
+[33m7ea1d5c[m update twa
+[33md0d5bf8[m file 67
+[33m8d060d5[m fix: rename Icons ke icons lowercase
+[33mdfb7bde[m tambah icon PWA
+[33me51393c[m file 66
+[33m8cc3196[m script(8).js
+[33m7c3f1c7[m tambah PWA manifest + service worker (file 65)
+[33m407a399[m file 64
+[33mec0fdf5[m server(7).js
+[33md5d1f6e[m file 63
+[33m3649c00[m server(2).js
+[33ma586738[m file 62
+[33ma49063e[m file 61
+[33m9a5b2e8[m file 60
+[33mf8e2ef5[m file 59
+[33mb22fde9[m file 58
+[33m43ca1e5[m file 57
+[33md7408fc[m file 56
+[33m033861a[m server(1).js
+[33m1afd053[m file 55
+[33m16fa99a[m file 54
+[33m0e9e59a[m file 53
+[33m9519829[m kembali ke file 52
+[33mee71b2b[m script 6
+[33m97b47cf[m script.js bug Area
+[33m663e5a2[m file 52
+[33mc961aec[m file 51
+[33m1aa3167[m file 50
+[33m4158031[m file 49
+[33m0ae2b19[m file48
+[33m72c1dc8[m file 47
+[33mad04ce0[m update timesheet
+[33m07a8c39[m file 46
+[33m752ebf1[m file 45
+[33m19c0a32[m file 44
+[33md050973[m fix timesheet
+[33mc6f4de1[m Fix Akurasi Radius File 43
+[33m1705feb[m fix bug sign Up file 42
+[33m2e054ea[m file 41
+[33me83b96c[m file 40
+[33md9408d5[m file 39
+[33m2979fa7[m ganti script.js file 38
+[33m7539852[m file 38
+[33m8e10187[m file 37
+[33m5d47210[m file 36
+[33mc3bed34[m kembali ke file 34
+[33m671f578[m file 35
+[33m4a0b742[m file 33
+[33m1b692bd[m file 33
+[33mbd34474[m file 32
+[33m649a34b[m file 31
+[33ma97033e[m update skrip
+[33m1537afa[m bug tombol simpan
+[33m0a68ba7[m Cuti Policy
+[33m80c78c8[m Kebijakan Cuti Edit
+[33m993edb7[m Import CSV
+[33m1135936[m Fix Libur
+[33m3d371ef[m Update Libur
+[33ma8fa99b[m Hari Libur dan Cuti
+[33m5371bb1[m Tracking
+[33m35342f3[m Fix Nama Divisi
+[33m35bd53e[m fix Bug Divisi
+[33m108d057[m Fix Bug Anggota
+[33m4d01378[m Ubah Kolom Anggota
+[33m39bb78f[m Update Tombol Anggota
+[33m960835b[m realtime durasi kerja
+[33m9c703ca[m Update Page Anggota
+[33m01a209a[m Update Owner
+[33m8f27ed2[m Ubah Peran dan Jabatan
+[33ma1514c4[m Update Menu Anggota
+[33mad7ee06[m Update Divisi
+[33m7bf7d13[m Kembali ke File 13
+[33m12f18f9[m Tambah Rule Menu Anggota
+[33m60ee196[m Revisi Menu Anggota
+[33mb3d4786[m Update Status Kerja
+[33mfb2957f[m Update Divisi
+[33m8bb1e1a[m Update Map
+[33m94b6e04[m munculkan menu cuti
+[33md58c2b4[m Ubah Navbar
+[33m5899fa1[m Perbarui tombol edit
+[33m65a273e[m add profil
+[33m4da23c3[m balik versi dulu
+[33m9709d06[m fix login
+[33m9f38f38[m Fix Tdk Bs Login
+[33mdf3908c[m Perbarui Profil
+[33mb561e5a[m Delete ganti password
+[33m4333c7a[m Ubah Profil
+[33m39fb3a1[m Ubah Menu dan Setting
+[33m7707671[m Ubah Menu dan Setting
+[33mb09b1d2[m resolve merge conflict between local main and remote main
+[33ma90f6b8[m RestoreUpdate
+[33m417059f[m Update 3
+[33mdae230c[m Update 2
+[33m14b7009[m Update 1
+[33m37ba5df[m[33m ([m[1;32mbackup-sebelum-update[m[33m)[m rebuild navigasi + multi-area + group akses
+[33m4393892[m tambah copyright dan menu setting
+[33m36a0aed[m tambah fitur lengkap
+[33mb519355[m first commit

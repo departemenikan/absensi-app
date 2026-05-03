@@ -31,6 +31,7 @@ const F = {
   aktivitasKustom: "aktivitas_kustom",
   rules:           "rules",
   pushSubs:        "push_subscriptions",
+  appSettings:     "app_settings",
 };
 
 // Path file /tmp untuk keperluan migrasi data lama
@@ -68,6 +69,7 @@ async function loadAll() {
     tracking: {}, kebijakan_cuti: [], kuota_cuti: {},
     pengajuan_cuti: [], aktivitas_kustom: [],
     rules: { messList: [] }, push_subscriptions: {},
+    app_settings: { timezone: "Asia/Makassar" },
   };
 
   await Promise.all(
@@ -2483,7 +2485,34 @@ app.post("/push/unsubscribe", requireLevel(99), (req, res) => {
 });
 
 // ========================
-app.get('/.well-known/assetlinks.json', (req, res) => {
+// APP SETTINGS (Timezone, dll) — hanya Owner/Admin (level <= 2)
+// ========================
+app.get("/app-settings", (req, res) => {
+  const settings = load(F.appSettings, { timezone: "Asia/Makassar" });
+  res.json(settings);
+});
+
+app.post("/app-settings", (req, res) => {
+  const user = req.headers["x-user"] || "";
+  const users = load(F.users, {});
+  const u = users[user];
+  if (!u || (u.level || 99) > 2) return res.status(403).json({ status: "FORBIDDEN" });
+
+  const current  = load(F.appSettings, { timezone: "Asia/Makassar" });
+  const allowed  = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
+  const { timezone } = req.body;
+  if (!allowed.includes(timezone)) return res.status(400).json({ status: "INVALID_TZ" });
+
+  const updated = { ...current, timezone };
+  save(F.appSettings, updated);
+
+  // Update process timezone agar langsung efektif tanpa restart
+  process.env.TZ = timezone;
+
+  res.json({ status: "OK", settings: updated });
+});
+
+
   res.json([
     {
       relation: ["delegate_permission/common.handle_all_urls"],

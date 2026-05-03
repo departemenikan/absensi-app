@@ -394,6 +394,8 @@ function enterApp(menus, group, level) {
   loadTodayDetail();
   loadWeeklyInfo();
   loadHomeLibur();
+  // Load app settings (timezone dll)
+  loadSistemSettings();
   // Jika sudah clock in, mulai tracking ping
   authFetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
@@ -3086,6 +3088,16 @@ function switchAksesTab(tab) {
     btnRules.style.background = "transparent";
     btnRules.style.color      = "var(--muted)";
     btnRules.style.boxShadow  = "none";
+    // Tampilkan akordion Sistem hanya untuk Owner/Admin
+    const akordionSistem = document.getElementById("akordion-sistem");
+    if (akordionSistem) {
+      if (userLevel <= 2) {
+        akordionSistem.style.display = "";
+        loadSistemSettings();
+      } else {
+        akordionSistem.style.display = "none";
+      }
+    }
   } else {
     btnRules.style.background = "linear-gradient(135deg,#4f8ef7,#1a237e)";
     btnRules.style.color      = "white";
@@ -7153,7 +7165,62 @@ document.addEventListener("DOMContentLoaded", () => {
   window.loadAktivitas = loadAktivitas;
 })();
 
-// ─── SERVICE WORKER REGISTRATION ────────────────────────────
+// ============================================================
+// PENGATURAN SISTEM — Timezone (hanya Owner/Admin)
+// ============================================================
+let _appTimezone = "Asia/Makassar"; // default, akan di-update dari server
+
+async function loadSistemSettings() {
+  try {
+    const r = await authFetch("/app-settings");
+    if (!r.ok) return;
+    const d = await r.json();
+    _appTimezone = d.timezone || "Asia/Makassar";
+
+    // Set dropdown sesuai nilai tersimpan
+    const sel = document.getElementById("select-timezone");
+    if (sel) sel.value = _appTimezone;
+
+    // Update info timezone saat ini
+    _updateTzInfo(_appTimezone);
+  } catch (e) {
+    console.warn("loadSistemSettings gagal:", e);
+  }
+}
+
+function _updateTzInfo(tz) {
+  const el = document.getElementById("tz-current-info");
+  if (!el) return;
+  const label = { "Asia/Jakarta": "WIB (UTC+7)", "Asia/Makassar": "WITA (UTC+8)", "Asia/Jayapura": "WIT (UTC+9)" };
+  const now = new Date().toLocaleString("id-ID", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  el.innerHTML = `✅ Aktif: <b>${label[tz] || tz}</b> &nbsp;|&nbsp; Jam server sekarang: <b>${now}</b>`;
+}
+
+async function saveSistemSettings() {
+  const sel = document.getElementById("select-timezone");
+  if (!sel) return;
+  const tz = sel.value;
+  try {
+    const r = await authFetch("/app-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timezone: tz })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      _appTimezone = tz;
+      _updateTzInfo(tz);
+      showToast("✅ Pengaturan timezone berhasil disimpan!");
+    } else if (d.status === "FORBIDDEN") {
+      showToast("⛔ Hanya Owner/Admin yang bisa ubah pengaturan ini", "error");
+    } else {
+      showToast("⚠️ Timezone tidak valid", "warning");
+    }
+  } catch (e) {
+    showToast("❌ Gagal menyimpan pengaturan", "error");
+  }
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js")

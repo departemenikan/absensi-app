@@ -887,6 +887,54 @@
         <div id="group-list">
           <p style="color:var(--muted);text-align:center;padding:24px;">Memuat data jabatan...</p>
         </div>
+
+        <!-- Akordion: Pengaturan Sistem (Timezone) -->
+        <div class="group-item" id="akordion-sistem" style="display:none;">
+          <div class="group-header" style="background:linear-gradient(135deg,#1b5e20,#43a047);"
+               onclick="toggleGroupBody('gbody-sistem')">
+            <div style="flex:1;">
+              <div class="group-title">🌐 Pengaturan Sistem</div>
+              <div style="font-size:11px;opacity:.8;margin-top:2px;">Timezone & konfigurasi aplikasi</div>
+            </div>
+            <span class="akses-chevron" id="chev-sistem"
+                  style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
+          </div>
+          <div class="group-body" id="gbody-sistem">
+            <div style="padding:16px;">
+
+              <!-- Timezone -->
+              <div style="margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:700;color:var(--text);display:block;margin-bottom:8px;">
+                  🕐 Zona Waktu Aplikasi
+                </label>
+                <select id="select-timezone"
+                  style="width:100%;padding:11px 14px;border:2px solid #e8ecf0;border-radius:10px;
+                         font-size:14px;font-weight:600;background:white;color:var(--text);outline:none;
+                         cursor:pointer;">
+                  <option value="Asia/Jakarta">WIB — Waktu Indonesia Barat (UTC+7)</option>
+                  <option value="Asia/Makassar">WITA — Waktu Indonesia Tengah (UTC+8)</option>
+                  <option value="Asia/Jayapura">WIT — Waktu Indonesia Timur (UTC+9)</option>
+                </select>
+                <div id="tz-current-info"
+                  style="margin-top:8px;font-size:12px;color:var(--muted);padding:8px 12px;
+                         background:#f8f9ff;border-radius:8px;border-left:3px solid #43a047;">
+                  Memuat info timezone...
+                </div>
+              </div>
+
+              <!-- Tombol Simpan -->
+              <button onclick="saveSistemSettings()"
+                style="width:100%;padding:12px;border:none;border-radius:10px;
+                       background:linear-gradient(135deg,#1b5e20,#43a047);color:white;
+                       font-weight:700;font-size:14px;cursor:pointer;
+                       box-shadow:0 2px 8px rgba(67,160,71,.3);">
+                💾 Simpan Pengaturan Sistem
+              </button>
+
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Panel: Rules -->
