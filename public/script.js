@@ -358,12 +358,19 @@ async function checkLoginStatus() {
 }
 
 function showAuthPage() {
+  // Sembunyikan splash screen sebelum tampil form login
+  const splash = document.getElementById("splash-screen");
+  if (splash) splash.classList.add("hide");
   document.getElementById("auth-page").classList.remove("hidden");
   document.getElementById("main-nav").classList.add("hidden");
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
 }
 
 function enterApp(menus, group, level) {
+  // Sembunyikan splash screen
+  const splash = document.getElementById("splash-screen");
+  if (splash) splash.classList.add("hide");
+
   userMenus = menus || [];
   userGroup = group || "anggota";
   userLevel = level || 99;
@@ -7224,76 +7231,3 @@ async function sendChat() {
   const box = document.getElementById("chat-messages");
   box.scrollTop = box.scrollHeight;
 }
-
-// ============================================================
-// AUTO-POLLING — Sinkronisasi data antar perangkat
-// Fetch ulang data secara berkala agar Android & Web sinkron
-// Aman: cek view aktif dulu, tidak tumpuk request, stop saat tab hidden
-// ============================================================
-(function() {
-  const INTERVAL_MS   = 30000; // polling tiap 30 detik
-  let _pollTimer      = null;
-  let _isPollRunning  = false; // guard agar tidak tumpuk request
-
-  function getActiveView() {
-    const v = document.querySelector(".view.active");
-    return v ? v.id : null;
-  }
-
-  async function doPoll() {
-    // Jangan jalankan jika tab tidak aktif (hemat baterai & bandwidth)
-    if (document.hidden) return;
-
-    // Guard: skip jika request sebelumnya belum selesai
-    if (_isPollRunning) return;
-
-    // Hanya poll jika user sudah login
-    if (!localStorage.getItem("user")) return;
-
-    const view = getActiveView();
-    _isPollRunning = true;
-
-    try {
-      if (view === "view-home") {
-        // Refresh status tombol absen & durasi kerja
-        await loadStatus();
-      }
-      else if (view === "view-timesheet") {
-        // Refresh data timesheet (sinkron dengan clock in dari perangkat lain)
-        if (typeof loadTimesheet === "function") await loadTimesheet();
-      }
-      else if (view === "view-admin") {
-        // Refresh daftar kehadiran karyawan hari ini
-        if (typeof loadAdmin === "function") await loadAdmin();
-      }
-    } catch (e) {
-      // Silent fail — jangan tampilkan error ke user saat polling background
-      console.warn("[AutoPoll] gagal:", e.message || e);
-    } finally {
-      _isPollRunning = false;
-    }
-  }
-
-  function startPolling() {
-    if (_pollTimer) return; // sudah jalan
-    _pollTimer = setInterval(doPoll, INTERVAL_MS);
-  }
-
-  function stopPolling() {
-    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-    _isPollRunning = false;
-  }
-
-  // Start polling saat tab aktif, stop saat tab disembunyikan
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      stopPolling();
-    } else {
-      startPolling();
-      doPoll(); // langsung poll sekali saat kembali aktif
-    }
-  });
-
-  // Start saat halaman pertama kali dimuat
-  startPolling();
-})();
