@@ -5209,6 +5209,8 @@ async function openTsModal(username, date, jamMasuk, jamKeluar) {
   const u = _tsData?.users?.find(u => u.username === username);
   const nama = u?.nama || username;
   document.getElementById("modal-ts-title").textContent    = isNew ? "Tambahkan Entri Waktu Manual" : "Edit Entri Waktu";
+  const hapusBtn = document.getElementById("ts-btn-hapus");
+  if (hapusBtn) hapusBtn.style.display = isNew ? "none" : "block";
   document.getElementById("modal-ts-subtitle").textContent = `${nama} · ${date}`;
 
   // Set nilai default
@@ -5252,6 +5254,25 @@ async function openTsModal(username, date, jamMasuk, jamKeluar) {
 function closeTsModal() {
   document.getElementById("modal-ts-absen-overlay").style.display = "none";
   _tsCurrent = null;
+}
+
+async function hapusTsAbsen() {
+  if (!_tsCurrent) return;
+  const { username, date } = _tsCurrent;
+  const konfirm = await uConfirm(`Hapus semua entri absensi ${username} pada ${date}? Tindakan ini tidak bisa dibatalkan.`);
+  if (!konfirm) return;
+  try {
+    const res = await authFetch(`/timesheet/absen/${username}/${date}`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.status === "OK") {
+      closeTsModal();
+      loadTimesheet();
+    } else {
+      alert("Gagal hapus: " + (data.message || "Unknown error"));
+    }
+  } catch (e) {
+    alert("Error: " + e.message);
+  }
 }
 
 function tsTambahBaru() {

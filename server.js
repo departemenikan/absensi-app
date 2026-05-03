@@ -3,9 +3,6 @@ const fs       = require("fs");
 const path     = require("path");
 const bcrypt   = require("bcryptjs");
 const webpush  = require("web-push");
-// Tanggal hari ini dalam timezone server (bukan UTC)
-function todayLocal() { return new Date().toLocaleDateString("sv-SE"); }
-
 const app      = express();
 const { dbLoad, dbSave, migrateFromTmp } = require("./db");
 
@@ -242,7 +239,7 @@ setInterval(() => {
   const now   = new Date();
   const hour  = now.getHours();
   const min   = now.getMinutes();
-  const today = todayLocal();
+  const today = now.toISOString().split("T")[0];
   const dow   = now.getDay(); // 0=Minggu, 6=Sabtu
 
   // ── PENGINGAT CLOCK IN — jam 08:00, Senin–Jumat ─────────────────────────
@@ -518,7 +515,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const user = req._requester;
   const { type, time, lat, lng, accuracy, photo } = req.body;
   if (!user) return res.status(401).send({ status: "UNAUTHORIZED" });
-  const today = todayLocal();
+  const today = new Date().toISOString().split("T")[0];
 
   // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
   const users    = load(F.users, {});
@@ -570,11 +567,6 @@ app.post("/absen", requireLevel(99), (req, res) => {
     record.jamKeluar = time;
     const lb = record.breaks.at(-1);
     if (lb && !lb.end) lb.end = time;
-    // Simpan jamKerja final — tidak perlu hitung ulang lagi
-    const _w = (new Date(time) - new Date(record.jamMasuk)) / 3600000;
-    let _b = 0;
-    record.breaks.forEach(b => { if (b.end) _b += (new Date(b.end) - new Date(b.start)) / 3600000; });
-    record.jamKerja = parseFloat(Math.max(0, _w - _b).toFixed(4));
   } else if (type === "BREAK_START" && record) {
     record.breaks.push({ start: time, end: null });
   } else if (type === "BREAK_END" && record) {
@@ -595,7 +587,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
 app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
-  const today = todayLocal();
+  const today = new Date().toISOString().split("T")[0];
   const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
@@ -634,7 +626,7 @@ app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
 app.get("/admin/today", requireLevel(3), (req, res) => {
   const data  = load(F.data, []);
   const users = load(F.users, {});
-  const date  = req.query.date || todayLocal();
+  const date  = req.query.date || new Date().toISOString().split("T")[0];
   const records = Object.keys(users).map(username => {
     const rec = data.find(d => d.user === username && d.date === date);
     let status = "OUT";
@@ -1300,26 +1292,22 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
     const days = dates.map(dateStr => {
-      // Ambil semua record hari ini — bisa lebih dari satu jika clock in/out berkali-kali
-      const recs = data.filter(d => d.user === username && d.date === dateStr);
-      const activeRec = recs.find(d => d.jamMasuk && !d.jamKeluar);
+      const rec = data.find(d => d.user === username && d.date === dateStr);
       let jamKerja = 0;
       let isActive = false;
-
-      // Akumulasi semua sesi yang sudah selesai
-      recs.filter(d => d.jamMasuk && d.jamKeluar).forEach(d => {
-        if (d.jamKerja) {
-          jamKerja += d.jamKerja;
-        } else {
-          const work = (new Date(d.jamKeluar) - new Date(d.jamMasuk)) / 3600000;
-          let bt = 0;
-          (d.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
-          jamKerja += Math.max(0, work - bt);
-        }
-      });
-
-      // Sesi aktif — client yang tampilkan realtime
-      if (activeRec) isActive = true;
+      if (rec && rec.jamMasuk && rec.jamKeluar) {
+        const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+        let bt = 0;
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        jamKerja = Math.max(0, work - bt);
+      } else if (rec && rec.jamMasuk && !rec.jamKeluar) {
+        // Masih aktif — hitung sampai sekarang, client update realtime tiap menit
+        const work = (Date.now() - new Date(rec.jamMasuk).getTime()) / 3600000;
+        let bt = 0;
+        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+        jamKerja = Math.max(0, work - bt);
+        isActive = true;
+      }
 
       // Cari semua cuti yang berlaku di tanggal ini
       const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
@@ -1330,16 +1318,15 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         date: dateStr,
         dow:  new Date(dateStr + "T00:00:00").getDay(), // 0=Min
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
-        isActive,
-        jamMasuk:  activeRec?.jamMasuk || (recs[0]?.jamMasuk) || null,
-        breakDetik: isActive ? (activeRec?.breaks||[]).reduce((s,b) => {
-                      const bEnd = b.end ? new Date(b.end).getTime() : Date.now();
-                      return s + (bEnd - new Date(b.start).getTime()) / 1000;
-                    }, 0) : 0,
+        isActive,  // true jika masih clock in (realtime di client)
+        jamMasuk:  rec?.jamMasuk  || null,
+        breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
+                      .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
         jamCuti:  parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
-        absenId: recs[0]?.date || null,
-        jamKeluar: recs.filter(d=>d.jamKeluar).at(-1)?.jamKeluar || null,
+        absenId: rec ? rec.date : null, // untuk edit modal
+        jamMasuk:  rec?.jamMasuk  || null,
+        jamKeluar: rec?.jamKeluar || null,
       };
     });
 
@@ -1635,6 +1622,17 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   save(F.data, data);
   res.send({ status: "OK" });
 });
+app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
+  const { user, date } = req.params;
+  const data = load(F.data, []);
+  const before = data.length;
+  const filtered = data.filter(d => !(d.user === user && d.date === date));
+  if (filtered.length === before) return res.status(404).json({ status: "NOT_FOUND", message: "Record tidak ditemukan" });
+  save(F.data, filtered);
+  res.json({ status: "OK", deleted: before - filtered.length });
+});
+
+
 
 // ========================
 // KUOTA CUTI
@@ -2250,7 +2248,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
   if (tracking[today][user].length > 500) tracking[today][user].splice(0, 1);
 
   // Hapus data lebih dari 7 hari lalu
-  const cutoff = new Date(Date.now() - 7 * 86400000).toLocaleDateString("sv-SE");
+  const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   Object.keys(tracking).forEach(d => { if (d < cutoff) delete tracking[d]; });
 
   save(F.tracking, tracking);
