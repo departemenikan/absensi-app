@@ -124,35 +124,15 @@ function navTo(page) {
 async function loadFaceModels() {
   const el = document.getElementById("faceStatus");
   if (el) el.innerText = "⏳ Memuat model wajah...";
-
-  // Tunggu faceapi siap (maks 30 detik) — penting untuk Capacitor WebView
-  let waited = 0;
-  while (typeof faceapi === "undefined" && waited < 30000) {
-    await new Promise(r => setTimeout(r, 500));
-    waited += 500;
-  }
-  if (typeof faceapi === "undefined") {
-    if (el) el.innerText = "⚠️ Gagal load face-api.js";
-    console.error("[FaceModel] faceapi tidak tersedia setelah 30 detik");
-    return;
-  }
-
   try {
     const URL = "/model";
-    if (el) el.innerText = "⏳ Mengunduh model (1/3)...";
     await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
-    if (el) el.innerText = "⏳ Mengunduh model (2/3)...";
     await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
-    if (el) el.innerText = "⏳ Mengunduh model (3/3)...";
     await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
     faceModelsLoaded = true;
     if (el) el.innerText = "✅ Model wajah siap";
-    console.log("[FaceModel] ✅ Semua model berhasil dimuat");
   } catch (e) {
-    console.error("[FaceModel] Gagal load model:", e);
-    if (el) el.innerText = "⚠️ Gagal load model: " + e.message;
-    // Coba ulang setelah 5 detik
-    setTimeout(loadFaceModels, 5000);
+    if (el) el.innerText = "⚠️ Gagal load model (butuh internet)";
   }
 }
 
@@ -1272,8 +1252,17 @@ async function requestLocationPermission() {
 
 // ── Refresh cache state kedua izin ─────────────────────────────────────────
 async function refreshPermStates() {
-  _permState.camera   = await queryPermState("camera");
-  _permState.location = await queryPermState("geolocation");
+  // FIX Capacitor: jangan overwrite status yang sudah granted via native
+  if (typeof _grantedFlags !== "undefined") {
+    if (!_grantedFlags.camera)     _permState.camera   = await queryPermState("camera");
+    if (!_grantedFlags.geolocation) _permState.location = await queryPermState("geolocation");
+    // Pastikan flag granted tidak di-reset
+    if (_grantedFlags.camera)      _permState.camera   = "granted";
+    if (_grantedFlags.geolocation) _permState.location = "granted";
+  } else {
+    _permState.camera   = await queryPermState("camera");
+    _permState.location = await queryPermState("geolocation");
+  }
   return _permState;
 }
 
@@ -1508,8 +1497,24 @@ async function requirePermissions(needCamera = true, needLocation = true) {
     // Auto-resolve jika user tidak melakukan apa-apa (dipantau tiap 1 detik)
     // Ini menangani kasus: user izinkan dari luar app lalu kembali
     const interval = setInterval(async () => {
-      await refreshPermStates();
-      const cOk = !needCamera  || _permState.camera   === "granted";
+      // FIX Capacitor: prioritaskan _grantedFlags agar tidak bolak-balik
+      if (typeof _grantedFlags !== "undefined") {
+        if (needCamera   && _grantedFlags.camera)     _permState.camera   = "granted";
+        if (needLocation && _grantedFlags.geolocation) _permState.location = "granted";
+      }
+
+      // Hanya query ulang jika belum granted via flag
+      if (!(needCamera && _permState.camera === "granted") ||
+          !(needLocation && _permState.location === "granted")) {
+        await refreshPermStates();
+        // Cek lagi setelah refresh — jangan overwrite yang sudah granted
+        if (typeof _grantedFlags !== "undefined") {
+          if (needCamera   && _grantedFlags.camera)     _permState.camera   = "granted";
+          if (needLocation && _grantedFlags.geolocation) _permState.location = "granted";
+        }
+      }
+
+      const cOk = !needCamera   || _permState.camera   === "granted";
       const lOk = !needLocation || _permState.location === "granted";
       if (cOk && lOk) {
         clearInterval(interval);
@@ -1517,7 +1522,6 @@ async function requirePermissions(needCamera = true, needLocation = true) {
         updatePermItemUI("location", _permState.location);
         closePermGate(true);
       } else {
-        // Refresh tampilan badge tanpa re-render seluruh modal
         if (needCamera)   updatePermItemUI("camera",   _permState.camera);
         if (needLocation) updatePermItemUI("location", _permState.location);
       }
