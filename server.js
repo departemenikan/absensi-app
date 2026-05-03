@@ -1228,10 +1228,11 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
   const requester = req._requester;
   if (!weekStart) return res.send({ error: "weekStart required" });
 
-  const monDate = new Date(weekStart + "T00:00:00");
+  const monDate = new Date(weekStart + "T12:00:00"); // T12 agar tidak geser timezone
   const dates = Array.from({length: 7}, (_, i) => {
     const d = new Date(monDate); d.setDate(monDate.getDate() + i);
-    return d.toISOString().split("T")[0];
+    // Gunakan tanggal lokal server (bukan UTC) agar tidak geser
+    return d.toLocaleDateString("sv-SE");
   }); // [Sen, Sel, Rab, Kam, Jum, Sab, Min]
 
   const data      = load(F.data, []);
