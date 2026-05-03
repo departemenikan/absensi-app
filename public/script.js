@@ -4812,47 +4812,57 @@ let _tsTicker = null;
 
 function startTsTicker() {
   stopTsTicker();
+  const me = localStorage.getItem("user") || "";
 
-  function getActiveJam() {
-    // Baca dari t-dur beranda — satu-satunya sumber kebenaran durasi hari ini
-    const tDur = document.getElementById("t-dur");
-    if (tDur && tDur.innerText && tDur.innerText !== "00:00:00") {
-      const parts = tDur.innerText.split(":");
-      if (parts.length >= 2) {
-        const h = parseInt(parts[0], 10) || 0;
-        const m = parseInt(parts[1], 10) || 0;
-        const s = parseInt(parts[2], 10) || 0;
-        return h + m / 60 + s / 3600;
+  function getJamForCell(cell) {
+    const cellUser = cell.getAttribute("data-username") || "";
+    if (cellUser === me) {
+      // Self — baca dari t-dur beranda, selalu akurat
+      const tDur = document.getElementById("t-dur");
+      if (tDur && tDur.innerText && tDur.innerText !== "00:00:00") {
+        const parts = tDur.innerText.split(":");
+        if (parts.length >= 2) {
+          const h = parseInt(parts[0], 10) || 0;
+          const m = parseInt(parts[1], 10) || 0;
+          const s = parseInt(parts[2], 10) || 0;
+          return h + m / 60 + s / 3600;
+        }
       }
-    }
-    // Fallback: hitung dari _todayRec jika t-dur belum terisi
-    if (typeof _todayRec !== "undefined" && _todayRec && _todayRec.jamMasuk && !_todayRec.jamKeluar) {
-      const now = Date.now();
-      const masuk = new Date(_todayRec.jamMasuk).getTime();
-      let breakSec = 0;
-      (_todayRec.breaks || []).forEach(b => {
-        const end = b.end ? new Date(b.end).getTime() : now;
-        breakSec += Math.max(0, end - new Date(b.start).getTime()) / 1000;
-      });
-      return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
+      // Fallback ke _todayRec jika t-dur belum terisi
+      if (typeof _todayRec !== "undefined" && _todayRec && _todayRec.jamMasuk && !_todayRec.jamKeluar) {
+        const now = Date.now();
+        const masuk = new Date(_todayRec.jamMasuk).getTime();
+        let breakSec = 0;
+        (_todayRec.breaks || []).forEach(b => {
+          const end = b.end ? new Date(b.end).getTime() : now;
+          breakSec += Math.max(0, end - new Date(b.start).getTime()) / 1000;
+        });
+        return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
+      }
+    } else {
+      // User lain — hitung dari snapshot server (data-jammasuk & data-breakdetik)
+      const jamMasuk   = cell.getAttribute("data-jammasuk");
+      const breakDetik = parseFloat(cell.getAttribute("data-breakdetik") || "0");
+      if (!jamMasuk) return 0;
+      return Math.max(0, (Date.now() - new Date(jamMasuk).getTime()) / 1000 - breakDetik) / 3600;
     }
     return 0;
   }
 
   function tickCells() {
-    const activeJam = getActiveJam();
-    const h = Math.floor(activeJam);
-    const m = Math.floor((activeJam - h) * 60);
-    const display = `${h}:${String(m).padStart(2, "0")}`;
-
-    // Update sel durasi hari aktif
     document.querySelectorAll(".ts-active-cell").forEach(cell => {
-      cell.textContent = display;
+      const activeJam = getJamForCell(cell);
+      const h = Math.floor(activeJam);
+      const m = Math.floor((activeJam - h) * 60);
+      cell.textContent = `${h}:${String(m).padStart(2, "0")}`;
     });
 
-    // Update kolom total — jam hari lain (tersimpan) + jam hari ini (realtime)
+    // Update kolom total per baris masing-masing
     document.querySelectorAll(".ts-total-cell").forEach(td => {
       const nonActive = parseFloat(td.getAttribute("data-nonactive") || "0");
+      const row = td.closest("tr");
+      const activeCell = row ? row.querySelector(".ts-active-cell") : null;
+      const activeJam = activeCell ? getJamForCell(activeCell) : 0;
       const total  = nonActive + activeJam;
       const kurang = Math.max(0, 40 - total);
       const lebih  = Math.max(0, total - 40);
@@ -5012,6 +5022,7 @@ function tsRender() {
           // Hari ini masih aktif — tampilkan realtime (update tiap menit)
           cellContent = `
             <div class="ts-active-cell"
+              data-username="${u.username}"
               data-jammasuk="${day.jamMasuk || ''}"
               data-breakdetik="${day.breakDetik || 0}"
               style="font-size:12px;font-weight:700;color:#2e7d32;font-variant-numeric:tabular-nums;">
