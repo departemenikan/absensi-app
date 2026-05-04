@@ -1242,10 +1242,10 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
   const requester = req._requester;
   if (!weekStart) return res.send({ error: "weekStart required" });
 
-  const monDate = new Date(weekStart + "T00:00:00");
+  const monDate = new Date(weekStart + "T12:00:00"); // T12 aman dari shift timezone
   const dates = Array.from({length: 7}, (_, i) => {
     const d = new Date(monDate); d.setDate(monDate.getDate() + i);
-    return d.toISOString().split("T")[0];
+    return d.toLocaleDateString("sv-SE"); // pakai lokal bukan UTC
   }); // [Sen, Sel, Rab, Kam, Jum, Sab, Min]
 
   const data      = load(F.data, []);
@@ -1331,7 +1331,7 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
 
       return {
         date: dateStr,
-        dow:  new Date(dateStr + "T00:00:00").getDay(), // 0=Min
+        dow:  new Date(dateStr + "T12:00:00").getDay(), // 0=Min
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
         isActive,  // true jika masih clock in (realtime di client)
         jamMasuk:  rec?.jamMasuk  || null,
@@ -1450,7 +1450,7 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
       const weekIdxForDay = weeks.find(w => w.weekStart === ws)?.weekIdx || 0;
       return {
         date: dateStr,
-        dow:  new Date(dateStr + "T00:00:00").getDay(),
+        dow:  new Date(dateStr + "T12:00:00").getDay(),
         weekIdx: weekIdxForDay,
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
         jamCuti:   parseFloat(jamCuti.toFixed(2)),

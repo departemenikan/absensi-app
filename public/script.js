@@ -4895,9 +4895,8 @@ function tsGetMonday(d = new Date()) {
 }
 
 function tsNavWeek(delta) {
-  const d = new Date(_tsWeekStart + "T00:00:00");
+  const d = new Date(_tsWeekStart + "T12:00:00");
   d.setDate(d.getDate() + delta * 7);
-  // Pakai tanggal lokal agar tidak geser UTC
   _tsWeekStart = d.toLocaleDateString("sv-SE");
   loadTimesheet();
 }
@@ -4937,12 +4936,12 @@ async function loadTimesheet() {
     _tsWeekStart = tsGetMonday();
   } else {
     // Cek apakah nilai yang tersimpan benar-benar hari Senin
-    const d = new Date(_tsWeekStart + "T00:00:00");
+    const d = new Date(_tsWeekStart + "T12:00:00");
     if (d.getDay() !== 1) _tsWeekStart = tsGetMonday(); // bukan Senin → reset
   }
 
   // Update label minggu
-  const mon = new Date(_tsWeekStart + "T00:00:00");
+  const mon = new Date(_tsWeekStart + "T12:00:00");
   const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
   const fmt = d => `${d.getDate()} ${["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"][d.getMonth()]} ${d.getFullYear()}`;
   const lbl = document.getElementById("ts-week-label");
