@@ -5260,6 +5260,8 @@ function closeTsModal() {
 async function hapusTsAbsen() {
   if (!_tsCurrent) return;
   const { username, date } = _tsCurrent;
+  // Tutup modal edit dulu agar form confirm tidak tertutup di belakangnya
+  closeTsModal();
   uConfirm({
     icon: "🗑",
     title: "Hapus Entri Absensi",
