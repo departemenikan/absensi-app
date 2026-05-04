@@ -1979,21 +1979,25 @@ app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {
     }
   }
 
-  // Filter waktu
+  // Filter waktu — pakai tanggal lokal (bukan UTC) agar tidak geser di WITA
   const now = new Date();
+  const nowLocal = now.toLocaleDateString("sv-SE"); // YYYY-MM-DD lokal
   if (filter === "hari") {
-    const today = now.toISOString().split("T")[0];
-    list = list.filter(p => p.tanggalMulai === today);
+    list = list.filter(p => p.tanggalMulai === nowLocal);
   } else if (filter === "minggu") {
-    const start = new Date(now); start.setDate(now.getDate() - now.getDay());
+    // Mulai dari Senin (konsisten dengan timesheet)
+    const day  = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const start = new Date(nowLocal + "T12:00:00"); start.setDate(start.getDate() + diff);
     const end   = new Date(start); end.setDate(start.getDate() + 6);
-    const s = start.toISOString().split("T")[0], e = end.toISOString().split("T")[0];
+    const s = start.toLocaleDateString("sv-SE");
+    const e = end.toLocaleDateString("sv-SE");
     list = list.filter(p => p.tanggalMulai >= s && p.tanggalMulai <= e);
   } else if (filter === "bulan") {
-    const ym = now.toISOString().slice(0, 7);
+    const ym = nowLocal.slice(0, 7); // YYYY-MM
     list = list.filter(p => (p.tanggalMulai || "").startsWith(ym));
   } else if (filter === "tahun") {
-    const yr = String(now.getFullYear());
+    const yr = nowLocal.slice(0, 4); // YYYY
     list = list.filter(p => (p.tanggalMulai || "").startsWith(yr));
   }
 
