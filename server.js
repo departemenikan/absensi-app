@@ -2809,6 +2809,21 @@ app.get("/wa/status", requireLevel(2), (req, res) => {
   res.send(waStatus());
 });
 
+// DEBUG: cek noHp semua user dan test kirim WA
+app.get("/wa/debug", async (req, res) => {
+  const users = load(F.users, {});
+  const list = Object.entries(users).map(([username, u]) => ({
+    username,
+    nama: u.nama || "-",
+    noHp: u.noHp || "(kosong)",
+  }));
+  if (req.query.test) {
+    await sendWA(req.query.test, "✅ Test WA dari Absensi Smart berhasil!");
+    return res.send({ status: "Test WA dikirim ke " + req.query.test, users: list });
+  }
+  res.send({ waStatus: waStatus(), users: list });
+});
+
 // GET: tampilkan QR dalam bentuk HTML (scan dari browser)
 app.get("/wa/qr", async (req, res) => {
   const qr = getWAQR();
