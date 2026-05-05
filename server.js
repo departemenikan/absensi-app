@@ -1733,12 +1733,66 @@ function initKuotaUser(kuota, username, tahun) {
   if (!kuota[username]) kuota[username] = {};
   const key = String(tahun);
   if (!kuota[username][key]) {
+    // Carry-over: ambil sisa jamTL dari tahun sebelumnya (tidak hangus)
+    const prevKey  = String(tahun - 1);
+    const prevData = kuota[username][prevKey];
+    const carryOver = prevData
+      ? Math.max(0, (prevData.overtime?.jamTL_libur  || 0)
+                  + (prevData.overtime?.jamTL_reguler || 0)
+                  - (prevData.overtime?.jamTerpakai   || 0))
+      : 0;
+
     kuota[username][key] = {
-      tahunan:  { total: 12, terpakai: 0, resetAt: `${tahun}-12-31` },
-      overtime: { jamAkumulasi: 0, hariDiambil: 0 }  // 1 hari TL = 5 jam (min konversi)
+      tahunan: { total: 12, terpakai: 0, resetAt: `${tahun}-12-31` },
+      overtime: {
+        // Pemisahan sumber TL
+        jamTL_libur:   0,        // dari kerja di hari libur nasional/agama
+        jamTL_reguler: 0,        // dari kelebihan 40 jam/minggu
+        jamCarryOver:  parseFloat(carryOver.toFixed(2)), // carry-over tahun lalu
+        jamTerpakai:   0,        // total jam yang sudah diambil
+        hariDiambil:   0,        // total hari yang sudah diambil
+        // riwayat perolehan TL (array of { tanggal, jam, sumber, keterangan })
+        riwayat: carryOver > 0 ? [{
+          tanggal:    `${tahun}-01-01`,
+          jam:        parseFloat(carryOver.toFixed(2)),
+          sumber:     "carry-over",
+          keterangan: `Saldo TL dibawa dari tahun ${tahun - 1}`,
+        }] : [],
+      }
+    };
+  }
+  // Migrasi: jika data lama pakai jamAkumulasi, konversi ke struktur baru
+  const d = kuota[username][key];
+  if (d.overtime && d.overtime.jamAkumulasi !== undefined && d.overtime.jamTL_libur === undefined) {
+    const lama = d.overtime.jamAkumulasi || 0;
+    d.overtime = {
+      jamTL_libur:   0,
+      jamTL_reguler: parseFloat(lama.toFixed(2)),
+      jamCarryOver:  0,
+      jamTerpakai:   0,
+      hariDiambil:   d.overtime.hariDiambil || 0,
+      riwayat:       lama > 0 ? [{ tanggal: `${tahun}-01-01`, jam: lama, sumber: "migrasi", keterangan: "Saldo lama (migrasi otomatis)" }] : [],
     };
   }
   return kuota[username][key];
+}
+
+// Helper: hitung saldo TL tersedia (jam)
+function saldoTLJam(overtimeData) {
+  const masuk = (overtimeData.jamTL_libur   || 0)
+              + (overtimeData.jamTL_reguler  || 0)
+              + (overtimeData.jamCarryOver   || 0);
+  return Math.max(0, masuk - (overtimeData.jamTerpakai || 0));
+}
+
+// Helper: hitung saldo TL dalam hari dan sisa jam
+function saldoTLHari(overtimeData, jamPerHari = 5) {
+  const totalJam = saldoTLJam(overtimeData);
+  return {
+    hari:    Math.floor(totalJam / jamPerHari),
+    sisaJam: parseFloat((totalJam % jamPerHari).toFixed(2)),
+    totalJam: parseFloat(totalJam.toFixed(2)),
+  };
 }
 
 // GET kuota semua user (admin view)
@@ -1753,6 +1807,8 @@ app.get("/kuota-cuti", requireLevel(2), (req, res) => {
   const result = Object.keys(users).map(username => {
     const k = initKuotaUser(kuota, username, tahun);
     const u = users[username];
+    // Hitung saldo TL dalam hari+jam untuk ditampilkan di UI
+    k.overtime._saldo = saldoTLHari(k.overtime);
     // Attach custom kuota
     if (!k.customKuota) k.customKuota = {};
     customKebijakan.forEach(ck => {
@@ -1794,6 +1850,8 @@ app.get("/kuota-cuti/:user", requireSelfOrLevel("user", 2), (req, res) => {
       k.customKuota[ck.id].satuanDurasi = ck.satuanDurasi || "hari";
     }
   });
+  // Tambah saldo TL dalam hari+jam untuk UI
+  k.overtime._saldo = saldoTLHari(k.overtime);
   save(F.kuotaCuti, kuota);
   res.send(k);
 });
@@ -1914,12 +1972,26 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
   Object.values(weekMap).forEach(jam => {
     if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
   });
-  totalOvertimeJam += jamTLLibur;
-
   const k = initKuotaUser(kuota, username, tahun);
-  k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
+  // Simpan terpisah: TL dari libur vs TL reguler
+  k.overtime.jamTL_libur   = parseFloat(jamTLLibur.toFixed(2));
+  k.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
+
+  // Tambah riwayat jika ada perubahan
+  const tglHitung = new Date().toLocaleDateString("sv-SE");
+  k.overtime.riwayat = k.overtime.riwayat || [];
+  // Hapus entri lama dari perhitungan otomatis (bukan carry-over/migrasi)
+  k.overtime.riwayat = k.overtime.riwayat.filter(r => r.sumber === "carry-over" || r.sumber === "migrasi" || r.sumber === "manual");
+  if (jamTLLibur > 0) {
+    k.overtime.riwayat.push({ tanggal: tglHitung, jam: parseFloat(jamTLLibur.toFixed(2)), sumber: "libur", keterangan: "Kerja di hari libur nasional/agama" });
+  }
+  if (totalOvertimeJam > 0) {
+    k.overtime.riwayat.push({ tanggal: tglHitung, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan" });
+  }
+
   save(F.kuotaCuti, kuota);
-  res.send({ status: "OK", jamOvertime: k.overtime.jamAkumulasi, jamTLLibur: parseFloat(jamTLLibur.toFixed(2)) });
+  const saldo = saldoTLHari(k.overtime);
+  res.send({ status: "OK", jamTL_libur: k.overtime.jamTL_libur, jamTL_reguler: k.overtime.jamTL_reguler, saldo });
 });
 
 // POST: hitung overtime semua user sekaligus (bisa dipanggil cron/manual)
@@ -2005,9 +2077,13 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
 
     let totalOvertimeJam = 0;
     Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU); });
-    totalOvertimeJam += jamTLLibur;
-    const k = initKuotaUser(kuota, username, tahun);
-    k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
+    const kS = initKuotaUser(kuota, username, tahun);
+    kS.overtime.jamTL_libur   = parseFloat(jamTLLibur.toFixed(2));
+    kS.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
+    const tglS = new Date().toLocaleDateString("sv-SE");
+    kS.overtime.riwayat = (kS.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
+    if (jamTLLibur   > 0) kS.overtime.riwayat.push({ tanggal: tglS, jam: parseFloat(jamTLLibur.toFixed(2)),        sumber: "libur",    keterangan: "Kerja di hari libur nasional/agama" });
+    if (totalOvertimeJam > 0) kS.overtime.riwayat.push({ tanggal: tglS, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan" });
   });
   save(F.kuotaCuti, kuota);
   res.send({ status: "OK" });
@@ -2035,12 +2111,16 @@ app.post("/kuota-cuti/ambil-overtime/:user", requireSelfOrLevel("user", 2), (req
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, req.params.user, tahun);
   const jamDibutuhkan = parseInt(hari) * 5; // 1 hari TL = 5 jam
-  if (jamDibutuhkan > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: "Jam overtime tidak cukup" });
-  k.overtime.jamAkumulasi -= jamDibutuhkan;
-  k.overtime.hariDiambil  += parseInt(hari);
-  k.overtime.jamAkumulasi  = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+  const saldoAvail = saldoTLJam(k.overtime);
+  if (jamDibutuhkan > saldoAvail) return res.send({ status: "ERROR", msg: `Jam TL tidak cukup (sisa: ${saldoTLHari(k.overtime).hari} hari ${saldoTLHari(k.overtime).sisaJam} jam)` });
+  k.overtime.jamTerpakai  = parseFloat(((k.overtime.jamTerpakai || 0) + jamDibutuhkan).toFixed(2));
+  k.overtime.hariDiambil  = (k.overtime.hariDiambil || 0) + parseInt(hari);
+  // Catat riwayat pengambilan
+  k.overtime.riwayat = k.overtime.riwayat || [];
+  k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: -jamDibutuhkan, sumber: "ambil", keterangan: `Ambil ${hari} hari TL` });
   save(F.kuotaCuti, kuota);
-  res.send({ status: "OK", jamSisa: k.overtime.jamAkumulasi });
+  const saldoSetelah = saldoTLHari(k.overtime);
+  res.send({ status: "OK", saldo: saldoSetelah });
 });
 
 // POST: reset cuti tahunan semua user (dipanggil tiap 31 Des → 1 Jan)
@@ -2168,8 +2248,11 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     k.tahunan.terpakai += durasiHari;
   } else if (kuotaKey === "overtime") {
     const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 5; // 1 hari TL = 5 jam
-    if (satuanJam > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: `Jam overtime tidak cukup (sisa: ${k.overtime.jamAkumulasi.toFixed(1)} jam)` });
-    k.overtime.jamAkumulasi -= satuanJam;
+    const saldoAvail2 = saldoTLJam(k.overtime);
+    if (satuanJam > saldoAvail2) return res.send({ status: "ERROR", msg: `Jam TL tidak cukup (sisa: ${saldoTLHari(k.overtime).hari} hari ${saldoTLHari(k.overtime).sisaJam} jam)` });
+    k.overtime.jamTerpakai = parseFloat(((k.overtime.jamTerpakai || 0) + satuanJam).toFixed(2));
+    k.overtime.riwayat = k.overtime.riwayat || [];
+    k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: -satuanJam, sumber: "ambil", keterangan: `Pengajuan cuti overtime ${durasi} ${satuanDurasi}` });
     k.overtime.hariDiambil  += satuanDurasi === "hari" ? parseFloat(durasi) : 0;
   } else if (isCustomKuota) {
     // Custom kuota: catat saldo
@@ -2300,8 +2383,9 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
     k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
-    k.overtime.jamAkumulasi += jamKembali;
-    k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+    k.overtime.jamTerpakai = parseFloat(Math.max(0, (k.overtime.jamTerpakai || 0) - jamKembali).toFixed(2));
+    k.overtime.riwayat = k.overtime.riwayat || [];
+    k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Cuti TL dibatalkan/ditolak" });
     if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
   } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
     // Kembalikan saldo custom kuota
@@ -2350,8 +2434,9 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
     k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
   } else if (p.kuotaKey === "overtime") {
     const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
-    k.overtime.jamAkumulasi += jamKembali;
-    k.overtime.jamAkumulasi = parseFloat(k.overtime.jamAkumulasi.toFixed(2));
+    k.overtime.jamTerpakai = parseFloat(Math.max(0, (k.overtime.jamTerpakai || 0) - jamKembali).toFixed(2));
+    k.overtime.riwayat = k.overtime.riwayat || [];
+    k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Cuti TL dibatalkan/ditolak" });
     if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
   } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
     // Kembalikan saldo custom kuota
@@ -2564,7 +2649,7 @@ ${rekapBulan.map(d=>`  ${d.tanggal}: masuk ${d.masuk||"-"}, keluar ${d.keluar||"
 
 === KUOTA CUTI ===
 ${kuota
-  ? `Cuti Tahunan: ${kuota.tahunan?.total||12} hari (terpakai: ${kuota.tahunan?.terpakai||0}, sisa: ${(kuota.tahunan?.total||12)-(kuota.tahunan?.terpakai||0)} hari)\nOvertime    : ${kuota.overtime?.jamAkumulasi?.toFixed(1)||"0"} jam tersedia`
+  ? `Cuti Tahunan: ${kuota.tahunan?.total||12} hari (terpakai: ${kuota.tahunan?.terpakai||0}, sisa: ${(kuota.tahunan?.total||12)-(kuota.tahunan?.terpakai||0)} hari)\nTukar Libur : ${saldoTLHari(kuota.overtime||{}).hari} hari ${saldoTLHari(kuota.overtime||{}).sisaJam} jam tersedia`
   : "Data kuota cuti belum tersedia"}
 
 === RIWAYAT CUTI (5 terakhir) ===
