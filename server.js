@@ -1211,11 +1211,39 @@ app.delete("/aktivitas-kustom/:nama", requireLevel(3), (req, res) => {
 // Senin–Jumat = 8 jam efektif (07.00-15.00 default), Sabtu = 6 jam
 // Sesuai rule: Senin-Jumat = 7 jam, Sabtu = 5 jam (net setelah istirahat 1 jam)
 function cutiHariKeJam(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(dateStr + "T12:00:00"); // T12 agar tidak geser timezone
   const dow = d.getDay(); // 0=Sun, 6=Sat
   if (dow === 0) return 0; // Minggu tidak masuk jam kerja
   if (dow === 6) return 5; // Sabtu
   return 7;               // Senin–Jumat
+}
+
+// Cek apakah tanggal adalah hari libur nasional/agama untuk user tertentu
+// Return: { isLibur, namaLibur, jamLibur } atau null
+function cekHariLibur(dateStr, username) {
+  const users     = load(F.users, {});
+  const liburList = load(F.libur, []);
+  const agamaUser = (users[username] || {}).agama || "";
+
+  const libur = liburList.find(l => {
+    const tgl      = l.date || l.dateStart;
+    const tglAkhir = l.dateEnd || tgl;
+    if (!tgl) return false;
+    if (dateStr < tgl || dateStr > tglAkhir) return false;
+    if (l.type === "nasional") return true;
+    if (l.type === "agama") {
+      const agamaLibur = Array.isArray(l.agama) ? l.agama : [l.agama];
+      return agamaLibur.includes(agamaUser);
+    }
+    return false;
+  });
+
+  if (!libur) return null;
+  return {
+    isLibur:   true,
+    namaLibur: libur.name || libur.nama || "Hari Libur",
+    jamLibur:  cutiHariKeJam(dateStr),
+  };
 }
 
 // Hitung kontribusi jam dari satu pengajuan cuti (status disetujui) untuk tanggal tertentu
@@ -1326,10 +1354,26 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         isActive = true;
       }
 
+      // Cek apakah tanggal ini hari libur nasional/agama untuk user ini
+      const infoLiburTs = cekHariLibur(dateStr, username);
+
       // Cari semua cuti yang berlaku di tanggal ini
       const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
       const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
-      const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
+      const keteranganCuti = [
+        ...cutiAktif.map(p => p.kebijakanNama || "Cuti"),
+        ...(infoLiburTs && !rec ? [infoLiburTs.namaLibur] : [])
+      ].join(", ");
+
+      // Hari libur tidak masuk → isi jam otomatis agar tidak defisit
+      if (infoLiburTs && !rec && jamKerja === 0 && jamCuti === 0) {
+        jamKerja = infoLiburTs.jamLibur;
+      }
+      // Hari libur masuk kerja → jam kerja jadi TL, jam libur tetap diisi
+      const jamTLHariIni = (infoLiburTs && rec && !isActive) ? jamKerja : 0;
+      if (infoLiburTs && rec) {
+        jamKerja = infoLiburTs.jamLibur;
+      }
 
       return {
         date: dateStr,
@@ -1339,11 +1383,14 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         jamMasuk:  rec?.jamMasuk  || null,
         breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
                       .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
-        jamCuti:  parseFloat(jamCuti.toFixed(2)),
+        jamCuti:     parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
-        absenId: rec ? rec.date : null, // untuk edit modal
-        jamMasuk:  rec?.jamMasuk  || null,
-        jamKeluar: rec?.jamKeluar || null,
+        isHariLibur: !!infoLiburTs,
+        namaLibur:   infoLiburTs ? infoLiburTs.namaLibur : null,
+        jamTL:       parseFloat((jamTLHariIni || 0).toFixed(2)),
+        absenId:     rec ? rec.date : null,
+        jamMasuk:    rec?.jamMasuk  || null,
+        jamKeluar:   rec?.jamKeluar || null,
       };
     });
 
@@ -1688,7 +1735,7 @@ function initKuotaUser(kuota, username, tahun) {
   if (!kuota[username][key]) {
     kuota[username][key] = {
       tahunan:  { total: 12, terpakai: 0, resetAt: `${tahun}-12-31` },
-      overtime: { jamAkumulasi: 0, hariDiambil: 0 }  // 1 hari = 8 jam
+      overtime: { jamAkumulasi: 0, hariDiambil: 0 }  // 1 hari TL = 5 jam (min konversi)
     };
   }
   return kuota[username][key];
@@ -1788,31 +1835,70 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
   const kuota    = load(F.kuotaCuti, {});
   const pengajuan = load(F.pengajuanCuti, []);
 
-  // Kumpulkan jam absensi fisik per minggu untuk user di tahun ini
-  const weekMap = {};
+  // Kumpulkan jam absensi fisik per minggu + deteksi hari libur
+  const liburList  = load(F.libur, []);
+  const usersData  = load(F.users, {});
+  const agamaUser  = (usersData[username] || {}).agama || "";
+  const weekMap    = {};
+  let   jamTLLibur = 0; // TL dari kerja di hari libur nasional/agama
+  const tglAbsenSet = new Set(
+    data.filter(d => d.user === username && d.date).map(d => d.date)
+  );
+
+  // Absensi: pisahkan hari libur vs hari biasa
   data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
     .forEach(d => {
-      const wk = weekKey(d.date);
+      const jamKerja   = hitungJamKerja(d);
+      const infoLibur  = cekHariLibur(d.date, username);
+      const wk         = weekKey(d.date);
       if (!weekMap[wk]) weekMap[wk] = 0;
-      weekMap[wk] += hitungJamKerja(d);
+      if (infoLibur) {
+        // Kerja di hari libur → semua jam masuk TL, jam libur diisi ke pool reguler
+        jamTLLibur += jamKerja;
+        weekMap[wk] += infoLibur.jamLibur;
+      } else {
+        weekMap[wk] += jamKerja;
+      }
     });
 
-  // Tambahkan jam cuti tahunan yang disetujui ke weekMap
-  // agar hari cuti ikut dihitung sebagai jam kerja dalam akumulasi 40 jam/minggu
+  // Hari libur yang tidak ada absennya → otomatis isi weekMap agar tidak defisit
+  liburList.forEach(l => {
+    const tgl      = l.date || l.dateStart;
+    const tglAkhir = l.dateEnd || tgl;
+    if (!tgl || !tgl.startsWith(String(tahun))) return;
+    let berlaku = false;
+    if (l.type === "nasional") berlaku = true;
+    else if (l.type === "agama") {
+      const ag = Array.isArray(l.agama) ? l.agama : [l.agama];
+      berlaku = ag.includes(agamaUser);
+    }
+    if (!berlaku) return;
+    let cur = new Date(tgl + "T12:00:00");
+    const end = new Date(tglAkhir + "T12:00:00");
+    while (cur <= end) {
+      const dateStr = cur.toLocaleDateString("sv-SE");
+      if (dateStr.startsWith(String(tahun))) {
+        const jamLibur = cutiHariKeJam(dateStr);
+        if (jamLibur > 0 && !tglAbsenSet.has(dateStr)) {
+          const wk = weekKey(dateStr);
+          if (!weekMap[wk]) weekMap[wk] = 0;
+          weekMap[wk] += jamLibur;
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+
+  // Jam cuti tahunan disetujui → tambah ke weekMap (pakai T12)
   const cutiUser = pengajuan.filter(p =>
-    p.username === username &&
-    p.status === "disetujui" &&
-    p.kuotaKey === "tahunan" &&
-    p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
+    p.username === username && p.status === "disetujui" &&
+    p.kuotaKey === "tahunan" && p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
   );
   cutiUser.forEach(p => {
-    const tMulai = p.tanggalMulai;
-    const tAkhir = p.tanggalAkhir || tMulai;
-    // Iterasi setiap hari dalam rentang cuti
-    let cur = new Date(tMulai + "T00:00:00");
-    const end = new Date(tAkhir + "T00:00:00");
+    let cur = new Date(p.tanggalMulai + "T12:00:00");
+    const end = new Date((p.tanggalAkhir || p.tanggalMulai) + "T12:00:00");
     while (cur <= end) {
-      const dateStr = cur.toISOString().split("T")[0];
+      const dateStr = cur.toLocaleDateString("sv-SE");
       const jamHari = cutiHariKeJam(dateStr);
       if (jamHari > 0) {
         const wk = weekKey(dateStr);
@@ -1823,16 +1909,17 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
     }
   });
 
-  // Total jam overtime = kelebihan di atas 40 jam per minggu
+  // Total overtime = kelebihan 40 jam/minggu + TL dari kerja di hari libur
   let totalOvertimeJam = 0;
   Object.values(weekMap).forEach(jam => {
     if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
   });
+  totalOvertimeJam += jamTLLibur;
 
   const k = initKuotaUser(kuota, username, tahun);
   k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
   save(F.kuotaCuti, kuota);
-  res.send({ status: "OK", jamOvertime: k.overtime.jamAkumulasi });
+  res.send({ status: "OK", jamOvertime: k.overtime.jamAkumulasi, jamTLLibur: parseFloat(jamTLLibur.toFixed(2)) });
 });
 
 // POST: hitung overtime semua user sekaligus (bisa dipanggil cron/manual)
@@ -1843,30 +1930,69 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
   const kuota = load(F.kuotaCuti, {});
   const pengajuan = load(F.pengajuanCuti, []);
 
+  const liburList = load(F.libur, []);
+
   Object.keys(users).forEach(username => {
-    // Jam absensi fisik per minggu
-    const weekMap = {};
+    const agamaUsr   = (users[username] || {}).agama || "";
+    const weekMap    = {};
+    let   jamTLLibur = 0;
+    const tglAbsenSet = new Set(
+      data.filter(d => d.user === username && d.date).map(d => d.date)
+    );
+
+    // Absensi: pisahkan hari libur vs hari biasa
     data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
       .forEach(d => {
-        const wk = weekKey(d.date);
+        const jamKerja  = hitungJamKerja(d);
+        const infoLibur = cekHariLibur(d.date, username);
+        const wk        = weekKey(d.date);
         if (!weekMap[wk]) weekMap[wk] = 0;
-        weekMap[wk] += hitungJamKerja(d);
+        if (infoLibur) {
+          jamTLLibur += jamKerja;
+          weekMap[wk] += infoLibur.jamLibur;
+        } else {
+          weekMap[wk] += jamKerja;
+        }
       });
 
-    // Tambahkan jam cuti tahunan yang disetujui ke weekMap
+    // Hari libur tidak masuk → otomatis isi weekMap
+    liburList.forEach(l => {
+      const tgl      = l.date || l.dateStart;
+      const tglAkhir = l.dateEnd || tgl;
+      if (!tgl || !tgl.startsWith(String(tahun))) return;
+      let berlaku = false;
+      if (l.type === "nasional") berlaku = true;
+      else if (l.type === "agama") {
+        const ag = Array.isArray(l.agama) ? l.agama : [l.agama];
+        berlaku = ag.includes(agamaUsr);
+      }
+      if (!berlaku) return;
+      let cur = new Date(tgl + "T12:00:00");
+      const end = new Date(tglAkhir + "T12:00:00");
+      while (cur <= end) {
+        const dateStr = cur.toLocaleDateString("sv-SE");
+        if (dateStr.startsWith(String(tahun))) {
+          const jamLibur = cutiHariKeJam(dateStr);
+          if (jamLibur > 0 && !tglAbsenSet.has(dateStr)) {
+            const wk = weekKey(dateStr);
+            if (!weekMap[wk]) weekMap[wk] = 0;
+            weekMap[wk] += jamLibur;
+          }
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
+    // Jam cuti tahunan → tambah ke weekMap (T12)
     const cutiUser = pengajuan.filter(p =>
-      p.username === username &&
-      p.status === "disetujui" &&
-      p.kuotaKey === "tahunan" &&
-      p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
+      p.username === username && p.status === "disetujui" &&
+      p.kuotaKey === "tahunan" && p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
     );
     cutiUser.forEach(p => {
-      const tMulai = p.tanggalMulai;
-      const tAkhir = p.tanggalAkhir || tMulai;
-      let cur = new Date(tMulai + "T00:00:00");
-      const end = new Date(tAkhir + "T00:00:00");
+      let cur = new Date(p.tanggalMulai + "T12:00:00");
+      const end = new Date((p.tanggalAkhir || p.tanggalMulai) + "T12:00:00");
       while (cur <= end) {
-        const dateStr = cur.toISOString().split("T")[0];
+        const dateStr = cur.toLocaleDateString("sv-SE");
         const jamHari = cutiHariKeJam(dateStr);
         if (jamHari > 0) {
           const wk = weekKey(dateStr);
@@ -1879,6 +2005,7 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
 
     let totalOvertimeJam = 0;
     Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU); });
+    totalOvertimeJam += jamTLLibur;
     const k = initKuotaUser(kuota, username, tahun);
     k.overtime.jamAkumulasi = parseFloat(totalOvertimeJam.toFixed(2));
   });
@@ -1902,12 +2029,12 @@ app.post("/kuota-cuti/ambil-tahunan/:user", requireSelfOrLevel("user", 2), (req,
 
 // POST: catat pengambilan cuti overtime (kurangi jam akumulasi)
 app.post("/kuota-cuti/ambil-overtime/:user", requireSelfOrLevel("user", 2), (req, res) => {
-  const { hari } = req.body;  // 1 hari overtime = 8 jam
+  const { hari } = req.body;  // 1 hari TL = 5 jam
   if (!hari || hari < 1) return res.send({ status: "ERROR", msg: "Jumlah hari tidak valid" });
   const tahun = new Date().getFullYear();
   const kuota = load(F.kuotaCuti, {});
   const k = initKuotaUser(kuota, req.params.user, tahun);
-  const jamDibutuhkan = parseInt(hari) * 8;
+  const jamDibutuhkan = parseInt(hari) * 5; // 1 hari TL = 5 jam
   if (jamDibutuhkan > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: "Jam overtime tidak cukup" });
   k.overtime.jamAkumulasi -= jamDibutuhkan;
   k.overtime.hariDiambil  += parseInt(hari);
@@ -2040,7 +2167,7 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     if (durasiHari > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
     k.tahunan.terpakai += durasiHari;
   } else if (kuotaKey === "overtime") {
-    const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 8;
+    const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 5; // 1 hari TL = 5 jam
     if (satuanJam > k.overtime.jamAkumulasi) return res.send({ status: "ERROR", msg: `Jam overtime tidak cukup (sisa: ${k.overtime.jamAkumulasi.toFixed(1)} jam)` });
     k.overtime.jamAkumulasi -= satuanJam;
     k.overtime.hariDiambil  += satuanDurasi === "hari" ? parseFloat(durasi) : 0;

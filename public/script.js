@@ -5002,10 +5002,25 @@ function tsRender() {
       const isWeekend = dow === 0; // Minggu
 
       let cellContent = "";
-      // Minggu: tampil — hanya jika memang tidak ada absen/kerja
-      // Jika ada absen di hari Minggu, tetap tampilkan jam kerjanya
-      if (isWeekend && !hasKerja && !hasCuti) {
+      const isHariLibur = day.isHariLibur || false;
+      const namaLibur   = day.namaLibur   || "";
+      const jamTL       = day.jamTL       || 0;
+
+      if (isWeekend && !hasKerja && !hasCuti && !isHariLibur) {
+        // Minggu tanpa aktivitas apapun → —
         cellContent = `<span style="color:#ddd;font-size:11px;">—</span>`;
+      } else if (isHariLibur && !rec && !hasCuti) {
+        // Hari libur, tidak masuk → label libur otomatis (hijau)
+        cellContent = `
+          <div style="font-size:12px;font-weight:700;color:#1b5e20;">${fmtJam(day.jamKerja)}</div>
+          <div style="font-size:9px;color:#43a047;margin-top:2px;">🏖️ ${namaLibur}</div>`;
+      } else if (isHariLibur && rec && jamTL > 0) {
+        // Hari libur, masuk kerja → jam libur + badge TL (oranye)
+        const tlH = Math.floor(jamTL), tlM = Math.round((jamTL % 1) * 60);
+        const tlStr = tlM > 0 ? (tlH + "j " + tlM + "m") : (tlH + "j");
+        cellContent = `
+          <div style="font-size:12px;font-weight:700;color:#1b5e20;">${fmtJam(day.jamKerja)}</div>
+          <div style="font-size:9px;color:#e65100;margin-top:2px;">⏱️ +${tlStr} TL</div>`;
       } else if (hasCuti && hasKerja) {
         // Kerja + cuti dalam hari sama
         cellContent = `
@@ -5013,13 +5028,12 @@ function tsRender() {
           <div style="font-size:10px;color:#1565c0;margin-top:2px;">+${fmtJam(day.jamCuti)}</div>
           <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
       } else if (hasCuti) {
-        // Cuti murni (tidak ada absen biasa)
+        // Cuti murni
         cellContent = `
           <div style="font-size:11px;color:#1565c0;font-weight:700;">${fmtJam(day.jamCuti)}</div>
           <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
       } else if (hasKerja) {
         if (day.isActive) {
-          // Hari ini masih aktif — tampilkan realtime (update tiap menit)
           cellContent = `
             <div class="ts-active-cell"
               data-username="${u.username}"
@@ -5036,18 +5050,22 @@ function tsRender() {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
       }
 
-      // Tombol edit: admin bisa edit Minggu jika ada absen
-      const canEditCell = u.canEdit && (!isWeekend || hasKerja);
+      // Tombol edit: admin bisa edit Minggu/hari libur jika ada absen
+      const canEditCell = u.canEdit && (!isWeekend || hasKerja) && !isHariLibur;
       const editBtn = canEditCell ? `
         <div class="ts-edit-btn"
           onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
           style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
                  opacity:0;transition:opacity .15s;pointer-events:none;">✏️</div>` : "";
 
-      // Minggu ada kerja → background oranye muda sebagai penanda kerja hari libur
-      const sundayBg = isWeekend && hasKerja ? "#fff8e1" : "";
+      const sundayBg     = isWeekend   && hasKerja ? "#fff8e1" : "";
+      const liburBg      = isHariLibur && !rec     ? "#f1f8e9" : "";
+      const liburKerjaBg = isHariLibur && rec       ? "#fff3e0" : "";
+      const bgColor = isToday ? "#f1f8e9"
+                    : liburKerjaBg || liburBg || sundayBg
+                    || (hasCuti && !hasKerja ? "#fafeff" : "");
       return `<td style="text-align:center;padding:7px 4px;border-bottom:1px solid #f5f5f5;
-                 background:${isToday?"#f1f8e9":sundayBg||hasCuti&&!hasKerja?"#fafeff":""};
+                 background:${bgColor};
                  vertical-align:middle;">
         ${cellContent}${editBtn}
       </td>`;
