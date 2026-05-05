@@ -314,6 +314,7 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} (karyawan mess)`
         ).catch(() => {});
+        if (user.noHp) sendWA(user.noHp, `🔴 *Clock Out Otomatis*\nHai *${user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* (karyawan mess).`).catch(() => {});
       }
     } else {
       // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
@@ -340,6 +341,7 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} karena berada di luar radius area kantor`
         ).catch(() => {});
+        if (user.noHp) sendWA(user.noHp, `🔴 *Clock Out Otomatis*\nHai *${user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* karena berada di luar radius area kantor.`).catch(() => {});
       }
     }
   });
