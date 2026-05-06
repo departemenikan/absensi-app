@@ -589,7 +589,20 @@ app.post("/absen", requireLevel(99), (req, res) => {
     }
   }
 
+  // Cari record aktif hari ini
   let record = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+
+  // Edge case: clock in lewat tengah malam (misal masuk 23:50, clock out 01:00 esoknya)
+  // Jika tidak ada record hari ini, cari record kemarin yang masih aktif
+  if (!record && type !== "IN") {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toLocaleDateString("sv-SE");
+    const recKemarin = data.find(d => d.user === user && d.date === yStr && !d.jamKeluar);
+    if (recKemarin) {
+      record = recKemarin; // pakai record kemarin untuk clock out / break
+    }
+  }
 
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
@@ -622,7 +635,18 @@ app.post("/absen", requireLevel(99), (req, res) => {
 app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
   const today = todayLocal(); // lokal WITA
-  const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
+
+  // Cari record aktif hari ini
+  let aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
+
+  // Edge case: clock in lewat tengah malam → cek juga record kemarin
+  if (!aktif) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toLocaleDateString("sv-SE");
+    aktif = data.find(d => d.user === req.params.user && d.date === yStr && !d.jamKeluar);
+  }
+
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
   if (lb && !lb.end) return res.send({ status: "BREAK" });
