@@ -148,6 +148,7 @@ function navTo(page) {
   if (navBtn) navBtn.classList.add("active");
   openView("view-" + page);
 }
+window.navTo = navTo;
 
 // ============================================================
 // FACE API
@@ -7064,7 +7065,7 @@ const _origOpenView_cuti = openView;
 // Patch openView agar load daftar cuti ketika view-cuti dibuka
 (function() {
   const _orig = openView;
-  window.openView = function(viewId) {
+  openView = window.openView = function(viewId) {
     _orig(viewId);
     if (viewId === "view-cuti") {
       _cutiFilter = "semua";
@@ -7323,7 +7324,7 @@ openView = function(viewId) {
 // Hook ke navTo juga
 const _origNavTo = typeof navTo === "function" ? navTo : null;
 if (_origNavTo) {
-  navTo = function(page) {
+  navTo = window.navTo = function(page) {
     _origNavTo(page);
     if (page === "home") {
       setTimeout(() => { loadHomeAktivitasDropdown(); startHomeLokasi(); }, 200);

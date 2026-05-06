@@ -2924,7 +2924,10 @@
       const next = dx < 0
         ? Math.min(cur + 1, NAV_PAGES.length - 1)
         : Math.max(cur - 1, 0);
-      if (next !== cur) navTo(NAV_PAGES[next]);
+      if (next !== cur) {
+        const fn = window.navTo || (typeof navTo !== 'undefined' ? navTo : null);
+        if (fn) fn(NAV_PAGES[next]);
+      }
     }
 
     touchStartX = 0; isSwiping = false; isScrolling = false;
