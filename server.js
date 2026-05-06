@@ -497,6 +497,23 @@ app.post("/signup", async (req, res) => {
       "Anggota Baru Mendaftar 🎉",
       `${namaLengkap || username} baru saja mendaftar sebagai anggota`
     ).catch(() => {});
+
+    // WA ke user baru — konfirmasi berhasil sign up
+    if (noHp) sendWA(noHp,
+      `*Absensi Smart* ✅\nHai *${namaLengkap || username}*, pendaftaran kamu berhasil!\n\n` +
+      `👤 Username: *${username}*\n📱 No HP: *${noHp}*\n\nSimpan nomor ini sebagai kontak: *Absensi Smart*\nSelamat bergabung! 🎉`
+    ).catch(() => {});
+
+    // WA ke semua owner & admin — notif anggota baru + nomor HP
+    const usersAll = load(F.users, {});
+    for (const [uname, udata] of Object.entries(usersAll)) {
+      if (["owner", "admin"].includes(udata.group) && udata.noHp && uname !== username) {
+        sendWA(udata.noHp,
+          `*Absensi Smart* 🎉\nAnggota baru mendaftar!\n\n` +
+          `👤 Nama: *${namaLengkap || username}*\n🔑 Username: *${username}*\n📱 No HP: *${noHp || "-"}*\n\nSilakan buka aplikasi untuk mengatur akses.`
+        ).catch(() => {});
+      }
+    }
   }
 
   res.send({ status: "OK" });
