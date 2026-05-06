@@ -773,7 +773,7 @@ async function sendAbsen(type, label) {
     const photo = takePhoto();
 
     // Kirim waktu dalam ISO string lokal agar date tidak geser di WITA
-    const now = new Date().toLocaleString("sv-SE", {timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}).replace(" ", "T") + ":00";
+    const now = new Date().toISOString(); // ISO UTC — server pakai todayLocal() untuk date, time tetap valid
     const r = await authFetch("/absen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
