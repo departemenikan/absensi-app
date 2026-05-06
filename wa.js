@@ -1,9 +1,6 @@
 /**
  * wa.js — Modul WhatsApp Notifikasi via Baileys
- * Gratis, tidak perlu API key, cukup scan QR sekali
- *
- * Cara pakai di server.js:
- *   const { sendWA, waStatus, getWAQR } = require("./wa");
+ * Session disimpan ke Supabase — tidak hilang saat Render restart!
  */
 
 const { default: makeWASocket, useMultiFileAuthState,
@@ -11,18 +8,115 @@ const { default: makeWASocket, useMultiFileAuthState,
 const { Boom } = require("@hapi/boom");
 const path     = require("path");
 const fs       = require("fs");
+const https    = require("https");
 const pino     = require("pino");
 
-// ── Simpan sesi di folder auth_wa (tidak hilang saat Railway restart) ──────
-const AUTH_DIR = path.join(__dirname, "auth_wa");
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY);
 
-let sock        = null;
-let qrCode      = null;   // string QR terbaru (untuk ditampilkan di /wa/qr)
-let isConnected = false;
+const AUTH_DIR = path.join("/tmp", "auth_wa");
+
+let sock         = null;
+let qrCode       = null;
+let isConnected  = false;
 let isConnecting = false;
-const msgQueue  = [];     // antrian pesan saat sedang reconnect
+const msgQueue   = [];
 
-// ── Format nomor ke format WA (62xxx@s.whatsapp.net) ────────────────────────
+function supaReq(method, spath, body = null) {
+  return new Promise((resolve, reject) => {
+    const url     = new URL(SUPABASE_URL);
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const opts    = {
+      hostname: url.hostname,
+      path:     `/rest/v1/${spath}`,
+      method,
+      headers: {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+      },
+    };
+    if (bodyStr) opts.headers["Content-Length"] = Buffer.byteLength(bodyStr);
+    const req = https.request(opts, res => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, data: raw ? JSON.parse(raw) : null }); }
+        catch { resolve({ status: res.statusCode, data: null }); }
+      });
+    });
+    req.on("error", reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function saveSessionToSupabase() {
+  if (!USE_SUPABASE || !fs.existsSync(AUTH_DIR)) return;
+  try {
+    const files = fs.readdirSync(AUTH_DIR);
+    const sessionData = {};
+    for (const file of files) {
+      const filePath = path.join(AUTH_DIR, file);
+      const content  = fs.readFileSync(filePath, "utf8");
+      try { sessionData[file] = JSON.parse(content); }
+      catch { sessionData[file] = content; }
+    }
+    const key        = "wa_session";
+    const encodedKey = encodeURIComponent(key);
+    const check      = await supaReq("GET", `kv_store?key=eq.${encodedKey}&select=key&limit=1`);
+    const exists     = check.status === 200 && check.data && check.data.length > 0;
+    if (exists) {
+      await supaReq("PATCH", `kv_store?key=eq.${encodedKey}`,
+        { value: sessionData, updated_at: new Date().toISOString() });
+    } else {
+      await supaReq("POST", "kv_store",
+        { key, value: sessionData, updated_at: new Date().toISOString() });
+    }
+    console.log("[WA] Session tersimpan ke Supabase");
+  } catch (e) {
+    console.error("[WA] Gagal simpan session:", e.message);
+  }
+}
+
+async function loadSessionFromSupabase() {
+  if (!USE_SUPABASE) return false;
+  try {
+    const encodedKey = encodeURIComponent("wa_session");
+    const { status, data } = await supaReq("GET",
+      `kv_store?key=eq.${encodedKey}&select=value&limit=1`);
+    if (status !== 200 || !data || data.length === 0) {
+      console.log("[WA] Tidak ada session di Supabase — perlu scan QR");
+      return false;
+    }
+    const sessionData = data[0].value;
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    for (const [file, content] of Object.entries(sessionData)) {
+      const filePath = path.join(AUTH_DIR, file);
+      fs.writeFileSync(filePath,
+        typeof content === "string" ? content : JSON.stringify(content));
+    }
+    console.log("[WA] Session dimuat dari Supabase");
+    return true;
+  } catch (e) {
+    console.error("[WA] Gagal load session:", e.message);
+    return false;
+  }
+}
+
+async function deleteSessionFromSupabase() {
+  if (!USE_SUPABASE) return;
+  try {
+    const encodedKey = encodeURIComponent("wa_session");
+    await supaReq("DELETE", `kv_store?key=eq.${encodedKey}`);
+    console.log("[WA] Session dihapus dari Supabase");
+  } catch (e) {
+    console.error("[WA] Gagal hapus session:", e.message);
+  }
+}
+
 function formatNumber(nomor) {
   let n = String(nomor).replace(/\D/g, "");
   if (n.startsWith("0")) n = "62" + n.slice(1);
@@ -30,56 +124,46 @@ function formatNumber(nomor) {
   return n + "@s.whatsapp.net";
 }
 
-// ── Kirim pesan WA ───────────────────────────────────────────────────────────
 async function sendWA(nomor, pesan) {
   if (!nomor) return console.warn("[WA] Nomor tidak valid:", nomor);
   const jid = formatNumber(nomor);
   try {
     if (isConnected && sock) {
       await sock.sendMessage(jid, { text: pesan });
-      console.log(`[WA] ✅ Terkirim ke ${nomor}`);
+      console.log(`[WA] Terkirim ke ${nomor}`);
     } else {
-      // Simpan ke antrian, kirim saat koneksi pulih
       msgQueue.push({ jid, pesan });
-      console.warn(`[WA] ⏳ Offline, pesan ke ${nomor} masuk antrian (${msgQueue.length})`);
+      console.warn(`[WA] Offline, pesan ke ${nomor} masuk antrian (${msgQueue.length})`);
     }
   } catch (e) {
     console.error("[WA] Gagal kirim:", e.message);
   }
 }
 
-// ── Kirim antrian yang tersimpan ─────────────────────────────────────────────
 async function flushQueue() {
   while (msgQueue.length > 0 && isConnected && sock) {
     const { jid, pesan } = msgQueue.shift();
     try {
       await sock.sendMessage(jid, { text: pesan });
-      console.log(`[WA] ✅ Antrian terkirim ke ${jid}`);
+      console.log(`[WA] Antrian terkirim ke ${jid}`);
     } catch (e) {
       console.error("[WA] Gagal kirim antrian:", e.message);
     }
-    // Jeda 500ms antar pesan agar tidak dianggap spam
     await new Promise(r => setTimeout(r, 500));
   }
 }
 
-// ── Status koneksi (untuk endpoint /wa/status) ───────────────────────────────
 function waStatus() {
-  return {
-    connected:  isConnected,
-    connecting: isConnecting,
-    hasQR:      !!qrCode,
-    queue:      msgQueue.length,
-  };
+  return { connected: isConnected, connecting: isConnecting, hasQR: !!qrCode, queue: msgQueue.length };
 }
 
-// ── Ambil QR terbaru (untuk endpoint /wa/qr) ─────────────────────────────────
 function getWAQR() { return qrCode; }
 
-// ── Inisialisasi koneksi Baileys ──────────────────────────────────────────────
 async function connectWA() {
   if (isConnecting) return;
   isConnecting = true;
+
+  await loadSessionFromSupabase();
 
   if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
@@ -88,26 +172,26 @@ async function connectWA() {
 
   sock = makeWASocket({
     version,
-    auth:   state,
-    logger: pino({ level: "silent" }), // matikan log Baileys agar terminal bersih
+    auth:    state,
+    logger:  pino({ level: "silent" }),
     browser: ["Absensi Smart", "Chrome", "1.0"],
   });
 
-  // ── Event: QR code baru ────────────────────────────────────────────────────
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
       qrCode      = qr;
       isConnected = false;
-      console.log("[WA] 📱 QR baru tersedia — scan di /wa/qr atau lihat terminal");
+      console.log("[WA] QR baru tersedia — scan di /wa/qr");
     }
 
     if (connection === "open") {
       isConnected  = true;
       isConnecting = false;
       qrCode       = null;
-      console.log("[WA] ✅ WhatsApp terhubung!");
+      console.log("[WA] WhatsApp terhubung!");
+      await saveSessionToSupabase();
       await flushQueue();
     }
 
@@ -115,29 +199,26 @@ async function connectWA() {
       isConnected  = false;
       isConnecting = false;
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      console.warn("[WA] ❌ Koneksi terputus, alasan:", reason);
+      console.warn("[WA] Koneksi terputus, alasan:", reason);
 
       if (reason === DisconnectReason.loggedOut || reason === 401) {
-        // Logout manual atau dari HP — hapus sesi, perlu scan ulang
-        console.warn("[WA] ⚠️  Logged out! Hapus auth_wa dan scan ulang QR");
-        if (fs.existsSync(AUTH_DIR)) {
-          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        }
+        console.warn("[WA] Logged out! Hapus session dan scan ulang QR");
+        await deleteSessionFromSupabase();
+        if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         setTimeout(connectWA, 3000);
       } else {
-        // Error lain (network, timeout, dll) — reconnect otomatis
         setTimeout(connectWA, 5000);
       }
     }
   });
 
-  // ── Simpan credentials saat update ────────────────────────────────────────
-  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on("creds.update", async () => {
+    saveCreds();
+    await saveSessionToSupabase();
+  });
 }
 
-// ── Logout manual (untuk endpoint /wa/logout) ────────────────────────────────
 async function logoutWA() {
-  // Hentikan semua event agar tidak ada reconnect otomatis
   try { if (sock) sock.ev.removeAllListeners(); } catch {}
   try { if (sock) await sock.logout(); } catch {}
   try { if (sock) sock.end(); } catch {}
@@ -147,17 +228,12 @@ async function logoutWA() {
   sock         = null;
   qrCode       = null;
 
-  // Hapus folder sesi
-  if (fs.existsSync(AUTH_DIR)) {
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-  }
-  console.log("[WA] 🔓 Logout berhasil, sesi dihapus");
-
-  // Tunggu lebih lama sebelum reconnect agar sesi benar-benar bersih
+  await deleteSessionFromSupabase();
+  if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  console.log("[WA] Logout berhasil, sesi dihapus");
   setTimeout(connectWA, 3000);
 }
 
-// ── Mulai koneksi saat modul di-require ──────────────────────────────────────
 connectWA().catch(e => console.error("[WA] Init error:", e.message));
 
 module.exports = { sendWA, waStatus, getWAQR, logoutWA };
