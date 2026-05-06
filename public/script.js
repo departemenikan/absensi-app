@@ -6145,9 +6145,12 @@ function renderKuotaList() {
   listEl.innerHTML = filtered.map(d => {
     const tSisa  = d.tahunan.total - d.tahunan.terpakai;
     const tPct   = Math.round((d.tahunan.terpakai / d.tahunan.total) * 100);
-    const saldoTL  = d.overtime._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
-    const otHari   = saldoTL.hari;
-    const otSisaJam = saldoTL.sisaJam;
+    const saldoOT  = d.overtime._saldo   || { hari: 0, sisaJam: 0, totalJam: 0 };
+    const saldoTL  = d.tukarLibur?._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
+    const otHari    = saldoOT.hari;
+    const otSisaJam = saldoOT.sisaJam;
+    const tlHari    = saldoTL.hari;
+    const tlSisaJam = saldoTL.sisaJam;
 
     // Warna sisa cuti tahunan
     const sisaColor = tSisa <= 3 ? "#e53935" : tSisa <= 6 ? "#f57f17" : "#2e7d32";
@@ -6183,13 +6186,22 @@ function renderKuotaList() {
         </div>
       </div>
 
+      <!-- Overtime chip -->
+      <div style="text-align:center;flex:0 0 auto;">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">⏱️ Overtime</div>
+        <div style="display:inline-flex;align-items:baseline;gap:2px;">
+          <span style="font-size:18px;font-weight:900;color:#1565c0;">${otHari}</span>
+          <span style="font-size:10px;color:var(--muted);font-weight:400;">hari</span>
+          ${otSisaJam > 0 ? `<span style="font-size:11px;color:#64b5f6;font-weight:700;margin-left:2px;">+${otSisaJam}j</span>` : ""}
+        </div>
+      </div>
       <!-- Tukar Libur chip -->
       <div style="text-align:center;flex:0 0 auto;">
         <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">🔄 Tukar Libur</div>
         <div style="display:inline-flex;align-items:baseline;gap:2px;">
-          <span style="font-size:18px;font-weight:900;color:#e65100;">${otHari}</span>
+          <span style="font-size:18px;font-weight:900;color:#e65100;">${tlHari}</span>
           <span style="font-size:10px;color:var(--muted);font-weight:400;">hari</span>
-          ${otSisaJam > 0 ? `<span style="font-size:11px;color:#ffa726;font-weight:700;margin-left:2px;">+${otSisaJam}j</span>` : ""}
+          ${tlSisaJam > 0 ? `<span style="font-size:11px;color:#ffa726;font-weight:700;margin-left:2px;">+${tlSisaJam}j</span>` : ""}
         </div>
       </div>
 
@@ -6486,12 +6498,22 @@ function renderSaldoCuti(k, user) {
 
   const tahunanSisa  = k.tahunan.total - k.tahunan.terpakai;
   const tahunanPct   = k.tahunan.total > 0 ? Math.round((k.tahunan.terpakai / k.tahunan.total) * 100) : 0;
-  const saldoTL      = k.overtime._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
-  const otHariSetara = saldoTL.hari;
-  const otJamSisa    = saldoTL.sisaJam;
-  const otTotalMasuk = (k.overtime.jamTL_libur || 0) + (k.overtime.jamTL_reguler || 0) + (k.overtime.jamCarryOver || 0);
+  // Overtime (kelebihan jam mingguan)
+  const saldoOTCard  = k.overtime._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
+  const otHariSetara = saldoOTCard.hari;
+  const otJamSisa    = saldoOTCard.sisaJam;
+  const otTotalMasuk = (k.overtime.jamTL_reguler || 0) + (k.overtime.jamCarryOver || 0);
   const otTerpakai   = k.overtime.jamTerpakai || 0;
   const otPct        = otTotalMasuk > 0 ? Math.min(100, Math.round((otTerpakai / otTotalMasuk) * 100)) : 0;
+
+  // Tukar Libur (kerja di hari libur nasional/agama)
+  const tl           = k.tukarLibur || {};
+  const saldoTLCard  = tl._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
+  const tlHariSetara = saldoTLCard.hari;
+  const tlJamSisa    = saldoTLCard.sisaJam;
+  const tlTotalMasuk = (tl.jamAkumulasi || 0) + (tl.jamCarryOver || 0);
+  const tlTerpakai   = tl.jamTerpakai || 0;
+  const tlPct        = tlTotalMasuk > 0 ? Math.min(100, Math.round((tlTerpakai / tlTotalMasuk) * 100)) : 0;
 
   el.innerHTML = `
     <div class="card" style="margin-top:0;padding:18px 18px 14px;">
@@ -6532,62 +6554,82 @@ function renderSaldoCuti(k, user) {
         <div style="font-size:11px;color:#388e3c;margin-top:5px;text-align:right;">${tahunanPct}% terpakai</div>
       </div>
 
-      <!-- Tukar Libur -->
-      <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
+      <!-- Cuti Overtime (kelebihan jam mingguan) -->
+      <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:14px;padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-weight:800;font-size:14px;color:#e65100;">🔄 Tukar Libur</span>
-          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tidak hangus tahunan</span>
+          <span style="font-weight:800;font-size:14px;color:#1565c0;">⏱️ Cuti Overtime</span>
+          <span style="font-size:11px;color:#64b5f6;font-weight:700;">Dari kelebihan jam/minggu</span>
         </div>
-
-        <!-- Saldo utama: HARI -->
-        <div style="text-align:center;background:white;border-radius:12px;padding:16px;margin-bottom:10px;
-          box-shadow:0 2px 8px rgba(230,81,0,.12);">
-          <div style="font-size:42px;font-weight:900;color:#e65100;line-height:1;">${otHariSetara}</div>
-          <div style="font-size:12px;color:#ffa726;font-weight:700;margin-top:4px;">HARI tersedia</div>
+        <div style="text-align:center;background:white;border-radius:12px;padding:14px;margin-bottom:10px;
+          box-shadow:0 2px 8px rgba(21,101,192,.12);">
+          <div style="font-size:40px;font-weight:900;color:#1565c0;line-height:1;">${otHariSetara}</div>
+          <div style="font-size:12px;color:#64b5f6;font-weight:700;margin-top:4px;">HARI tersedia</div>
           ${otJamSisa > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">+ ${otJamSisa} jam (belum cukup 1 hari)</div>` : ""}
         </div>
-
-        <!-- Detail breakdown -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
-            <div style="font-size:13px;font-weight:900;color:#e65100;">${(k.overtime.jamTL_libur||0).toFixed(1)}j</div>
-            <div style="font-size:9px;color:#ffa726;font-weight:700;margin-top:2px;">Libur</div>
-          </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
           <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
             <div style="font-size:13px;font-weight:900;color:#1565c0;">${(k.overtime.jamTL_reguler||0).toFixed(1)}j</div>
-            <div style="font-size:9px;color:#64b5f6;font-weight:700;margin-top:2px;">Overtime</div>
+            <div style="font-size:9px;color:#64b5f6;font-weight:700;margin-top:2px;">Terakumulasi</div>
           </div>
           <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
             <div style="font-size:13px;font-weight:900;color:#7b1fa2;">${k.overtime.hariDiambil||0}</div>
             <div style="font-size:9px;color:#ba68c8;font-weight:700;margin-top:2px;">Diambil</div>
           </div>
         </div>
-
-        <!-- Progress bar terpakai -->
-        <div style="background:#ffe0b2;border-radius:50px;height:6px;overflow:hidden;margin-bottom:4px;">
-          <div style="height:100%;background:linear-gradient(90deg,#e65100,#ffa726);border-radius:50px;
-            width:${otPct}%;transition:width .5s;"></div>
+        <div style="background:#bbdefb;border-radius:50px;height:6px;overflow:hidden;margin-bottom:4px;">
+          <div style="height:100%;background:linear-gradient(90deg,#1565c0,#42a5f5);border-radius:50px;width:${otPct}%;transition:width .5s;"></div>
         </div>
-        <div style="font-size:10px;color:#f57f17;text-align:right;">${otPct}% terpakai</div>
-
-        <!-- Riwayat TL -->
+        <div style="font-size:10px;color:#1976d2;text-align:right;">${otPct}% terpakai</div>
         ${(k.overtime.riwayat||[]).length > 0 ? `
-        <div style="margin-top:12px;border-top:1px solid #ffe0b2;padding-top:10px;">
-          <div style="font-size:11px;font-weight:700;color:#e65100;margin-bottom:8px;">📜 Riwayat TL</div>
-          ${(k.overtime.riwayat||[]).slice().reverse().slice(0,5).map(r => {
-            const icon   = r.sumber==="libur" ? "🏖️" : r.sumber==="overtime" ? "⏱️" : r.sumber==="carry-over" ? "↩️" : r.sumber==="ambil" ? "✅" : r.sumber==="kembali" ? "↩️" : "📌";
-            const warna  = r.jam < 0 ? "#e53935" : "#2e7d32";
+        <div style="margin-top:10px;border-top:1px solid #bbdefb;padding-top:8px;">
+          <div style="font-size:11px;font-weight:700;color:#1565c0;margin-bottom:6px;">📜 Riwayat</div>
+          ${(k.overtime.riwayat||[]).slice().reverse().slice(0,3).map(r => {
+            const warna = r.jam < 0 ? "#e53935" : "#2e7d32";
             const prefix = r.jam < 0 ? "" : "+";
-            return `<div style="display:flex;align-items:center;justify-content:space-between;
-              padding:6px 0;border-bottom:1px solid #fff3e0;font-size:11px;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span>${icon}</span>
-                <div>
-                  <div style="font-weight:600;color:var(--text);">${r.keterangan}</div>
-                  <div style="color:var(--muted);font-size:10px;">${r.tanggal}</div>
-                </div>
-              </div>
-              <div style="font-weight:800;color:${warna};white-space:nowrap;">${prefix}${Math.abs(r.jam).toFixed(1)}j</div>
+            return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #e3f2fd;">
+              <div><div style="font-weight:600;">${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
+              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)}j</div>
+            </div>`;
+          }).join("")}
+        </div>` : ""}
+      </div>
+
+      <!-- Tukar Libur (kerja di hari libur nasional/agama) -->
+      <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-weight:800;font-size:14px;color:#e65100;">🔄 Tukar Libur</span>
+          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tidak hangus tahunan</span>
+        </div>
+        <div style="text-align:center;background:white;border-radius:12px;padding:14px;margin-bottom:10px;
+          box-shadow:0 2px 8px rgba(230,81,0,.12);">
+          <div style="font-size:40px;font-weight:900;color:#e65100;line-height:1;">${tlHariSetara}</div>
+          <div style="font-size:12px;color:#ffa726;font-weight:700;margin-top:4px;">HARI tersedia</div>
+          ${tlJamSisa > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">+ ${tlJamSisa} jam (belum cukup 1 hari)</div>` : ""}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
+            <div style="font-size:13px;font-weight:900;color:#e65100;">${(tl.jamAkumulasi||0).toFixed(1)}j</div>
+            <div style="font-size:9px;color:#ffa726;font-weight:700;margin-top:2px;">Terakumulasi</div>
+          </div>
+          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
+            <div style="font-size:13px;font-weight:900;color:#7b1fa2;">${tl.hariDiambil||0}</div>
+            <div style="font-size:9px;color:#ba68c8;font-weight:700;margin-top:2px;">Diambil</div>
+          </div>
+        </div>
+        <div style="background:#ffe0b2;border-radius:50px;height:6px;overflow:hidden;margin-bottom:4px;">
+          <div style="height:100%;background:linear-gradient(90deg,#e65100,#ffa726);border-radius:50px;width:${tlPct}%;transition:width .5s;"></div>
+        </div>
+        <div style="font-size:10px;color:#f57f17;text-align:right;">${tlPct}% terpakai</div>
+        ${(tl.riwayat||[]).length > 0 ? `
+        <div style="margin-top:10px;border-top:1px solid #ffe0b2;padding-top:8px;">
+          <div style="font-size:11px;font-weight:700;color:#e65100;margin-bottom:6px;">📜 Riwayat</div>
+          ${(tl.riwayat||[]).slice().reverse().slice(0,3).map(r => {
+            const icon = r.sumber==="libur" ? "🏖️" : r.sumber==="carry-over" ? "↩️" : r.sumber==="ambil" ? "✅" : "📌";
+            const warna = r.jam < 0 ? "#e53935" : "#2e7d32";
+            const prefix = r.jam < 0 ? "" : "+";
+            return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #fff3e0;">
+              <div><div style="font-weight:600;">${icon} ${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
+              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)}j</div>
             </div>`;
           }).join("")}
         </div>` : ""}
@@ -6731,7 +6773,7 @@ function onTcKebijakanChange() {
     document.getElementById("tc-wrap-jam").style.display        = "";
     // Tampilkan saldo dalam JAM saja (bukan hari)
     if (_kuotaSaya) {
-      const jam = (_kuotaSaya.overtime._saldo || {}).totalJam || 0;
+      const jam = (_kuotaSaya.tukarLibur?._saldo || {}).totalJam || 0;
       infoEl.innerHTML = `⏱ Saldo tersedia: <b>${jam.toFixed(1)} jam</b> akumulasi overtime`;
       infoEl.style.display = "";
     }
