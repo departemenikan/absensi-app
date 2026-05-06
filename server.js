@@ -25,6 +25,11 @@ const DATA_DIR = IS_CLOUD ? "/tmp" : ".";
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("public"));
 
+// ── Health check — untuk UptimeRobot (tidak butuh auth) ──────────────────────
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", time: new Date().toISOString() });
+});
+
 // ── Key Supabase (string pendek) ↔ path file /tmp (untuk fallback & migrasi) ──
 const F = {
   data:            "data",
