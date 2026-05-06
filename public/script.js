@@ -5072,12 +5072,12 @@ function tsRender() {
       if (isWeekend && !hasKerja && !hasCuti && !isHariLibur) {
         // Minggu tanpa aktivitas apapun → —
         cellContent = `<span style="color:#ddd;font-size:11px;">—</span>`;
-      } else if (isHariLibur && !rec && !hasCuti) {
+      } else if (isHariLibur && !hasKerja && !hasCuti) {
         // Hari libur, tidak masuk → label libur otomatis (hijau)
         cellContent = `
           <div style="font-size:12px;font-weight:700;color:#1b5e20;">${fmtJam(day.jamKerja)}</div>
           <div style="font-size:9px;color:#43a047;margin-top:2px;">🏖️ ${namaLibur}</div>`;
-      } else if (isHariLibur && rec && jamTL > 0) {
+      } else if (isHariLibur && hasKerja && jamTL > 0) {
         // Hari libur, masuk kerja → jam libur + badge TL (oranye)
         const tlH = Math.floor(jamTL), tlM = Math.round((jamTL % 1) * 60);
         const tlStr = tlM > 0 ? (tlH + "j " + tlM + "m") : (tlH + "j");
@@ -5118,17 +5118,19 @@ function tsRender() {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;
       }
 
-      // Tombol edit: admin bisa edit Minggu/hari libur jika ada absen
-      const canEditCell = u.canEdit && (!isWeekend || hasKerja) && !isHariLibur;
+      // Tombol edit: muncul di semua hari kerja (termasuk sel kosong) agar bisa tambah absen manual
+      // Minggu: hanya jika sudah ada data. Hari libur: tetap bisa edit jika sudah ada absen.
+      const canEditCell = u.canEdit && (!isWeekend || hasKerja) && (!isHariLibur || hasKerja);
       const editBtn = canEditCell ? `
         <div class="ts-edit-btn"
+          data-empty="${!hasKerja ? '1' : '0'}"
           onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
           style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
-                 opacity:0;transition:opacity .15s;pointer-events:none;">✏️</div>` : "";
+                 opacity:${!hasKerja ? '0.4' : '0'};transition:opacity .15s;${hasKerja ? 'pointer-events:none;' : ''}">✏️</div>` : "";
 
-      const sundayBg     = isWeekend   && hasKerja ? "#fff8e1" : "";
-      const liburBg      = isHariLibur && !rec     ? "#f1f8e9" : "";
-      const liburKerjaBg = isHariLibur && rec       ? "#fff3e0" : "";
+      const sundayBg     = isWeekend   && hasKerja  ? "#fff8e1" : "";
+      const liburBg      = isHariLibur && !hasKerja ? "#f1f8e9" : "";
+      const liburKerjaBg = isHariLibur && hasKerja  ? "#fff3e0" : "";
       const bgColor = isToday ? "#f1f8e9"
                     : liburKerjaBg || liburBg || sundayBg
                     || (hasCuti && !hasKerja ? "#fafeff" : "");
@@ -5209,8 +5211,9 @@ function tsRender() {
     });
     row.addEventListener("mouseleave", () => {
       row.querySelectorAll(".ts-edit-btn").forEach(btn => {
-        btn.style.opacity       = "0";
-        btn.style.pointerEvents = "none";
+        const isEmpty = btn.getAttribute("data-empty") === "1";
+        btn.style.opacity       = isEmpty ? "0.4"  : "0";
+        btn.style.pointerEvents = isEmpty ? "auto" : "none";
       });
     });
   });
