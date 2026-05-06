@@ -163,12 +163,28 @@ async function connectWA() {
   if (isConnecting) return;
   isConnecting = true;
 
-  await loadSessionFromSupabase();
+  try {
+    await loadSessionFromSupabase();
+  } catch (e) {
+    console.warn("[WA] loadSession error (lanjut):", e.message);
+  }
 
   if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version }          = await fetchLatestBaileysVersion();
+
+  // Timeout 10 detik — agar tidak hang saat cold start Render
+  let version;
+  try {
+    const raceResult = await Promise.race([
+      fetchLatestBaileysVersion(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000))
+    ]);
+    version = raceResult.version;
+  } catch (e) {
+    console.warn("[WA] Gagal fetch versi Baileys, pakai fallback:", e.message);
+    version = [2, 3000, 1015901307]; // versi stabil fallback
+  }
 
   sock = makeWASocket({
     version,
@@ -234,6 +250,10 @@ async function logoutWA() {
   setTimeout(connectWA, 3000);
 }
 
-connectWA().catch(e => console.error("[WA] Init error:", e.message));
+// Jalankan dengan delay 3 detik — beri waktu server Express ready dulu
+// Error tidak akan crash server utama
+setTimeout(() => {
+  connectWA().catch(e => console.error("[WA] Init error (non-fatal):", e.message));
+}, 3000);
 
 module.exports = { sendWA, waStatus, getWAQR, logoutWA };
