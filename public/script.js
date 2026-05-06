@@ -1054,6 +1054,19 @@ async function _doAutoOvertime() {
 
 // ─── LOAD DATA HARI INI ─────────────────────────────────────
 
+function hitungDurasiDetik(rec, nowMs) {
+  if (!rec || !rec.jamMasuk) return 0;
+  const end = rec.jamKeluar ? new Date(rec.jamKeluar).getTime() : nowMs;
+  const work = end - new Date(rec.jamMasuk).getTime();
+  let bt = 0;
+  (rec.breaks || []).forEach(b => {
+    const bStart = new Date(b.start).getTime();
+    const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
+    bt += bEnd - bStart;
+  });
+  return Math.max(0, work - bt) / 1000;
+}
+
 async function loadTodayDetail() {
   const user  = localStorage.getItem("user");
   const today = todayLocalStr();
@@ -4850,11 +4863,13 @@ function startTsTicker() {
         return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
       }
     } else {
-      // User lain — hitung dari snapshot server (data-jammasuk & data-breakdetik)
-      const jamMasuk   = cell.getAttribute("data-jammasuk");
-      const breakDetik = parseFloat(cell.getAttribute("data-breakdetik") || "0");
-      if (!jamMasuk) return 0;
-      return Math.max(0, (Date.now() - new Date(jamMasuk).getTime()) / 1000 - breakDetik) / 3600;
+      // User lain — hitung dari snapshot server (multi-sesi)
+      const jamMasuk       = cell.getAttribute("data-jammasuk");
+      const breakDetik     = parseFloat(cell.getAttribute("data-breakdetik") || "0");
+      const jamSesiSelesai = parseFloat(cell.getAttribute("data-sesi-selesai") || "0");
+      if (!jamMasuk) return jamSesiSelesai;
+      const sesiAktif = Math.max(0, (Date.now() - new Date(jamMasuk).getTime()) / 1000 - breakDetik) / 3600;
+      return jamSesiSelesai + sesiAktif;
     }
     return 0;
   }
@@ -5043,17 +5058,22 @@ function tsRender() {
           <div style="font-size:9px;color:#1976d2;background:#e3f2fd;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.3;">${day.keteranganCuti}</div>`;
       } else if (hasKerja) {
         if (day.isActive) {
+          const sesiLbl = day.sesiCount > 1 ? `<div style="font-size:9px;color:#ffa726;margin-top:1px;">sesi ${day.sesiCount}</div>` : "";
           cellContent = `
             <div class="ts-active-cell"
               data-username="${u.username}"
               data-jammasuk="${day.jamMasuk || ''}"
               data-breakdetik="${day.breakDetik || 0}"
+              data-sesi-selesai="${day.jamSesiSelesai || 0}"
               style="font-size:12px;font-weight:700;color:#2e7d32;font-variant-numeric:tabular-nums;">
               ${fmtJamRealtime(day.jamKerja)}
             </div>
-            <div style="font-size:9px;color:#66bb6a;margin-top:1px;">▶ aktif</div>`;
+            <div style="font-size:9px;color:#66bb6a;margin-top:1px;">▶ aktif</div>
+            ${sesiLbl}`;
         } else {
-          cellContent = `<div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>`;
+          const sesiInfo = day.sesiCount > 1
+            ? `<div style="font-size:9px;color:#ffa726;margin-top:1px;">${day.sesiCount} sesi</div>` : "";
+          cellContent = `<div style="font-size:12px;font-weight:700;color:var(--text);">${fmtJam(day.jamKerja)}</div>${sesiInfo}`;
         }
       } else {
         cellContent = `<span style="color:#ddd;font-size:12px;">—</span>`;

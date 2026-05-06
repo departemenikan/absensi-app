@@ -611,7 +611,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
-    data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [] });
+    data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
     record.jamKeluar = time;
     const lb = record.breaks.at(-1);
@@ -1384,22 +1384,31 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
     const days = dates.map(dateStr => {
-      const rec = data.find(d => d.user === username && d.date === dateStr);
+      // Multi-sesi: ambil SEMUA record tanggal ini
+      const recs = data.filter(d => d.user === username && d.date === dateStr);
+      const rec  = recs.find(d => !d.jamKeluar) || recs[recs.length - 1] || null;
       let jamKerja = 0;
       let isActive = false;
-      if (rec && rec.jamMasuk && rec.jamKeluar) {
-        const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
-        let bt = 0;
-        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
-        jamKerja = Math.max(0, work - bt);
-      } else if (rec && rec.jamMasuk && !rec.jamKeluar) {
-        // Masih aktif — hitung sampai sekarang, client update realtime tiap menit
-        const work = (Date.now() - new Date(rec.jamMasuk).getTime()) / 3600000;
-        let bt = 0;
-        (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
-        jamKerja = Math.max(0, work - bt);
-        isActive = true;
-      }
+      const nowMs  = Date.now();
+
+      recs.forEach(r => {
+        if (r.jamMasuk && r.jamKeluar) {
+          const work = (new Date(r.jamKeluar) - new Date(r.jamMasuk)) / 3600000;
+          let bt = 0;
+          (r.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+          jamKerja += Math.max(0, work - bt);
+        } else if (r.jamMasuk && !r.jamKeluar) {
+          const work = (nowMs - new Date(r.jamMasuk).getTime()) / 3600000;
+          let bt = 0;
+          (r.breaks || []).forEach(b => {
+            const bStart = new Date(b.start).getTime();
+            const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
+            bt += (bEnd - bStart) / 3600000;
+          });
+          jamKerja += Math.max(0, work - bt);
+          isActive = true;
+        }
+      });
 
       // Cek apakah tanggal ini hari libur nasional/agama untuk user ini
       const infoLiburTs = cekHariLibur(dateStr, username);
@@ -1426,17 +1435,25 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         date: dateStr,
         dow:  new Date(dateStr + "T12:00:00").getDay(), // 0=Min
         jamKerja:  parseFloat(jamKerja.toFixed(2)),
-        isActive,  // true jika masih clock in (realtime di client)
-        jamMasuk:  rec?.jamMasuk  || null,
-        breakDetik: isActive ? (rec?.breaks||[]).filter(b=>b.start&&b.end)
-                      .reduce((s,b)=>s+(new Date(b.end)-new Date(b.start))/1000, 0) : 0,
+        isActive,
+        jamMasuk:  rec?.jamMasuk || null,
+        sesiCount: recs.length,
+        breakDetik: isActive ? (rec?.breaks||[]).reduce((s,b) => {
+                      const bStart = new Date(b.start).getTime();
+                      const bEnd   = b.end ? new Date(b.end).getTime() : Date.now();
+                      return s + (bEnd - bStart) / 1000;
+                    }, 0) : 0,
+        jamSesiSelesai: parseFloat(recs.filter(r => r.jamMasuk && r.jamKeluar).reduce((s,r) => {
+          const work = (new Date(r.jamKeluar) - new Date(r.jamMasuk)) / 3600000;
+          let bt = 0; (r.breaks||[]).forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
+          return s + Math.max(0, work - bt);
+        }, 0).toFixed(2)),
         jamCuti:     parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
         isHariLibur: !!infoLiburTs,
         namaLibur:   infoLiburTs ? infoLiburTs.namaLibur : null,
         jamTL:       parseFloat((jamTLHariIni || 0).toFixed(2)),
         absenId:     rec ? rec.date : null,
-        jamMasuk:    rec?.jamMasuk  || null,
         jamKeluar:   rec?.jamKeluar || null,
       };
     });
@@ -1998,21 +2015,25 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
     data.filter(d => d.user === username && d.date).map(d => d.date)
   );
 
-  // Absensi: pisahkan hari libur vs hari biasa
+  // Grup per tanggal (multi-sesi), lalu akumulasi jam
+  const dateMapOT = {};
   data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
     .forEach(d => {
-      const jamKerja   = hitungJamKerja(d);
-      const infoLibur  = cekHariLibur(d.date, username);
-      const wk         = weekKey(d.date);
-      if (!weekMap[wk]) weekMap[wk] = 0;
-      if (infoLibur) {
-        // Kerja di hari libur → semua jam masuk TL, jam libur diisi ke pool reguler
-        jamTLLibur += jamKerja;
-        weekMap[wk] += infoLibur.jamLibur;
-      } else {
-        weekMap[wk] += jamKerja;
-      }
+      if (!dateMapOT[d.date]) dateMapOT[d.date] = [];
+      dateMapOT[d.date].push(d);
     });
+  Object.entries(dateMapOT).forEach(([dateStr, sesiList]) => {
+    const jamKerja  = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+    const infoLibur = cekHariLibur(dateStr, username);
+    const wk        = weekKey(dateStr);
+    if (!weekMap[wk]) weekMap[wk] = 0;
+    if (infoLibur) {
+      jamTLLibur += jamKerja;
+      weekMap[wk] += infoLibur.jamLibur;
+    } else {
+      weekMap[wk] += jamKerja;
+    }
+  });
 
   // Hari libur yang tidak ada absennya → otomatis isi weekMap agar tidak defisit
   liburList.forEach(l => {
@@ -2111,20 +2132,22 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
       data.filter(d => d.user === username && d.date).map(d => d.date)
     );
 
-    // Absensi: pisahkan hari libur vs hari biasa
+    // Grup per tanggal (multi-sesi)
+    const dateMapSS = {};
     data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
-      .forEach(d => {
-        const jamKerja  = hitungJamKerja(d);
-        const infoLibur = cekHariLibur(d.date, username);
-        const wk        = weekKey(d.date);
-        if (!weekMap[wk]) weekMap[wk] = 0;
-        if (infoLibur) {
-          jamTLLibur += jamKerja;
-          weekMap[wk] += infoLibur.jamLibur;
-        } else {
-          weekMap[wk] += jamKerja;
-        }
-      });
+      .forEach(d => { if (!dateMapSS[d.date]) dateMapSS[d.date] = []; dateMapSS[d.date].push(d); });
+    Object.entries(dateMapSS).forEach(([dateStrX, sesiX]) => {
+      const jamKerja  = sesiX.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const infoLibur = cekHariLibur(dateStrX, username);
+      const wk        = weekKey(dateStrX);
+      if (!weekMap[wk]) weekMap[wk] = 0;
+      if (infoLibur) {
+        jamTLLibur += jamKerja;
+        weekMap[wk] += infoLibur.jamLibur;
+      } else {
+        weekMap[wk] += jamKerja;
+      }
+    });
 
     // Hari libur tidak masuk → otomatis isi weekMap
     liburList.forEach(l => {
@@ -2602,7 +2625,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
   if (!user || lat == null || lng == null) return res.send({ status: "ERROR" });
 
   const tracking = load(F.tracking, {});
-  const today    = new Date().toISOString().split("T")[0];
+  const today    = todayLocal();
   const now      = new Date().toISOString();
 
   if (!tracking[today]) tracking[today] = {};
@@ -2624,7 +2647,7 @@ app.post("/tracking/ping", requireLevel(99), (req, res) => {
 
 // GET rute anggota tertentu untuk tanggal tertentu
 app.get("/tracking/:user", requireSelfOrLevel("user", 3), (req, res) => {
-  const date     = req.query.date || new Date().toISOString().split("T")[0];
+  const date     = req.query.date || todayLocal();
   const tracking = load(F.tracking, {});
   const points   = (tracking[date] || {})[req.params.user] || [];
   res.send({ user: req.params.user, date, points });
@@ -2635,7 +2658,7 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
   const tracking = load(F.tracking, {});
   const users    = load(F.users, {});
   const data     = load(F.data, []);
-  const today    = new Date().toISOString().split("T")[0];
+  const today    = todayLocal();
   const todayData = (tracking[today] || {});
 
   const requester      = req._requester;
@@ -2705,7 +2728,7 @@ app.post("/chat", requireLevel(99), async (req, res) => {
   const level    = req._requesterLevel;
   const users    = load(F.users, {});
   const user     = users[username] || {};
-  const today    = new Date().toISOString().split("T")[0];
+  const today    = todayLocal();
 
   // Absensi hari ini
   const dataAbsen    = load(F.data, []);
