@@ -1,3 +1,6 @@
+// Helper: tanggal hari ini lokal (bukan UTC) — aman untuk WITA
+function todayLocalStr() { return new Date().toLocaleDateString('sv-SE'); }
+
 // ============================================================
 // STATE
 // ============================================================
@@ -405,7 +408,7 @@ function enterApp(menus, group, level) {
 
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
-  if (ad) ad.value = new Date().toISOString().split("T")[0];
+  if (ad) ad.value = todayLocalStr();
 }
 
 // Sinkronisasi foto profil ke semua avatar di header
@@ -769,7 +772,8 @@ async function sendAbsen(type, label) {
     if (!ok) return;
     const photo = takePhoto();
 
-    const now = new Date().toISOString();
+    // Kirim waktu dalam ISO string lokal agar date tidak geser di WITA
+    const now = new Date().toLocaleString("sv-SE", {timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}).replace(" ", "T") + ":00";
     const r = await authFetch("/absen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -986,7 +990,7 @@ function startTicker(rec) {
 
   _tickerInterval = setInterval(() => {
     const now   = new Date();
-    const today = now.toISOString().split("T")[0];
+    const today = now.toLocaleDateString("sv-SE");
 
     // Reset tepat tengah malam (00:00:00)
     if (_todayRec && _todayRec.date && _todayRec.date !== today) {
@@ -1020,7 +1024,7 @@ function resetTodayUI() {
 let _overtimeProcessedWeek = null;  // agar tidak proses dua kali dalam minggu yang sama
 
 async function _doAutoOvertime() {
-  const thisWeek = getWeekKey(new Date().toISOString().split("T")[0]);
+  const thisWeek = getWeekKey(todayLocalStr());
   if (_overtimeProcessedWeek === thisWeek) return; // sudah diproses minggu ini
   _overtimeProcessedWeek = thisWeek;
 
@@ -1052,7 +1056,7 @@ async function _doAutoOvertime() {
 
 async function loadTodayDetail() {
   const user  = localStorage.getItem("user");
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalStr();
   try {
     const r   = await authFetch("/history/" + user);
     const d   = await r.json();
@@ -1069,7 +1073,7 @@ function updateLocalRecord(type, time) {
   if (!_todayRec) {
     if (type === "IN") {
       _todayRec = {
-        date:      new Date().toISOString().split("T")[0],
+        date:      todayLocalStr(),
         jamMasuk:  time,
         jamKeluar: null,
         breaks:    [],
@@ -1104,7 +1108,7 @@ function updateLocalRecord(type, time) {
 // Hitung total jam kerja minggu ini dari history
 async function loadWeeklyInfo() {
   const user  = localStorage.getItem("user");
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalStr();
   const week  = getWeekKey(today);
 
   try {
@@ -1862,7 +1866,7 @@ function rekapRender() {
 
   const q         = (document.getElementById("rekap-search")?.value || "").toLowerCase();
   const filterW   = parseInt(document.getElementById("rekap-filter-minggu")?.value || "") || 0;
-  const today     = new Date().toISOString().split("T")[0];
+  const today     = todayLocalStr();
 
   const allUsers  = (_rekapData.users || []);
   const filtered  = allUsers.filter(u =>
@@ -2139,7 +2143,7 @@ async function downloadRekapXLSX() {
 // ADMIN
 // ============================================================
 async function loadAdmin() {
-  const date   = document.getElementById("adm-date").value || new Date().toISOString().split("T")[0];
+  const date   = document.getElementById("adm-date").value || todayLocalStr();
   const search = (document.getElementById("adm-search").value||"").toLowerCase();
   try {
     const r = await authFetch("/admin/today?date="+date);
@@ -4985,7 +4989,7 @@ function tsRender() {
   const headerCols = dates.map(date => {
     const d   = new Date(date + "T00:00:00");
     const dow = d.getDay();
-    const isToday = date === new Date().toISOString().split("T")[0];
+    const isToday = date === todayLocalStr();
     const color = DOW_COLOR[dow] || "var(--text)";
     return `<th style="text-align:center;min-width:68px;padding:8px 4px;
                background:${isToday ? "#e8f5e9" : ""};border-radius:${isToday?"6px":""};
@@ -5002,7 +5006,7 @@ function tsRender() {
     const dayCols = u.days.map(day => {
       const hasKerja = day.jamKerja > 0;
       const hasCuti  = day.jamCuti  > 0;
-      const isToday  = day.date === new Date().toISOString().split("T")[0];
+      const isToday  = day.date === todayLocalStr();
       const dow      = day.dow;
       const isWeekend = dow === 0; // Minggu
 
@@ -5783,7 +5787,7 @@ function switchTrackTab(tab) {
 async function loadTracking() {
   // Set tanggal default riwayat ke hari ini
   const dateEl = document.getElementById("trk-pilih-date");
-  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split("T")[0];
+  if (dateEl && !dateEl.value) dateEl.value = todayLocalStr();
   // Load daftar anggota untuk dropdown riwayat
   try {
     if (!_anggotaAll.length) {
@@ -5927,7 +5931,7 @@ function viewRouteFromModal() {
   const sel  = document.getElementById("trk-pilih-user");
   const date = document.getElementById("trk-pilih-date");
   if (sel) sel.value = _trkDetailUsername;
-  if (!date.value) date.value = new Date().toISOString().split("T")[0];
+  if (!date.value) date.value = todayLocalStr();
   loadRiwayatRute();
 }
 

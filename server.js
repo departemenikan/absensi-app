@@ -1,6 +1,12 @@
 // Timezone default — di-override dari DB setelah loadAll
 process.env.TZ = process.env.TZ || "Asia/Makassar";
 
+// Helper: tanggal hari ini dalam timezone server (lokal), format YYYY-MM-DD
+// Wajib pakai ini (bukan toISOString) agar tidak geser 1 hari di WITA
+function todayLocal() {
+  return new Date().toLocaleDateString("sv-SE");
+}
+
 const express  = require("express");
 const fs       = require("fs");
 const path     = require("path");
@@ -248,7 +254,7 @@ setInterval(() => {
   const now   = new Date();
   const hour  = now.getHours();
   const min   = now.getMinutes();
-  const today = now.toISOString().split("T")[0];
+  const today = now.toLocaleDateString("sv-SE"); // lokal WITA bukan UTC
   const dow   = now.getDay(); // 0=Minggu, 6=Sabtu
 
   // ── PENGINGAT CLOCK IN — jam 08:00, Senin–Jumat ─────────────────────────
@@ -540,7 +546,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const user = req._requester;
   const { type, time, lat, lng, accuracy, photo } = req.body;
   if (!user) return res.status(401).send({ status: "UNAUTHORIZED" });
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocal(); // lokal WITA, bukan UTC
 
   // Cek statusKerja user — Tugas Luar boleh clock in dari mana saja
   const users    = load(F.users, {});
@@ -615,7 +621,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
 app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocal(); // lokal WITA
   const aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
@@ -654,7 +660,7 @@ app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
 app.get("/admin/today", requireLevel(3), (req, res) => {
   const data  = load(F.data, []);
   const users = load(F.users, {});
-  const date  = req.query.date || new Date().toISOString().split("T")[0];
+  const date  = req.query.date || todayLocal(); // lokal WITA
   const records = Object.keys(users).map(username => {
     const rec = data.find(d => d.user === username && d.date === date);
     let status = "OUT";
