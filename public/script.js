@@ -1,6 +1,34 @@
 // Helper: tanggal hari ini lokal (bukan UTC) — aman untuk WITA
 function todayLocalStr() { return new Date().toLocaleDateString('sv-SE'); }
 
+// Helper: konversi Date ke ISO string dengan offset timezone lokal (misal +08:00 untuk WITA)
+// Ini memastikan format waktu yang dikirim ke server TIDAK ambigu (bukan tanpa timezone, bukan UTC murni)
+function localISOStr(date) {
+  if (!(date instanceof Date)) date = new Date(date);
+  const off = -date.getTimezoneOffset(); // menit, positif untuk UTC+
+  const sign = off >= 0 ? "+" : "-";
+  const absOff = Math.abs(off);
+  const hh = String(Math.floor(absOff / 60)).padStart(2, "0");
+  const mm = String(absOff % 60).padStart(2, "0");
+  const pad = n => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T` +
+         `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${hh}:${mm}`;
+}
+
+// Helper: parse ISO string (dengan atau tanpa timezone) menjadi timestamp ms yang benar
+// Jika string tidak punya timezone suffix, anggap sebagai waktu lokal (bukan UTC)
+function parseLocalISO(str) {
+  if (!str) return NaN;
+  // Sudah ada timezone info (Z, +HH:MM, -HH:MM) → parse normal
+  if (/[Z+\-]\d{2}:\d{2}$/.test(str) || str.endsWith("Z")) {
+    return new Date(str).getTime();
+  }
+  // Tidak ada timezone → anggap waktu lokal, tambahkan offset lokal
+  return new Date(str).getTime();
+  // new Date("2026-05-04T08:46:00") di browser sudah diparsing sebagai local time
+  // jadi ini sudah benar — yang penting kita KONSISTEN semua pakai format ini
+}
+
 // ============================================================
 // STATE
 // ============================================================
@@ -772,8 +800,8 @@ async function sendAbsen(type, label) {
     if (!ok) return;
     const photo = takePhoto();
 
-    // Kirim waktu dalam ISO string lokal agar date tidak geser di WITA
-    const now = new Date().toISOString(); // ISO UTC — server pakai todayLocal() untuk date, time tetap valid
+    // Kirim waktu dalam ISO string dengan offset lokal agar konsisten dengan edit manual timesheet
+    const now = localISOStr(new Date()); // format: 2026-05-04T08:46:00+08:00
     const r = await authFetch("/absen", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -893,6 +921,7 @@ let _weeklyInterval = null;   // interval cek minggu untuk auto-overtime
 
 // Format detik → HH:MM:SS
 function fmtDuration(sec) {
+  if (isNaN(sec) || sec == null) return "00:00:00";
   const s = Math.max(0, Math.floor(sec));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -906,8 +935,9 @@ function fmtBreak(sec) { return fmtDuration(sec); }
 function hitungBreakDetik(breaks) {
   const now = Date.now();
   return (breaks || []).reduce((total, b) => {
-    const start = new Date(b.start).getTime();
-    const end   = b.end ? new Date(b.end).getTime() : now;
+    const start = parseLocalISO(b.start);
+    const end   = b.end ? parseLocalISO(b.end) : now;
+    if (isNaN(start)) return total;
     return total + Math.max(0, (end - start) / 1000);
   }, 0);
 }
@@ -916,9 +946,11 @@ function hitungBreakDetik(breaks) {
 function hitungKerjaDetik(rec) {
   if (!rec || !rec.jamMasuk) return 0;
   const now      = Date.now();
-  const masuk    = new Date(rec.jamMasuk).getTime();
-  const keluar   = rec.jamKeluar ? new Date(rec.jamKeluar).getTime() : now;
-  const totalSec = Math.max(0, (keluar - masuk) / 1000);
+  const masuk    = parseLocalISO(rec.jamMasuk);
+  if (isNaN(masuk)) return 0;
+  const keluar   = rec.jamKeluar ? parseLocalISO(rec.jamKeluar) : now;
+  if (!isNaN(keluar) && keluar < masuk) return 0; // guard: keluar sebelum masuk
+  const totalSec = Math.max(0, ((isNaN(keluar) ? now : keluar) - masuk) / 1000);
   const breakSec = hitungBreakDetik(rec.breaks);
   return Math.max(0, totalSec - breakSec);
 }
@@ -4842,23 +4874,25 @@ function startTsTicker() {
     if (cellUser === me) {
       // Self — baca dari t-dur beranda, selalu akurat
       const tDur = document.getElementById("t-dur");
-      if (tDur && tDur.innerText && tDur.innerText !== "00:00:00") {
+      if (tDur && tDur.innerText && tDur.innerText !== "00:00:00" && !tDur.innerText.includes("N")) {
         const parts = tDur.innerText.split(":");
         if (parts.length >= 2) {
-          const h = parseInt(parts[0], 10) || 0;
-          const m = parseInt(parts[1], 10) || 0;
+          const h = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
           const s = parseInt(parts[2], 10) || 0;
-          return h + m / 60 + s / 3600;
+          if (!isNaN(h) && !isNaN(m)) return h + m / 60 + s / 3600;
         }
       }
-      // Fallback ke _todayRec jika t-dur belum terisi
+      // Fallback ke _todayRec jika t-dur belum terisi atau NaN
       if (typeof _todayRec !== "undefined" && _todayRec && _todayRec.jamMasuk && !_todayRec.jamKeluar) {
         const now = Date.now();
-        const masuk = new Date(_todayRec.jamMasuk).getTime();
+        const masuk = parseLocalISO(_todayRec.jamMasuk);
+        if (isNaN(masuk)) return 0;
         let breakSec = 0;
         (_todayRec.breaks || []).forEach(b => {
-          const end = b.end ? new Date(b.end).getTime() : now;
-          breakSec += Math.max(0, end - new Date(b.start).getTime()) / 1000;
+          const bStart = parseLocalISO(b.start);
+          const end = b.end ? parseLocalISO(b.end) : now;
+          if (!isNaN(bStart)) breakSec += Math.max(0, end - bStart) / 1000;
         });
         return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
       }
@@ -4867,9 +4901,11 @@ function startTsTicker() {
       const jamMasuk       = cell.getAttribute("data-jammasuk");
       const breakDetik     = parseFloat(cell.getAttribute("data-breakdetik") || "0");
       const jamSesiSelesai = parseFloat(cell.getAttribute("data-sesi-selesai") || "0");
-      if (!jamMasuk) return jamSesiSelesai;
-      const sesiAktif = Math.max(0, (Date.now() - new Date(jamMasuk).getTime()) / 1000 - breakDetik) / 3600;
-      return jamSesiSelesai + sesiAktif;
+      if (!jamMasuk) return isNaN(jamSesiSelesai) ? 0 : jamSesiSelesai;
+      const masukMs = parseLocalISO(jamMasuk);
+      if (isNaN(masukMs)) return isNaN(jamSesiSelesai) ? 0 : jamSesiSelesai;
+      const sesiAktif = Math.max(0, (Date.now() - masukMs) / 1000 - (isNaN(breakDetik) ? 0 : breakDetik)) / 3600;
+      return (isNaN(jamSesiSelesai) ? 0 : jamSesiSelesai) + sesiAktif;
     }
     return 0;
   }
@@ -4877,6 +4913,7 @@ function startTsTicker() {
   function tickCells() {
     document.querySelectorAll(".ts-active-cell").forEach(cell => {
       const activeJam = getJamForCell(cell);
+      if (isNaN(activeJam)) return;
       const h = Math.floor(activeJam);
       const m = Math.floor((activeJam - h) * 60);
       cell.textContent = `${h}:${String(m).padStart(2, "0")}`;
@@ -4888,7 +4925,9 @@ function startTsTicker() {
       const row = td.closest("tr");
       const activeCell = row ? row.querySelector(".ts-active-cell") : null;
       const activeJam = activeCell ? getJamForCell(activeCell) : 0;
-      const total  = nonActive + activeJam;
+      const safeActive = isNaN(activeJam) ? 0 : activeJam;
+      const safeNon    = isNaN(nonActive) ? 0 : nonActive;
+      const total  = safeNon + safeActive;
       const kurang = Math.max(0, 40 - total);
       const lebih  = Math.max(0, total - 40);
       const color  = kurang > 0 ? "#e53935" : lebih > 0 ? "#f57f17" : "#2e7d32";
@@ -5367,13 +5406,14 @@ async function saveTsAbsen() {
     if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
     if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
 
-    jamMasukFull  = `${dMasuk}T${tMasuk}:00`;
-    jamKeluarFull = `${dKeluar}T${tKeluar}:00`;
+    // Gunakan localISOStr agar ada offset timezone — konsisten dengan clock-in normal
+    jamMasukFull  = localISOStr(new Date(`${dMasuk}T${tMasuk}:00`));
+    jamKeluarFull = localISOStr(new Date(`${dKeluar}T${tKeluar}:00`));
 
     const isMulai  = document.getElementById("ts-istirahat-mulai").value;
     const isSelesai= document.getElementById("ts-istirahat-selesai").value;
     if (isMulai && isSelesai) {
-      breaks = [{ start: `${date}T${isMulai}:00`, end: `${date}T${isSelesai}:00` }];
+      breaks = [{ start: localISOStr(new Date(`${date}T${isMulai}:00`)), end: localISOStr(new Date(`${date}T${isSelesai}:00`)) }];
     }
   } else {
     // Entri jam
@@ -5388,13 +5428,14 @@ async function saveTsAbsen() {
     if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
     if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
 
-    jamMasukFull  = `${tDate}T${tMasuk}:00`;
-    jamKeluarFull = `${tDate}T${tKeluar}:00`;
+    // Gunakan localISOStr agar ada offset timezone — konsisten dengan clock-in normal
+    jamMasukFull  = localISOStr(new Date(`${tDate}T${tMasuk}:00`));
+    jamKeluarFull = localISOStr(new Date(`${tDate}T${tKeluar}:00`));
 
     const isMulai  = document.getElementById("ts-jam-istirahat-mulai").value;
     const isSelesai= document.getElementById("ts-jam-istirahat-selesai").value;
     if (isMulai && isSelesai) {
-      breaks = [{ start: `${tDate}T${isMulai}:00`, end: `${tDate}T${isSelesai}:00` }];
+      breaks = [{ start: localISOStr(new Date(`${tDate}T${isMulai}:00`)), end: localISOStr(new Date(`${tDate}T${isSelesai}:00`)) }];
     }
   }
 

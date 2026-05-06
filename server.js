@@ -7,6 +7,16 @@ function todayLocal() {
   return new Date().toLocaleDateString("sv-SE");
 }
 
+// Helper: normalisasi timestamp masuk dari client menjadi ISO UTC string
+// Menerima format: ISO UTC ("...Z"), ISO dengan offset ("+08:00"), atau tanpa TZ ("2026-05-04T08:46:00")
+// Yang tanpa TZ dianggap sebagai waktu lokal server (WITA/UTC+8)
+function normalizeTime(str) {
+  if (!str) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return str; // kembalikan apa adanya jika tidak bisa parse
+  return d.toISOString(); // simpan selalu sebagai UTC ISO
+}
+
 const express  = require("express");
 const fs       = require("fs");
 const path     = require("path");
@@ -626,18 +636,21 @@ app.post("/absen", requireLevel(99), (req, res) => {
     }
   }
 
+  // Normalisasi timestamp ke UTC ISO agar konsisten di semua perhitungan
+  const timeNorm = normalizeTime(time) || time;
+
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
-    data.push({ user, date: today, jamMasuk: time, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
+    data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
-    record.jamKeluar = time;
+    record.jamKeluar = timeNorm;
     const lb = record.breaks.at(-1);
-    if (lb && !lb.end) lb.end = time;
+    if (lb && !lb.end) lb.end = timeNorm;
   } else if (type === "BREAK_START" && record) {
-    record.breaks.push({ start: time, end: null });
+    record.breaks.push({ start: timeNorm, end: null });
   } else if (type === "BREAK_END" && record) {
     const lb = record.breaks.at(-1);
-    if (lb && !lb.end) lb.end = time;
+    if (lb && !lb.end) lb.end = timeNorm;
   }
 
   save(F.data, data);
@@ -1410,17 +1423,28 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
 
       recs.forEach(r => {
         if (r.jamMasuk && r.jamKeluar) {
-          const work = (new Date(r.jamKeluar) - new Date(r.jamMasuk)) / 3600000;
+          const masukMs  = new Date(r.jamMasuk).getTime();
+          const keluarMs = new Date(r.jamKeluar).getTime();
+          if (isNaN(masukMs) || isNaN(keluarMs)) return;
+          const work = (keluarMs - masukMs) / 3600000;
           let bt = 0;
-          (r.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+          (r.breaks || []).forEach(b => {
+            if (b.end) {
+              const bs = new Date(b.start).getTime(), be = new Date(b.end).getTime();
+              if (!isNaN(bs) && !isNaN(be)) bt += (be - bs) / 3600000;
+            }
+          });
           jamKerja += Math.max(0, work - bt);
         } else if (r.jamMasuk && !r.jamKeluar) {
-          const work = (nowMs - new Date(r.jamMasuk).getTime()) / 3600000;
+          const masukMs2 = new Date(r.jamMasuk).getTime();
+          if (isNaN(masukMs2)) return;
+          const work = (nowMs - masukMs2) / 3600000;
           let bt = 0;
           (r.breaks || []).forEach(b => {
             const bStart = new Date(b.start).getTime();
+            if (isNaN(bStart)) return;
             const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
-            bt += (bEnd - bStart) / 3600000;
+            if (!isNaN(bEnd)) bt += (bEnd - bStart) / 3600000;
           });
           jamKerja += Math.max(0, work - bt);
           isActive = true;
@@ -1708,16 +1732,27 @@ app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
   const data = load(F.data, []);
   // Cek duplikat (per user per date yang belum closed)
   const existing = data.find(d => d.user === targetUser && d.date === date);
+  // Normalisasi timestamp ke UTC ISO agar konsisten
+  const jamMasukNorm  = normalizeTime(jamMasuk)  || jamMasuk;
+  const jamKeluarNorm = normalizeTime(jamKeluar) || jamKeluar;
+  const { breaks: breaksData, catatan, aktivitas, lokasiNama } = req.body;
+  const breaksNorm = (breaksData || []).map(b => ({
+    start: normalizeTime(b.start) || b.start,
+    end:   b.end ? (normalizeTime(b.end) || b.end) : null
+  }));
   if (existing) {
     // Update jam jika sudah ada
-    existing.jamMasuk  = jamMasuk;
-    existing.jamKeluar = jamKeluar;
+    existing.jamMasuk  = jamMasukNorm;
+    existing.jamKeluar = jamKeluarNorm;
+    if (breaksNorm.length > 0) existing.breaks = breaksNorm;
+    if (catatan   !== undefined) existing.catatan    = catatan;
+    if (aktivitas !== undefined) existing.aktivitas  = aktivitas;
+    if (lokasiNama !== undefined) existing.lokasiNama = lokasiNama;
   } else {
-    const { breaks: breaksData, catatan, aktivitas, lokasiNama } = req.body;
     data.push({
-      user: targetUser, date, jamMasuk, jamKeluar,
+      user: targetUser, date, jamMasuk: jamMasukNorm, jamKeluar: jamKeluarNorm,
       lokasi: { lat: 0, lng: 0 }, lokasiNama: lokasiNama || "",
-      foto: "", breaks: breaksData || [],
+      foto: "", breaks: breaksNorm,
       aktivitas: aktivitas || "", catatan: catatan || "",
       createdManually: true, createdBy: requester,
       createdAt: new Date().toISOString()
@@ -1758,9 +1793,14 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   const data = load(F.data, []);
   const rec  = data.find(d => d.user === targetUser && d.date === date);
   if (!rec) return res.send({ status: "NOT_FOUND" });
-  if (jamMasuk)        rec.jamMasuk  = jamMasuk;
-  if (jamKeluar)       rec.jamKeluar = jamKeluar;
-  if (req.body.breaks !== undefined) rec.breaks = req.body.breaks;
+  if (jamMasuk)        rec.jamMasuk  = normalizeTime(jamMasuk)  || jamMasuk;
+  if (jamKeluar)       rec.jamKeluar = normalizeTime(jamKeluar) || jamKeluar;
+  if (req.body.breaks !== undefined) {
+    rec.breaks = (req.body.breaks || []).map(b => ({
+      start: normalizeTime(b.start) || b.start,
+      end:   b.end ? (normalizeTime(b.end) || b.end) : null
+    }));
+  }
   if (req.body.catatan !== undefined) rec.catatan = req.body.catatan;
   if (req.body.aktivitas !== undefined) rec.aktivitas = req.body.aktivitas;
   if (req.body.lokasiNama !== undefined) rec.lokasiNama = req.body.lokasiNama;
