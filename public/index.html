@@ -28,6 +28,16 @@
     @keyframes slideUp {
       from { transform: translateY(30px); opacity: 0; }
       to   { transform: translateY(0);    opacity: 1; }
+
+    /* Paksa format 24 jam pada semua input time — cegah AM/PM di semua browser */
+    input[type="time"] {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    /* Chrome/Edge: sembunyikan tombol AM/PM jika muncul */
+    input[type="time"]::-webkit-datetime-edit-ampm-field {
+      display: none !important;
+    }
     }
 
     /* TOAST */
@@ -1750,7 +1760,7 @@
       <!-- Jam -->
       <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:12px 14px;
                   display:flex;align-items:center;gap:10px;">
-        <input id="ts-er-jam" type="time"
+        <input id="ts-er-jam" type="time" lang="id-001"
           style="flex:1;border:none;outline:none;font-size:24px;font-weight:800;color:#222;">
         <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
       </div>
@@ -2003,12 +2013,12 @@
         <div style="display:flex;gap:10px;">
           <div style="flex:1;">
             <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jam Mulai *</label>
-            <input type="time" id="tc-jam-mulai" oninput="onTcJamChange()"
+            <input type="time" lang="id-001" id="tc-jam-mulai" oninput="onTcJamChange()"
               style="width:100%;padding:11px 14px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;">
           </div>
           <div style="flex:1;">
             <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Jam Akhir *</label>
-            <input type="time" id="tc-jam-akhir" oninput="onTcJamChange()"
+            <input type="time" lang="id-001" id="tc-jam-akhir" oninput="onTcJamChange()"
               style="width:100%;padding:11px 14px;border:1.5px solid #e8eaf0;border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;">
           </div>
         </div>

@@ -5777,14 +5777,14 @@ function _renderTambahEntriForm() {
             <div style="display:flex;gap:8px;align-items:center;">
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
                 <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mulai Istirahat</div>
-                <input type="time" value="${e.jam||""}"
+                <input type="time" lang="id-001" value="${e.jam||""}"
                   onchange="_drSetField(${i},'jam',this.value)"
                   style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#e65100;">
               </div>
               <span style="color:var(--muted);font-weight:700;">→</span>
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
                 <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Selesai Istirahat</div>
-                <input type="time" value="${e.jamSelesai||""}"
+                <input type="time" lang="id-001" value="${e.jamSelesai||""}"
                   onchange="_drSetField(${i},'jamSelesai',this.value)"
                   style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#2e7d32;">
               </div>
@@ -5793,7 +5793,7 @@ function _renderTambahEntriForm() {
             <!-- Masuk / Keluar: satu jam -->
             <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;
                         display:flex;align-items:center;gap:10px;">
-              <input type="time" value="${e.jam || nowTime}"
+              <input type="time" lang="id-001" value="${e.jam || nowTime}"
                 onchange="_drSetField(${i},'jam',this.value)"
                 style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;">
               <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
