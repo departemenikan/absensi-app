@@ -50,52 +50,51 @@
     .tp-panel {
       position:absolute; top:calc(100% + 8px); left:0; z-index:9999;
       background:white; border:1.5px solid #e8ecf0; border-radius:14px;
-      box-shadow:0 8px 32px rgba(0,0,0,.14); overflow:hidden; width:200px;
+      box-shadow:0 8px 32px rgba(0,0,0,.14); overflow:hidden;
+      width:220px;
     }
     .tp-cols {
-      display:flex; height:220px; position:relative;
+      display:flex; height:220px; position:relative; overflow:hidden;
     }
-    /* Garis highlight tengah */
-    .tp-cols::before, .tp-cols::after {
-      content:''; position:absolute; left:0; right:0; pointer-events:none; z-index:2;
+    /* Highlight bar di tengah — di belakang teks */
+    .tp-highlight {
+      position:absolute; left:0; right:0;
+      top:calc(50% - 22px); height:44px;
+      background:#fff4e8;
+      pointer-events:none; z-index:0;
     }
-    .tp-cols::before {
-      top:0; height:calc(50% - 22px);
-      background:linear-gradient(to bottom, white 60%, rgba(255,255,255,0));
+    /* Gradient fade atas/bawah — di DEPAN kolom tapi pakai pointer-events:none */
+    .tp-fade-top, .tp-fade-bot {
+      position:absolute; left:0; right:0; pointer-events:none; z-index:2;
     }
-    .tp-cols::after {
-      bottom:0; height:calc(50% - 22px);
-      background:linear-gradient(to top, white 60%, rgba(255,255,255,0));
+    .tp-fade-top {
+      top:0; height:80px;
+      background:linear-gradient(to bottom, rgba(255,255,255,.95) 0%, rgba(255,255,255,0) 100%);
+    }
+    .tp-fade-bot {
+      bottom:0; height:80px;
+      background:linear-gradient(to top, rgba(255,255,255,.95) 0%, rgba(255,255,255,0) 100%);
     }
     .tp-col {
-      flex:1; overflow-y:scroll;
+      flex:1; overflow-y:scroll; position:relative; z-index:1;
       scrollbar-width:none; -ms-overflow-style:none;
       border-right:1px solid #f0f2f5;
-      scroll-behavior:smooth;
       -webkit-overflow-scrolling:touch;
     }
     .tp-col:last-child { border-right:none; }
     .tp-col::-webkit-scrollbar { display:none; }
-    /* Padding atas bawah agar item pertama/terakhir bisa ke tengah */
     .tp-col-inner {
-      padding: 88px 0;
+      padding:88px 0;
     }
     .tp-item {
-      height:44px; line-height:44px; text-align:center; font-size:16px;
-      font-weight:600; color:#bbb; cursor:pointer;
+      height:44px; line-height:44px; text-align:center;
+      font-size:15px; font-weight:600; color:#aaa; cursor:pointer;
       font-variant-numeric:tabular-nums;
-      transition: color .15s, font-size .15s, font-weight .15s;
+      transition:color .12s, font-size .12s, font-weight .12s;
       user-select:none;
     }
     .tp-item.tp-sel {
       color:#f57c00; font-size:20px; font-weight:800;
-    }
-    /* Highlight bar di tengah */
-    .tp-highlight {
-      position:absolute; left:0; right:0;
-      top:calc(50% - 22px); height:44px;
-      background:#fff4e8; border-radius:0;
-      pointer-events:none; z-index:1;
     }
 
     /* TOAST */

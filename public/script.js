@@ -5070,6 +5070,8 @@ function renderTimePicker(id, value, onChange) {
       <div class="tp-panel" id="tp_panel_${id}" style="display:none;">
         <div class="tp-cols">
           <div class="tp-highlight"></div>
+          <div class="tp-fade-top"></div>
+          <div class="tp-fade-bot"></div>
           <div class="tp-col" id="tp_hcol_${id}"
                onscroll="tpOnScroll(event,'${id}','h')">
             <div class="tp-col-inner">${hItems}</div>
