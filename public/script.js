@@ -5358,131 +5358,170 @@ async function _tsDrawerLoadDay(date) {
   _tsDrawerRenderBody();
 }
 
-// ── Render daftar sesi ────────────────────────────────────────
+// ── Render daftar sesi (tampilan per-baris: Clock In, Istirahat, Clock Out) ──────────
 function _tsDrawerRenderBody() {
-  const body  = document.getElementById("ts-dr-body");
+  const body = document.getElementById("ts-dr-body");
   if (!body || !_drUser) return;
 
-  const d     = new Date(_drDate + "T12:00:00");
-  const DOW   = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
-  const BLN   = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
-  const tglStr= `${DOW[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`;
+  const d      = new Date(_drDate + "T12:00:00");
+  const DOW    = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+  const BLN    = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  const tglStr = `${DOW[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`;
 
   // Hitung total jam hari ini
   let totalMenit = 0;
   _drSesiList.forEach(s => {
     if (s.jamMasuk && s.jamKeluar) {
-      const m = s.jamMasuk, k = s.jamKeluar;
-      let diff = (new Date(k) - new Date(m)) / 60000;
+      let diff = (new Date(s.jamKeluar) - new Date(s.jamMasuk)) / 60000;
       (s.breaks || []).forEach(b => {
         if (b.start && b.end) diff -= (new Date(b.end) - new Date(b.start)) / 60000;
       });
       totalMenit += Math.max(0, diff);
     }
   });
-  const totalH = Math.floor(totalMenit / 60), totalM = Math.round(totalMenit % 60);
-  const totalStr = totalMenit > 0 ? (totalM > 0 ? `${totalH}h ${totalM}m` : `${totalH}h`) : "—";
+  const fmtTotal = m => {
+    if (m <= 0) return "—";
+    const h = Math.floor(m/60), mn = Math.round(m%60);
+    return mn > 0 ? `${h}h ${mn}m` : `${h}h`;
+  };
+  const totalStr = fmtTotal(totalMenit);
+
+  // Avatar user untuk foto di setiap baris
+  const avatarHtml = _drUser.photo
+    ? `<img src="${_drUser.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+    : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+         display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:15px;flex-shrink:0;">
+         ${(_drUser.nama||_drUser.username).charAt(0).toUpperCase()}</div>`;
 
   let html = `
-    <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="padding:14px 16px 6px;display:flex;align-items:center;justify-content:space-between;">
       <div style="font-size:13px;font-weight:700;color:var(--text);">${tglStr}</div>
-      <div style="font-size:12px;color:var(--muted);">Total: <b style="color:var(--primary);">${totalStr}</b></div>
+      <div style="font-size:12px;color:var(--muted);">Total: <b style="color:#f57c00;">${totalStr}</b></div>
     </div>`;
 
   if (_drSesiList.length === 0) {
-    html += `
-      <div style="padding:40px 20px;text-align:center;">
-        <div style="font-size:40px;margin-bottom:12px;">📋</div>
-        <div style="font-size:14px;color:var(--muted);font-weight:600;">Belum ada data absensi</div>
-        <div style="font-size:12px;color:#bbb;margin-top:4px;">hari ini belum ada entri waktu</div>
-      </div>`;
+    // Hari kosong — area bersih, tanpa ilustrasi
+    html += `<div style="height:120px;"></div>`;
   } else {
-    _drSesiList.forEach((s, idx) => {
-      const masukStr  = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "--:--";
-      const keluarStr = s.jamKeluar ? fmtTime(s.jamKeluar) : "--:--";
-      const isAktif   = s.jamMasuk && !s.jamKeluar;
-      const sesiLabel = _drSesiList.length > 1 ? `Sesi ${s.sesi || idx+1}` : "Sesi";
+    _drSesiList.forEach((s, sIdx) => {
+      const isAktif = s.jamMasuk && !s.jamKeluar;
+      const multiSesi = _drSesiList.length > 1;
+      const sesiLabel = multiSesi ? ` · Sesi ${s.sesi || sIdx+1}` : "";
 
-      // Hitung jam sesi ini
-      let sesiMenit = 0;
-      if (s.jamMasuk && s.jamKeluar) {
-        let diff = (new Date(s.jamKeluar) - new Date(s.jamMasuk)) / 60000;
-        (s.breaks || []).forEach(b => {
-          if (b.start && b.end) diff -= (new Date(b.end) - new Date(b.start)) / 60000;
-        });
-        sesiMenit = Math.max(0, diff);
-      }
-      const sesiJamStr = sesiMenit > 0
-        ? (() => { const h=Math.floor(sesiMenit/60),m=Math.round(sesiMenit%60); return m>0?`${h}h ${m}m`:`${h}h`; })()
-        : (isAktif ? "▶ aktif" : "—");
+      // Baris edit/hapus helper
+      const canEdit = _drUser.canEdit;
+      const rowActions = (type, breakIdx) => {
+        if (!canEdit) return "";
+        const editArgs  = `${sIdx},'${type}',${breakIdx ?? -1}`;
+        const hapusArgs = `${sIdx},'${type}',${breakIdx ?? -1}`;
+        return `
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button onclick="tsDrawerEditRow(${editArgs})"
+              style="background:none;border:none;padding:4px 6px;cursor:pointer;font-size:16px;color:#888;border-radius:6px;"
+              title="Edit">✏️</button>
+            <button onclick="tsDrawerHapusRow(${hapusArgs})"
+              style="background:none;border:none;padding:4px 6px;cursor:pointer;font-size:16px;color:#e53935;border-radius:6px;"
+              title="Hapus">🗑</button>
+          </div>`;
+      };
 
-      // Breaks
-      let breaksHtml = "";
-      if (s.breaks && s.breaks.length > 0) {
-        s.breaks.forEach(b => {
-          const bs = b.start ? fmtTime(b.start) : "--:--";
-          const be = b.end   ? fmtTime(b.end)   : "--:--";
-          breaksHtml += `
-            <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
-                        border-top:1px dashed #f0f2f5;background:#fafafa;">
-              <div style="width:8px;height:8px;border-radius:50%;background:#ff9800;flex-shrink:0;margin-left:4px;"></div>
-              <div style="font-size:12px;color:var(--muted);">Istirahat</div>
-              <div style="flex:1;font-size:12px;font-weight:600;color:var(--text);text-align:right;">
-                ${bs} → ${be}
-              </div>
-            </div>`;
-        });
-      }
-
-      const editBtn = _drUser.canEdit ? `
-        <button onclick="tsDrawerEditSesi(${idx})"
-          style="background:#f5f7ff;border:1.5px solid #e0e6ff;border-radius:8px;
-                 padding:6px 10px;font-size:12px;cursor:pointer;color:#3949ab;font-weight:600;">
-          ✏️ Edit
-        </button>` : "";
-
+      // ── Baris Clock In ──
       html += `
-        <div style="margin:8px 16px;border:1.5px solid #e8ecf0;border-radius:14px;overflow:hidden;background:white;">
-          <!-- Baris masuk -->
-          <div style="display:flex;align-items:center;padding:12px 14px;gap:10px;">
-            <div style="width:10px;height:10px;border-radius:50%;background:#43a047;flex-shrink:0;"></div>
-            <div style="flex:1;">
-              <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">
-                ${sesiLabel} · Clock in
-              </div>
-              <div style="font-size:20px;font-weight:800;color:var(--text);letter-spacing:.5px;">${masukStr}</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px;
+                    border-bottom:1px solid #f5f5f5;">
+          ${avatarHtml}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:#222;letter-spacing:.3px;">
+              ${s.jamMasuk ? fmtTime(s.jamMasuk) : "--:--"}
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:11px;color:var(--muted);">${s.lokasiNama || ""}</div>
-              <div style="font-size:11px;color:${isAktif?"#43a047":"var(--muted)"};font-weight:600;">
-                ${isAktif ? "▶ Sedang aktif" : sesiJamStr}
-              </div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
+              <span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:4px;
+                           padding:1px 7px;font-weight:700;">+ Clock in</span>
+              ${s.lokasiNama ? `<span style="font-size:10px;color:var(--muted);">${s.lokasiNama}${sesiLabel}</span>` : `<span style="font-size:10px;color:var(--muted);">${sesiLabel.slice(3)}</span>`}
             </div>
           </div>
-          ${breaksHtml}
-          <!-- Baris keluar -->
-          <div style="display:flex;align-items:center;padding:10px 14px;gap:10px;
-                      border-top:1px solid #f0f2f5;background:${isAktif?"#fffde7":""};">
-            <div style="width:10px;height:10px;border-radius:50%;background:${isAktif?"#ffca28":"#e53935"};flex-shrink:0;"></div>
-            <div style="flex:1;">
-              <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Clock out</div>
-              <div style="font-size:20px;font-weight:800;color:${isAktif?"#f9a825":"var(--text)"};letter-spacing:.5px;">
-                ${isAktif ? "Belum keluar" : keluarStr}
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;">
-              ${editBtn}
-              ${_drUser.canEdit ? `<button onclick="tsDrawerHapusSesi(${idx})"
-                style="background:#fff5f5;border:1.5px solid #ffcdd2;border-radius:8px;
-                       padding:6px 10px;font-size:12px;cursor:pointer;color:#e53935;font-weight:600;">
-                🗑
-              </button>` : ""}
-            </div>
-          </div>
-          ${s.catatan ? `<div style="padding:8px 14px;border-top:1px dashed #f0f2f5;
-                             font-size:11px;color:var(--muted);background:#fafafa;">
-            📝 ${s.catatan}</div>` : ""}
+          ${rowActions('masuk', null)}
         </div>`;
+
+      // ── Baris Istirahat (setiap break) ──
+      if (s.breaks && s.breaks.length > 0) {
+        s.breaks.forEach((b, bIdx) => {
+          const bsMulai    = b.start ? fmtTime(b.start) : "--:--";
+          const bsSelesai  = b.end   ? fmtTime(b.end)   : "--:--";
+          const bDurMenit  = (b.start && b.end) ? (new Date(b.end) - new Date(b.start))/60000 : 0;
+          const bDurStr    = bDurMenit > 0 ? ` · ${Math.round(bDurMenit)}m` : "";
+
+          // Baris Mulai Istirahat
+          html += `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;
+                        border-bottom:1px solid #f5f5f5;background:#fffde7;">
+              ${avatarHtml}
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:17px;font-weight:800;color:#222;letter-spacing:.3px;">${bsMulai}</div>
+                <div style="margin-top:2px;">
+                  <span style="font-size:10px;background:#fff3e0;color:#e65100;border-radius:4px;
+                               padding:1px 7px;font-weight:700;">Istirahat${bDurStr}</span>
+                </div>
+              </div>
+              ${rowActions('break-start', bIdx)}
+            </div>`;
+
+          // Baris Lanjut Kerja (break end)
+          if (b.end) {
+            html += `
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;
+                          border-bottom:1px solid #f5f5f5;background:#f3fff3;">
+                ${avatarHtml}
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:17px;font-weight:800;color:#222;letter-spacing:.3px;">${bsSelesai}</div>
+                  <div style="margin-top:2px;">
+                    <span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:4px;
+                                 padding:1px 7px;font-weight:700;">Lanjut Kerja</span>
+                  </div>
+                </div>
+                ${rowActions('break-end', bIdx)}
+              </div>`;
+          }
+        });
+      }
+
+      // ── Baris Clock Out ──
+      html += `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;
+                    border-bottom:1px solid #f5f5f5;${isAktif?"background:#fffde7;":""}">
+          ${avatarHtml}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:${isAktif?"#f9a825":"#222"};letter-spacing:.3px;">
+              ${isAktif ? "--:--" : (s.jamKeluar ? fmtTime(s.jamKeluar) : "--:--")}
+            </div>
+            <div style="margin-top:2px;">
+              <span style="font-size:10px;background:${isAktif?"#fff8e1":"#fce4ec"};
+                           color:${isAktif?"#f57f17":"#c62828"};border-radius:4px;
+                           padding:1px 7px;font-weight:700;">
+                ${isAktif ? "▶ Sedang aktif" : "- Clock out"}
+              </span>
+              ${(() => {
+                let m = 0;
+                if (s.jamMasuk && s.jamKeluar) {
+                  let diff = (new Date(s.jamKeluar) - new Date(s.jamMasuk)) / 60000;
+                  (s.breaks||[]).forEach(b => { if (b.start && b.end) diff -= (new Date(b.end)-new Date(b.start))/60000; });
+                  m = Math.max(0, diff);
+                }
+                return m > 0 ? `<span style="font-size:10px;color:var(--muted);margin-left:4px;">${fmtTotal(m)}</span>` : "";
+              })()}
+            </div>
+          </div>
+          ${isAktif ? "" : rowActions('keluar', null)}
+        </div>`;
+
+      // Catatan sesi (jika ada)
+      if (s.catatan) {
+        html += `
+          <div style="padding:7px 16px 7px 62px;border-bottom:1px solid #f5f5f5;
+                      font-size:11px;color:var(--muted);background:#fafafa;">
+            📝 ${s.catatan}
+          </div>`;
+      }
     });
   }
 
@@ -5509,187 +5548,379 @@ function _tsDrawerRenderBody() {
   body.innerHTML = html;
 }
 
-// ── Edit sesi tertentu ────────────────────────────────────────
-function tsDrawerEditSesi(idx) {
-  const s = _drSesiList[idx];
+// ── Edit satu baris (masuk / break-start / break-end / keluar) ────────────────────
+function tsDrawerEditRow(sIdx, type, breakIdx) {
+  const s = _drSesiList[sIdx];
   if (!s) return;
-  _tsSesiEditIdx = idx;
-  _openTsSesiForm({
-    title: `Edit Sesi ${s.sesi || idx+1}`,
-    sub:   `${_drUser.nama} · ${_drDate}`,
-    isNew: false,
-    date:      _drDate,
-    jamMasuk:  s.jamMasuk  ? fmtTime(s.jamMasuk)  : "",
-    jamKeluar: s.jamKeluar ? fmtTime(s.jamKeluar) : "",
-    breakMulai:  s.breaks?.[0]?.start ? fmtTime(s.breaks[0].start) : "",
-    breakSelesai:s.breaks?.[0]?.end   ? fmtTime(s.breaks[0].end)   : "",
-    lokasi:    s.lokasiNama || "",
-    aktivitas: s.aktivitas  || "",
-    catatan:   s.catatan    || "",
-  });
-}
 
-// ── Tambah sesi baru ──────────────────────────────────────────
-function tsDrawerTambahSesi() {
-  _tsSesiEditIdx = -1; // -1 = baru
-  const nowTime = new Date().toTimeString().slice(0,5);
-  _openTsSesiForm({
-    title: "Tambah Sesi Baru",
-    sub:   `${_drUser.nama} · ${_drDate}`,
-    isNew: true,
-    date:       _drDate,
-    jamMasuk:  nowTime,
-    jamKeluar: "",
-    breakMulai: "", breakSelesai: "",
-    lokasi: "", aktivitas: "", catatan: "",
-  });
-}
+  let jamVal = "";
+  if (type === "masuk")       jamVal = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "";
+  else if (type === "keluar") jamVal = s.jamKeluar ? fmtTime(s.jamKeluar) : "";
+  else if (type === "break-start" && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.start ? fmtTime(s.breaks[breakIdx].start) : "";
+  else if (type === "break-end"   && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.end   ? fmtTime(s.breaks[breakIdx].end)   : "";
 
-let _tsSesiEditIdx = -1;
+  const typeLabel = {
+    "masuk":       "Clock In",
+    "keluar":      "Clock Out",
+    "break-start": "Mulai Istirahat",
+    "break-end":   "Lanjut Kerja",
+  }[type] || type;
 
-function _openTsSesiForm(opts) {
-  document.getElementById("ts-sesi-title").textContent = opts.title;
-  document.getElementById("ts-sesi-sub").textContent   = opts.sub;
-  document.getElementById("ts-sf-date").value          = opts.date;
-  document.getElementById("ts-sf-masuk").value         = opts.jamMasuk;
-  document.getElementById("ts-sf-keluar").value        = opts.jamKeluar;
-  document.getElementById("ts-sf-break-mulai").value   = opts.breakMulai;
-  document.getElementById("ts-sf-break-selesai").value = opts.breakSelesai;
-  document.getElementById("ts-sf-catatan").value       = opts.catatan;
-  document.getElementById("ts-sf-aktivitas").value     = opts.aktivitas;
+  _tsEditRowCtx = { sIdx, type, breakIdx };
+  document.getElementById("ts-er-title").textContent = `Edit ${typeLabel}`;
+  document.getElementById("ts-er-sub").textContent   = `${_drUser.nama || _drUser.username} · ${_drDate}`;
+  document.getElementById("ts-er-jam").value         = jamVal;
+  document.getElementById("ts-er-date").value        = _drDate;
 
-  // Isi dropdown lokasi
-  const sel = document.getElementById("ts-sf-lokasi");
-  while (sel.options.length > 1) sel.remove(1);
-  _drAreas.forEach(a => {
-    const o = document.createElement("option");
-    o.value = a.name; o.textContent = a.name;
-    sel.appendChild(o);
-  });
-  sel.value = opts.lokasi || "";
+  // Lokasi & aktivitas hanya untuk masuk/keluar
+  const showMeta = (type === "masuk" || type === "keluar");
+  document.getElementById("ts-er-meta-wrap").style.display = showMeta ? "flex" : "none";
+  if (showMeta) {
+    const sel = document.getElementById("ts-er-lokasi");
+    while (sel.options.length > 1) sel.remove(1);
+    _drAreas.forEach(a => {
+      const o = document.createElement("option");
+      o.value = a.name; o.textContent = a.name; sel.appendChild(o);
+    });
+    sel.value = s.lokasiNama || "";
+    document.getElementById("ts-er-aktivitas").value = s.aktivitas || "";
+    document.getElementById("ts-er-catatan").value   = s.catatan   || "";
+  }
 
-  // Tampilkan/sembunyikan tombol hapus
-  document.getElementById("ts-sf-btn-hapus").style.display = opts.isNew ? "none" : "flex";
-
-  // Live preview
-  ["ts-sf-masuk","ts-sf-keluar","ts-sf-break-mulai","ts-sf-break-selesai"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.oninput = _tsSfUpdatePreview;
-  });
-  _tsSfUpdatePreview();
-
-  const ov = document.getElementById("ts-sesi-overlay");
+  const ov = document.getElementById("ts-er-overlay");
   ov.style.display = "flex";
-  ov.onclick = e => { if (e.target === ov) closeTsSesiForm(); };
+  ov.onclick = e => { if (e.target === ov) closeTsErForm(); };
+}
+let _tsEditRowCtx = null;
+
+function closeTsErForm() {
+  document.getElementById("ts-er-overlay").style.display = "none";
+  _tsEditRowCtx = null;
 }
 
-function _tsSfUpdatePreview() {
-  const m  = document.getElementById("ts-sf-masuk")?.value;
-  const k  = document.getElementById("ts-sf-keluar")?.value;
-  const bm = document.getElementById("ts-sf-break-mulai")?.value;
-  const bs = document.getElementById("ts-sf-break-selesai")?.value;
-  const el = document.getElementById("ts-sf-preview");
-  if (!el) return;
-  if (!m || !k) { el.textContent = "—"; return; }
-  let diff = (toMin(k) - toMin(m));
-  if (bm && bs) diff -= (toMin(bs) - toMin(bm));
-  if (diff <= 0) { el.textContent = "—"; return; }
-  const h = Math.floor(diff/60), mn = diff % 60;
-  el.textContent = mn > 0 ? `${h}j ${mn}m` : `${h}j`;
-}
-function toMin(t) { const [h,m] = t.split(":").map(Number); return h*60+m; }
+async function tsSimpanEditRow() {
+  const ctx = _tsEditRowCtx;
+  if (!ctx) return;
+  const jam  = document.getElementById("ts-er-jam").value;
+  const date = document.getElementById("ts-er-date").value;
+  if (!jam)  { showToast("⚠️ Isi jam terlebih dahulu", "warning"); return; }
 
-function closeTsSesiForm() {
-  document.getElementById("ts-sesi-overlay").style.display = "none";
-}
+  const s       = JSON.parse(JSON.stringify(_drSesiList[ctx.sIdx])); // clone
+  const isoFull = localISOStr(new Date(`${date}T${jam}:00`));
 
-// ── Simpan sesi (tambah baru atau edit) ───────────────────────
-async function tsSesiSimpan() {
-  const date      = document.getElementById("ts-sf-date").value;
-  const tMasuk    = document.getElementById("ts-sf-masuk").value;
-  const tKeluar   = document.getElementById("ts-sf-keluar").value;
-  const bMulai    = document.getElementById("ts-sf-break-mulai").value;
-  const bSelesai  = document.getElementById("ts-sf-break-selesai").value;
-  const lokasiNama= document.getElementById("ts-sf-lokasi").value;
-  const aktivitas = document.getElementById("ts-sf-aktivitas").value;
-  const catatan   = document.getElementById("ts-sf-catatan").value.trim();
+  if      (ctx.type === "masuk")       s.jamMasuk  = isoFull;
+  else if (ctx.type === "keluar")      s.jamKeluar = isoFull;
+  else if (ctx.type === "break-start") { if (!s.breaks) s.breaks=[]; if (!s.breaks[ctx.breakIdx]) s.breaks[ctx.breakIdx]={}; s.breaks[ctx.breakIdx].start = isoFull; }
+  else if (ctx.type === "break-end")   { if (!s.breaks) s.breaks=[]; if (!s.breaks[ctx.breakIdx]) s.breaks[ctx.breakIdx]={}; s.breaks[ctx.breakIdx].end   = isoFull; }
 
-  if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
-  if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
-
-  const jamMasukFull  = localISOStr(new Date(`${date}T${tMasuk}:00`));
-  const jamKeluarFull = tKeluar ? localISOStr(new Date(`${date}T${tKeluar}:00`)) : null;
-  const breaks = (bMulai && bSelesai)
-    ? [{ start: localISOStr(new Date(`${date}T${bMulai}:00`)), end: localISOStr(new Date(`${date}T${bSelesai}:00`)) }]
-    : [];
-
-  const username = _drUser.username;
-  const isNew    = _tsSesiEditIdx === -1;
-
-  let endpoint, method, body;
-  if (isNew) {
-    endpoint = "/timesheet/absen-manual";
-    method   = "POST";
-    body     = { targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama };
-  } else {
-    const sesiNum = _drSesiList[_tsSesiEditIdx]?.sesi;
-    endpoint = `/timesheet/absen/${username}/${date}`;
-    method   = "PUT";
-    body     = { jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama, sesi: sesiNum };
+  const showMeta = (ctx.type === "masuk" || ctx.type === "keluar");
+  if (showMeta) {
+    s.lokasiNama = document.getElementById("ts-er-lokasi").value;
+    s.aktivitas  = document.getElementById("ts-er-aktivitas").value;
+    s.catatan    = document.getElementById("ts-er-catatan").value.trim();
   }
 
   try {
-    const r = await authFetch(endpoint, {
-      method,
+    const r = await authFetch(`/timesheet/absen/${_drUser.username}/${date}`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ ...s, sesi: s.sesi })
     });
     const d = await r.json();
     if (d.status === "OK") {
-      showToast(isNew ? "✅ Sesi baru berhasil ditambahkan!" : "✅ Sesi berhasil disimpan!");
-      closeTsSesiForm();
+      showToast("✅ Berhasil disimpan!");
+      closeTsErForm();
       await _tsDrawerLoadDay(_drDate);
       await loadTimesheet();
       startTsTicker();
-    } else {
-      showToast("❌ " + (d.msg || "Gagal menyimpan"), "error");
-    }
+    } else { showToast("❌ " + (d.msg || "Gagal"), "error"); }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
 
-// ── Hapus satu sesi ───────────────────────────────────────────
-function tsDrawerHapusSesi(idx) {
-  const s = _drSesiList[idx];
+// ── Hapus satu baris dengan alasan wajib ────────────────────────────────────────
+function tsDrawerHapusRow(sIdx, type, breakIdx) {
+  const s = _drSesiList[sIdx];
   if (!s) return;
-  const sesiNum = s.sesi || idx + 1;
-  const masukStr = s.jamMasuk ? fmtTime(s.jamMasuk) : "--:--";
-  uConfirm({
-    icon: "🗑",
-    title: "Hapus Sesi",
-    msg: `Hapus sesi ${sesiNum} (masuk: <b>${masukStr}</b>) untuk <b>${_drUser.nama}</b> pada <b>${_drDate}</b>?<br>Tindakan ini tidak bisa dibatalkan.`,
-    btnOk: "Hapus",
-    btnOkClass: "danger",
-    onOk: async () => {
-      try {
-        const r = await authFetch(`/timesheet/absen/${_drUser.username}/${_drDate}?sesi=${sesiNum}`, { method: "DELETE" });
-        const d = await r.json();
-        if (d.status === "OK") {
-          showToast("✅ Sesi berhasil dihapus");
-          await _tsDrawerLoadDay(_drDate);
-          await loadTimesheet();
-        } else {
-          showToast("❌ " + (d.message || "Gagal hapus"), "error");
-        }
-      } catch { showToast("❌ Gagal hapus", "error"); }
-    }
-  });
+
+  const typeLabel = {
+    "masuk":       "Clock In",
+    "keluar":      "Clock Out",
+    "break-start": "Mulai Istirahat",
+    "break-end":   "Lanjut Kerja",
+  }[type] || type;
+
+  _tsHapusRowCtx = { sIdx, type, breakIdx, sesi: s };
+  document.getElementById("ts-hapus-title").textContent = `Hapus ${typeLabel}`;
+  document.getElementById("ts-hapus-alasan").value = "";
+
+  const ov = document.getElementById("ts-hapus-overlay");
+  ov.style.display = "flex";
+  ov.onclick = e => { if (e.target === ov) closeTsHapusForm(); };
+}
+let _tsHapusRowCtx = null;
+
+function closeTsHapusForm() {
+  document.getElementById("ts-hapus-overlay").style.display = "none";
+  _tsHapusRowCtx = null;
 }
 
-// ── Hapus dari form edit (tombol Hapus di form sesi) ──────────
-function tsSesiHapus() {
-  if (_tsSesiEditIdx < 0) return;
-  closeTsSesiForm();
-  tsDrawerHapusSesi(_tsSesiEditIdx);
+async function tsSimpanHapusRow() {
+  const alasan = document.getElementById("ts-hapus-alasan").value.trim();
+  if (!alasan) { showToast("⚠️ Alasan penghapusan wajib diisi", "warning"); return; }
+  const ctx = _tsHapusRowCtx;
+  if (!ctx) return;
+
+  const s       = JSON.parse(JSON.stringify(ctx.sesi));
+  const sesiNum = s.sesi || (ctx.sIdx + 1);
+
+  // Jika hapus Clock In atau Clock Out → hapus seluruh sesi
+  if (ctx.type === "masuk" || ctx.type === "keluar") {
+    try {
+      const r = await authFetch(`/timesheet/absen/${_drUser.username}/${_drDate}?sesi=${sesiNum}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alasan })
+      });
+      const d = await r.json();
+      if (d.status === "OK") {
+        showToast("✅ Berhasil dihapus");
+        closeTsHapusForm();
+        await _tsDrawerLoadDay(_drDate);
+        await loadTimesheet();
+      } else { showToast("❌ " + (d.message||"Gagal hapus"), "error"); }
+    } catch { showToast("❌ Gagal hapus", "error"); }
+    return;
+  }
+
+  // Hapus break tertentu → edit sesi tanpa break itu
+  if (ctx.type === "break-start" || ctx.type === "break-end") {
+    if (!s.breaks) s.breaks = [];
+    if (ctx.type === "break-start") {
+      // Hapus seluruh break entry ini
+      s.breaks.splice(ctx.breakIdx, 1);
+    } else {
+      // Hapus hanya end (jadikan break tanpa akhir)
+      if (s.breaks[ctx.breakIdx]) s.breaks[ctx.breakIdx].end = null;
+    }
+    try {
+      const r = await authFetch(`/timesheet/absen/${_drUser.username}/${_drDate}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...s, sesi: sesiNum, alasan })
+      });
+      const d = await r.json();
+      if (d.status === "OK") {
+        showToast("✅ Berhasil dihapus");
+        closeTsHapusForm();
+        await _tsDrawerLoadDay(_drDate);
+        await loadTimesheet();
+      } else { showToast("❌ " + (d.msg||"Gagal"), "error"); }
+    } catch { showToast("❌ Gagal hapus", "error"); }
+  }
+}
+
+// ── Tambah Entri Waktu (multi-entry: Masuk | Istirahat | Keluar) ─────────────────
+let _drEntries = []; // array entri yang akan disimpan sekaligus
+
+function tsDrawerTambahSesi() {
+  _drEntries = [{ tab: "masuk", jam: "", tanggal: _drDate, lokasi: "", aktivitas: "", catatan: "" }];
+  _renderTambahEntriForm();
+  const ov = document.getElementById("ts-tambah-overlay");
+  ov.style.display = "flex";
+  ov.onclick = e => { if (e.target === ov) closeTsTambahForm(); };
+}
+
+function closeTsTambahForm() {
+  document.getElementById("ts-tambah-overlay").style.display = "none";
+  _drEntries = [];
+}
+
+function _renderTambahEntriForm() {
+  const wrap = document.getElementById("ts-tambah-entries");
+  if (!wrap) return;
+  const nowTime = new Date().toTimeString().slice(0,5);
+
+  wrap.innerHTML = _drEntries.map((e, i) => {
+    const tabs = ["masuk","istirahat","keluar"];
+    const tabLabels = { masuk:"Masuk", istirahat:"Istirahat", keluar:"Keluar" };
+
+    // Build lokasi options
+    const lokasiOpts = `<option value="">-- Pilih lokasi --</option>` +
+      _drAreas.map(a => `<option value="${a.name}" ${e.lokasi===a.name?"selected":""}>${a.name}</option>`).join("");
+    const aktivitasOpts = `
+      <option value="" ${!e.aktivitas?"selected":""}>-- Pilih aktivitas --</option>
+      <option value="WFO" ${e.aktivitas==="WFO"?"selected":""}>WFO</option>
+      <option value="WFH" ${e.aktivitas==="WFH"?"selected":""}>WFH</option>
+      <option value="Tugas Luar" ${e.aktivitas==="Tugas Luar"?"selected":""}>Tugas Luar</option>
+      <option value="Rapat" ${e.aktivitas==="Rapat"?"selected":""}>Rapat / Meeting</option>
+      <option value="Perjalanan Dinas" ${e.aktivitas==="Perjalanan Dinas"?"selected":""}>Perjalanan Dinas</option>`;
+
+    const showMeta = e.tab !== "istirahat";
+    const isIstirahat = e.tab === "istirahat";
+
+    return `
+      <div style="border:1.5px solid #e8ecf0;border-radius:14px;overflow:hidden;margin-bottom:12px;">
+        <!-- Tab Masuk | Istirahat | Keluar -->
+        <div style="display:flex;border-bottom:1px solid #f0f2f5;">
+          ${tabs.map(t => `
+            <button onclick="_drSetTab(${i},'${t}')"
+              style="flex:1;padding:10px 4px;border:none;cursor:pointer;font-size:12px;font-weight:700;
+                     background:${e.tab===t?"#f57c00":"white"};
+                     color:${e.tab===t?"white":"var(--muted)"};transition:.15s;">
+              ${tabLabels[t]}
+            </button>`).join("")}
+        </div>
+
+        <div style="padding:14px 14px 10px;display:flex;flex-direction:column;gap:8px;">
+          ${isIstirahat ? `
+            <!-- Istirahat: dua jam (mulai & selesai) -->
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mulai Istirahat</div>
+                <input type="time" value="${e.jam||""}"
+                  onchange="_drSetField(${i},'jam',this.value)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#e65100;">
+              </div>
+              <span style="color:var(--muted);font-weight:700;">→</span>
+              <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Selesai Istirahat</div>
+                <input type="time" value="${e.jamSelesai||""}"
+                  onchange="_drSetField(${i},'jamSelesai',this.value)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#2e7d32;">
+              </div>
+            </div>
+          ` : `
+            <!-- Masuk / Keluar: satu jam -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;
+                        display:flex;align-items:center;gap:10px;">
+              <input type="time" value="${e.jam || nowTime}"
+                onchange="_drSetField(${i},'jam',this.value)"
+                style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;">
+              <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
+            </div>
+          `}
+
+          <!-- Tanggal -->
+          <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 14px;
+                      display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--muted);font-weight:600;">📅</span>
+            <input type="date" value="${e.tanggal||_drDate}"
+              onchange="_drSetField(${i},'tanggal',this.value)"
+              style="flex:1;border:none;outline:none;font-size:14px;color:var(--text);">
+          </div>
+
+          ${showMeta ? `
+            <!-- Lokasi -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 14px;">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">📍 Lokasi <span style="color:#e53935;">*</span></div>
+              <select onchange="_drSetField(${i},'lokasi',this.value)"
+                style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;">${lokasiOpts}</select>
+            </div>
+            <!-- Aktivitas -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 14px;">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">🏃 Aktivitas (opsional)</div>
+              <select onchange="_drSetField(${i},'aktivitas',this.value)"
+                style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;">${aktivitasOpts}</select>
+            </div>
+            <!-- Catatan -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 14px;">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">📝 Catatan (opsional)</div>
+              <textarea rows="2" onchange="_drSetField(${i},'catatan',this.value)"
+                placeholder="Tambahkan catatan..."
+                style="width:100%;border:none;outline:none;font-size:13px;color:var(--text);resize:none;font-family:inherit;">${e.catatan||""}</textarea>
+            </div>
+          ` : ""}
+        </div>
+
+        <!-- Hapus entri ini (jika lebih dari 1) -->
+        ${_drEntries.length > 1 ? `
+          <div style="padding:0 14px 12px;text-align:right;">
+            <button onclick="_drRemoveEntry(${i})"
+              style="background:none;border:none;color:#e53935;font-size:12px;cursor:pointer;font-weight:600;">
+              🗑 Hapus entri ini
+            </button>
+          </div>` : ""}
+      </div>`;
+  }).join("");
+}
+
+function _drSetTab(i, tab) {
+  _drEntries[i].tab = tab;
+  _renderTambahEntriForm();
+}
+function _drSetField(i, field, val) {
+  _drEntries[i][field] = val;
+}
+function _drRemoveEntry(i) {
+  _drEntries.splice(i, 1);
+  _renderTambahEntriForm();
+}
+function drTambahEntryBaru() {
+  _drEntries.push({ tab: "masuk", jam: "", tanggal: _drDate, lokasi: "", aktivitas: "", catatan: "" });
+  _renderTambahEntriForm();
+  // Scroll ke bawah
+  setTimeout(() => {
+    const wrap = document.getElementById("ts-tambah-entries");
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+  }, 50);
+}
+
+async function tsSimpanTambahEntri() {
+  if (_drEntries.length === 0) return;
+
+  // Validasi semua entri
+  for (let i = 0; i < _drEntries.length; i++) {
+    const e = _drEntries[i];
+    if (e.tab !== "istirahat" && !e.lokasi) {
+      showToast(`⚠️ Entri ${i+1}: Pilih lokasi`, "warning"); return;
+    }
+    if (!e.jam) {
+      showToast(`⚠️ Entri ${i+1}: Isi jam`, "warning"); return;
+    }
+    if (e.tab === "istirahat" && !e.jamSelesai) {
+      showToast(`⚠️ Entri ${i+1}: Isi jam selesai istirahat`, "warning"); return;
+    }
+  }
+
+  // Bangun payload: kumpulkan masuk, keluar, dan breaks
+  // Cari masuk & keluar dari entri yang ada
+  const entriMasuk    = _drEntries.filter(e => e.tab === "masuk");
+  const entriKeluar   = _drEntries.filter(e => e.tab === "keluar");
+  const entriIstirahat= _drEntries.filter(e => e.tab === "istirahat");
+
+  const tanggal = _drEntries[0].tanggal || _drDate;
+
+  const payload = {
+    targetUser:  _drUser.username,
+    date:        tanggal,
+    jamMasuk:    entriMasuk[0]   ? localISOStr(new Date(`${tanggal}T${entriMasuk[0].jam}:00`))   : null,
+    jamKeluar:   entriKeluar[0]  ? localISOStr(new Date(`${tanggal}T${entriKeluar[0].jam}:00`))  : null,
+    breaks:      entriIstirahat.map(e => ({
+      start: localISOStr(new Date(`${tanggal}T${e.jam}:00`)),
+      end:   e.jamSelesai ? localISOStr(new Date(`${tanggal}T${e.jamSelesai}:00`)) : null
+    })),
+    lokasiNama:  entriMasuk[0]?.lokasi  || entriKeluar[0]?.lokasi  || "",
+    aktivitas:   entriMasuk[0]?.aktivitas || entriKeluar[0]?.aktivitas || "",
+    catatan:     entriMasuk[0]?.catatan   || entriKeluar[0]?.catatan   || "",
+  };
+
+  if (!payload.jamMasuk) { showToast("⚠️ Minimal tambahkan entri Masuk (Clock In)", "warning"); return; }
+
+  try {
+    const r = await authFetch("/timesheet/absen-manual", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Entri berhasil ditambahkan!");
+      closeTsTambahForm();
+      await _tsDrawerLoadDay(_drDate);
+      await loadTimesheet();
+      startTsTicker();
+    } else { showToast("❌ " + (d.msg||"Gagal menyimpan"), "error"); }
+  } catch { showToast("❌ Gagal menyimpan", "error"); }
 }
 
 // ── Klik nama user di tabel → buka drawer ────────────────────
