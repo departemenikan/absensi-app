@@ -5034,6 +5034,100 @@ function timeInputHtml({ id, value = "", onchange = "", extraStyle = "", placeho
 }
 
 // Auto-format: ketik 4 digit → otomatis jadi HH:MM
+// ── Time Picker Dropdown (Jibble-style, 24 jam) ──────────────
+/**
+ * Render HTML time picker dropdown: dua kolom scroll (jam 00-23, menit 00-59)
+ * @param {string} id      - id unik picker ini (untuk DOM & event binding)
+ * @param {string} value   - nilai awal "HH:MM" atau ""
+ * @param {string} onChange - JS expression yang dipanggil saat nilai berubah, terima arg (jam, menit)
+ */
+function renderTimePicker(id, value, onChange) {
+  const curH = value ? parseInt(value.split(":")[0]) : new Date().getHours();
+  const curM = value ? parseInt(value.split(":")[1]) : 0;
+
+  const hours   = Array.from({length:24}, (_,i) => String(i).padStart(2,"0"));
+  const minutes = Array.from({length:60}, (_,i) => String(i).padStart(2,"0"));
+
+  const hItems  = hours.map(h => `
+    <div class="tp-item${parseInt(h)===curH?" tp-sel":""}"
+         onclick="tpSelect('${id}','h',${parseInt(h)})"
+         id="tph_${id}_${h}">${h}</div>`).join("");
+  const mItems  = minutes.map(m => `
+    <div class="tp-item${parseInt(m)===curM?" tp-sel":""}"
+         onclick="tpSelect('${id}','m',${parseInt(m)})"
+         id="tpm_${id}_${m}">${m}</div>`).join("");
+
+  return `
+    <div class="tp-wrap" id="tp_${id}" data-h="${curH}" data-m="${curM}" data-cb="${onChange.replace(/"/g,"&quot;")}">
+      <div class="tp-display" onclick="tpToggle('${id}')">
+        <span id="tp_val_${id}" style="font-size:28px;font-weight:800;color:#222;letter-spacing:2px;font-variant-numeric:tabular-nums;">
+          ${String(curH).padStart(2,"0")}:${String(curM).padStart(2,"0")}
+        </span>
+        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;margin-left:8px;">GMT+8</span>
+      </div>
+      <div class="tp-panel" id="tp_panel_${id}" style="display:none;">
+        <div class="tp-cols">
+          <div class="tp-col" id="tp_hcol_${id}">${hItems}</div>
+          <div class="tp-col" id="tp_mcol_${id}">${mItems}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function tpToggle(id) {
+  const panel = document.getElementById(`tp_panel_${id}`);
+  if (!panel) return;
+  const open = panel.style.display !== "none";
+  // Tutup semua panel dulu
+  document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
+  if (!open) {
+    panel.style.display = "block";
+    // Auto-scroll ke item terpilih
+    setTimeout(() => {
+      ["h","m"].forEach(col => {
+        const wrap  = document.getElementById(`tp_${id}`);
+        const val   = col === "h" ? parseInt(wrap.dataset.h) : parseInt(wrap.dataset.m);
+        const colEl = document.getElementById(`tp_${col}col_${id}`);
+        const selEl = colEl?.querySelector(".tp-sel");
+        if (selEl) selEl.scrollIntoView({ block:"center", behavior:"smooth" });
+      });
+    }, 50);
+  }
+}
+
+function tpSelect(id, col, val) {
+  const wrap = document.getElementById(`tp_${id}`);
+  if (!wrap) return;
+  if (col === "h") wrap.dataset.h = val;
+  else             wrap.dataset.m = val;
+
+  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
+  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
+
+  // Update tampilan jam
+  const valEl = document.getElementById(`tp_val_${id}`);
+  if (valEl) valEl.textContent = `${h}:${m}`;
+
+  // Update class terpilih pada kolom yang berubah
+  const colEl = document.getElementById(`tp_${col}col_${id}`);
+  colEl?.querySelectorAll(".tp-item").forEach(el => el.classList.remove("tp-sel"));
+  const itemId = col === "h" ? `tph_${id}_${h}` : `tpm_${id}_${m}`;
+  document.getElementById(itemId)?.classList.add("tp-sel");
+
+  // Panggil callback
+  const cb = wrap.dataset.cb;
+  if (cb) {
+    try { eval(cb.replace("{H}", h).replace("{M}", m)); } catch(e) { console.warn("tpSelect cb:", e); }
+  }
+}
+
+// Tutup semua picker jika klik di luar
+document.addEventListener("click", e => {
+  if (!e.target.closest(".tp-wrap")) {
+    document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
+  }
+});
+
 function autoFormatTimeInput(el) {
   let v = el.value.replace(/[^0-9]/g, "").slice(0, 4);
   if (v.length >= 3) v = v.slice(0, 2) + ":" + v.slice(2);
@@ -5613,8 +5707,19 @@ function tsDrawerEditRow(sIdx, type, breakIdx) {
   _tsEditRowCtx = { sIdx, type, breakIdx };
   document.getElementById("ts-er-title").textContent = `Edit ${typeLabel}`;
   document.getElementById("ts-er-sub").textContent   = `${_drUser.nama || _drUser.username} · ${_drDate}`;
-  document.getElementById("ts-er-jam").value         = jamVal;
   document.getElementById("ts-er-date").value        = _drDate;
+
+  // Render time picker dropdown di wrap
+  const erWrap = document.getElementById("ts-er-jam-wrap");
+  if (erWrap) {
+    erWrap.innerHTML = renderTimePicker(
+      "er",
+      jamVal || new Date().toTimeString().slice(0,5),
+      `(function(h,m){ document.getElementById('ts-er-jam').value = h+':'+m; })('{H}','{M}')`
+    );
+  }
+  // Sync hidden input dengan nilai awal
+  document.getElementById("ts-er-jam").value = jamVal || new Date().toTimeString().slice(0,5);
 
   // Lokasi & aktivitas hanya untuk masuk/keluar
   const showMeta = (type === "masuk" || type === "keluar");
@@ -5819,39 +5924,25 @@ function _renderTambahEntriForm() {
 
         <div style="padding:14px 14px 10px;display:flex;flex-direction:column;gap:8px;">
           ${isIstirahat ? `
-            <!-- Istirahat: dua jam (mulai & selesai) -->
-            <div style="display:flex;gap:8px;align-items:center;">
+            <!-- Istirahat: dua time picker (mulai & selesai) -->
+            <div style="display:flex;gap:8px;align-items:flex-start;">
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
-                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mulai Istirahat</div>
-                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
-                  value="${e.jam||""}" autocomplete="off"
-                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
-                  onblur="validateTimeInput(this)"
-                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
-                         color:#e65100;font-variant-numeric:tabular-nums;">
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;">Mulai Istirahat</div>
+                ${renderTimePicker('tb'+i+'_bs', e.jam||nowTime,
+                  "(function(h,m){_drSetField("+i+",'jam',h+':'+m)})('{H}','{M}')")}
               </div>
-              <span style="color:var(--muted);font-weight:700;">→</span>
+              <span style="color:var(--muted);font-weight:700;margin-top:36px;">→</span>
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
-                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Selesai Istirahat</div>
-                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
-                  value="${e.jamSelesai||""}" autocomplete="off"
-                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jamSelesai',this.value)"
-                  onblur="validateTimeInput(this)"
-                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
-                         color:#2e7d32;font-variant-numeric:tabular-nums;">
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;">Selesai Istirahat</div>
+                ${renderTimePicker('tb'+i+'_be', e.jamSelesai||nowTime,
+                  "(function(h,m){_drSetField("+i+",'jamSelesai',h+':'+m)})('{H}','{M}')")}
               </div>
             </div>
           ` : `
-            <!-- Masuk / Keluar: satu jam -->
-            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;
-                        display:flex;align-items:center;gap:10px;">
-              <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
-                value="${e.jam || nowTime}" autocomplete="off"
-                oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
-                onblur="validateTimeInput(this)"
-                style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;
-                       font-variant-numeric:tabular-nums;letter-spacing:1px;">
-              <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
+            <!-- Masuk / Keluar: satu time picker -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;">
+              ${renderTimePicker('tb'+i+'_main', e.jam||nowTime,
+                "(function(h,m){_drSetField("+i+",'jam',h+':'+m)})('{H}','{M}')")}
             </div>
           `}
 

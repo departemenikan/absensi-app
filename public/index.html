@@ -40,6 +40,38 @@
     }
     }
 
+    /* ── Time Picker Dropdown ── */
+    .tp-wrap { position:relative; width:100%; }
+    .tp-display {
+      display:flex; align-items:center; cursor:pointer;
+      padding:2px 0; user-select:none;
+    }
+    .tp-display:hover span:first-child { color:#f57c00; }
+    .tp-panel {
+      position:absolute; top:calc(100% + 8px); left:0; z-index:9999;
+      background:white; border:1.5px solid #e8ecf0; border-radius:14px;
+      box-shadow:0 8px 32px rgba(0,0,0,.14); overflow:hidden; width:180px;
+    }
+    .tp-cols { display:flex; height:200px; }
+    .tp-col {
+      flex:1; overflow-y:scroll; scroll-snap-type:y mandatory;
+      scrollbar-width:none; -ms-overflow-style:none;
+      border-right:1px solid #f0f2f5;
+    }
+    .tp-col:last-child { border-right:none; }
+    .tp-col::-webkit-scrollbar { display:none; }
+    .tp-item {
+      padding:10px 0; text-align:center; font-size:15px;
+      font-weight:600; color:#888; cursor:pointer;
+      scroll-snap-align:start; transition:.1s;
+      font-variant-numeric:tabular-nums;
+    }
+    .tp-item:hover { background:#fff8f0; color:#f57c00; }
+    .tp-item.tp-sel {
+      background:#f57c00; color:white; border-radius:8px;
+      font-weight:800;
+    }
+
     /* TOAST */
     #toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
       background:#2ecc71;color:white;padding:12px 24px;border-radius:50px;font-weight:600;
@@ -1757,16 +1789,11 @@
     </div>
 
     <div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px;">
-      <!-- Jam -->
-      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:12px 14px;
-                  display:flex;align-items:center;gap:10px;">
-        <input id="ts-er-jam" type="text" inputmode="numeric" maxlength="5"
-          placeholder="HH:MM" autocomplete="off"
-          oninput="autoFormatTimeInput(this)" onblur="validateTimeInput(this)"
-          style="flex:1;border:none;outline:none;font-size:28px;font-weight:800;color:#222;
-                 font-variant-numeric:tabular-nums;letter-spacing:2px;width:100px;">
-        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
+      <!-- Jam: time picker dropdown -->
+      <div id="ts-er-jam-wrap" style="border:1.5px solid #e8ecf0;border-radius:12px;padding:10px 14px;">
+        <!-- renderTimePicker diisi saat openEditRow via JS -->
       </div>
+      <input type="hidden" id="ts-er-jam" value="">
       <!-- Tanggal -->
       <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:12px 14px;
                   display:flex;align-items:center;gap:8px;">
