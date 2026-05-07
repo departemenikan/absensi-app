@@ -662,7 +662,8 @@ app.post("/absen", requireLevel(99), (req, res) => {
   sendPushToUser(user, "Absensi Smart", `${labelPush[type] || type} — ${jamFmt}`).catch(() => {});
   // WA — konfirmasi absen ke user
   const labelWA = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Mulai Istirahat ☕", BREAK_END: "Selesai Istirahat 💪" };
-  if (userData.noHp) sendWA(userData.noHp, `*Absensi Smart*\nHai *${userData.nama || user}*, ${labelWA[type] || type} — pukul *${jamFmt}*`).catch(() => {});
+  console.log(`[WA-DEBUG] type=${type} user=${user} noHp=${userData.noHp || "KOSONG"} namaLengkap=${userData.namaLengkap || "KOSONG"}`);
+  if (userData.noHp) sendWA(userData.noHp, `*Absensi Smart*\nHai *${userData.namaLengkap || userData.nama || user}*, ${labelWA[type] || type} — pukul *${jamFmt}*`).catch((e) => console.error("[WA-DEBUG] sendWA error:", e.message));
 
   res.send({ status: "OK" });
 });
