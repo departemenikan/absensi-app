@@ -5147,7 +5147,7 @@ function tsRender() {
       const editBtn = canEditCell ? `
         <div class="ts-edit-btn"
           data-empty="${!hasKerja ? '1' : '0'}"
-          onclick="openTsModal('${u.username}','${day.date}','${day.jamMasuk||""}','${day.jamKeluar||""}')"
+          onclick="event.stopPropagation();openTsModal('${u.username}','${day.date}')"
           style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
                  opacity:${!hasKerja ? '0.4' : '0'};transition:opacity .15s;${hasKerja ? 'pointer-events:none;' : ''}">✏️</div>` : "";
 
@@ -5178,8 +5178,9 @@ function tsRender() {
 
     return `
     <tr class="ts-row" data-canedit="${u.canEdit ? '1' : '0'}" style="border-bottom:1px solid #f0f2f5;">
-      <!-- Kolom nama (sticky) -->
-      <td style="padding:8px 12px;min-width:160px;max-width:200px;position:sticky;left:0;background:white;z-index:1;">
+      <!-- Kolom nama (sticky) — klik buka drawer detail -->
+      <td style="padding:8px 12px;min-width:160px;max-width:200px;position:sticky;left:0;background:white;z-index:1;cursor:pointer;"
+          onclick="_tsDrawerOpenByUsername('${u.username}', '${u.days.find(d=>d.date===todayLocalStr())?.date || u.days[0]?.date || ""}')">
         <div style="display:flex;align-items:center;gap:8px;">
           ${avatarHtml}
           <div style="min-width:0;">
@@ -5242,251 +5243,460 @@ function tsRender() {
   });
 }
 
-// ─── Modal Entri Waktu Manual ───
+// ═══════════════════════════════════════════════════════════════
+// DRAWER DETAIL TIMESHEET — menggantikan modal lama sepenuhnya
+// ═══════════════════════════════════════════════════════════════
 
-let _tsMode    = "waktu";  // "waktu" | "jam"
-let _tsSubTab  = "masuk";  // "masuk" | "istirahat" | "keluar"
-let _tsEntries = [];       // multi-entry: [{tab, time, date, ...}]
+let _drUser      = null;   // { username, nama, jabatan, photo, group, days, canEdit }
+let _drDate      = null;   // tanggal aktif di drawer "YYYY-MM-DD"
+let _drSesiList  = [];     // sesi yang ter-fetch untuk _drDate
+let _drAreas     = [];     // cache areas
 
-function tsSwitchMode(mode) {
-  _tsMode = mode;
-  const isWaktu = mode === "waktu";
-  document.getElementById("ts-panel-waktu").style.display = isWaktu ? "flex" : "none";
-  document.getElementById("ts-panel-jam").style.display   = isWaktu ? "none" : "flex";
-  document.getElementById("ts-mode-waktu").style.borderBottomColor = isWaktu ? "#f57c00" : "transparent";
-  document.getElementById("ts-mode-waktu").style.color    = isWaktu ? "#f57c00" : "var(--muted)";
-  document.getElementById("ts-mode-waktu").style.fontWeight = isWaktu ? "700" : "600";
-  document.getElementById("ts-mode-jam").style.borderBottomColor = !isWaktu ? "#f57c00" : "transparent";
-  document.getElementById("ts-mode-jam").style.color    = !isWaktu ? "#f57c00" : "var(--muted)";
-  document.getElementById("ts-mode-jam").style.fontWeight = !isWaktu ? "700" : "600";
+// Untuk kompatibilitas: openTsModal lama dipanggil dari tsRender via onclick
+// Sekarang dialihkan ke drawer
+function openTsModal(username, date) {
+  _tsDrawerOpenByUsername(username, date);
 }
 
-function tsSwitchTab(tab) {
-  _tsSubTab = tab;
-  ["masuk","istirahat","keluar"].forEach(t => {
-    const btn  = document.getElementById(`ts-tab-${t}`);
-    const pnl  = document.getElementById(`ts-subtab-${t}`);
-    const active = t === tab;
-    btn.style.borderColor  = active ? "#f57c00" : "#e8ecf0";
-    btn.style.background   = active ? "#fff8f0" : "white";
-    btn.style.color        = active ? "#f57c00" : "var(--muted)";
-    btn.style.fontWeight   = active ? "700" : "600";
-    if (pnl) pnl.style.display = active ? "block" : "none";
+// ── Buka drawer ──────────────────────────────────────────────
+async function openTsDrawer(userObj, date) {
+  _drUser = userObj;
+  _drDate = date || userObj.days[0]?.date || todayLocalStr();
+
+  // Isi header
+  const avatarEl = document.getElementById("ts-dr-avatar");
+  avatarEl.innerHTML = userObj.photo
+    ? `<img src="${userObj.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">`
+    : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+          display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:18px;">
+        ${(userObj.nama||userObj.username).charAt(0).toUpperCase()}</div>`;
+  document.getElementById("ts-dr-nama").textContent    = userObj.nama || userObj.username;
+  document.getElementById("ts-dr-jabatan").textContent = userObj.jabatan || "—";
+  document.getElementById("ts-dr-grup").textContent    = userObj.group || "—";
+
+  // Render strip hari
+  _tsDrawerRenderDays();
+
+  // Preload areas
+  try {
+    const r = await authFetch("/areas");
+    if (r.ok) _drAreas = (await r.json()).filter(a => a.active !== false);
+  } catch { _drAreas = []; }
+
+  // Load sesi hari aktif
+  await _tsDrawerLoadDay(_drDate);
+
+  // Tampilkan drawer dengan animasi
+  const overlay = document.getElementById("ts-drawer-overlay");
+  const drawer  = document.getElementById("ts-drawer");
+  overlay.style.display  = "block";
+  overlay.style.opacity  = "0";
+  drawer.style.transform = "translateX(100%)";
+  requestAnimationFrame(() => {
+    overlay.style.opacity  = "1";
+    drawer.style.transform = "translateX(0)";
+  });
+  overlay.onclick = e => { if (e.target === overlay) closeTsDrawer(); };
+
+  // Tampilkan footer hanya jika user bisa diedit
+  document.getElementById("ts-dr-footer").style.display = userObj.canEdit ? "block" : "none";
+}
+
+function closeTsDrawer() {
+  const overlay = document.getElementById("ts-drawer-overlay");
+  const drawer  = document.getElementById("ts-drawer");
+  drawer.style.transform = "translateX(100%)";
+  overlay.style.opacity  = "0";
+  setTimeout(() => { overlay.style.display = "none"; }, 300);
+  _drUser = null; _drDate = null; _drSesiList = [];
+}
+
+// ── Render strip 7 hari minggu ────────────────────────────────
+function _tsDrawerRenderDays() {
+  const el = document.getElementById("ts-dr-days");
+  if (!el || !_drUser) return;
+  const DOW  = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+  el.innerHTML = (_drUser.days || []).map(day => {
+    const d      = new Date(day.date + "T12:00:00");
+    const dowLbl = DOW[d.getDay()];
+    const tgl    = d.getDate();
+    const isAct  = day.date === _drDate;
+    const hasK   = day.jamKerja > 0;
+    const jamStr = hasK ? fmtJam(day.jamKerja) : "—";
+    return `
+      <div onclick="_tsDrawerSelectDay('${day.date}')"
+        style="flex:0 0 auto;padding:10px 10px 8px;cursor:pointer;text-align:center;min-width:56px;
+               border-bottom:2.5px solid ${isAct ? "#f57c00" : "transparent"};
+               transition:border-color .15s;">
+        <div style="font-size:10px;font-weight:600;color:${isAct?"#f57c00":"var(--muted)"};">${dowLbl}</div>
+        <div style="font-size:16px;font-weight:${isAct?"900":"700"};color:${isAct?"#f57c00":"var(--text)"};">${tgl}</div>
+        <div style="font-size:10px;color:${hasK?"#43a047":"#ccc"};margin-top:2px;">${jamStr}</div>
+      </div>`;
+  }).join("");
+}
+
+async function _tsDrawerSelectDay(date) {
+  _drDate = date;
+  _tsDrawerRenderDays();
+  await _tsDrawerLoadDay(date);
+}
+
+// ── Fetch & render sesi untuk satu hari ──────────────────────
+async function _tsDrawerLoadDay(date) {
+  const body = document.getElementById("ts-dr-body");
+  if (!body) return;
+  body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">Memuat...</div>`;
+
+  try {
+    const r = await authFetch(`/timesheet/absen/${_drUser.username}/${date}`);
+    const d = await r.json();
+    _drSesiList = (d.sesi || []);
+  } catch {
+    _drSesiList = [];
+  }
+
+  _tsDrawerRenderBody();
+}
+
+// ── Render daftar sesi ────────────────────────────────────────
+function _tsDrawerRenderBody() {
+  const body  = document.getElementById("ts-dr-body");
+  if (!body || !_drUser) return;
+
+  const d     = new Date(_drDate + "T12:00:00");
+  const DOW   = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+  const BLN   = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  const tglStr= `${DOW[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`;
+
+  // Hitung total jam hari ini
+  let totalMenit = 0;
+  _drSesiList.forEach(s => {
+    if (s.jamMasuk && s.jamKeluar) {
+      const m = s.jamMasuk, k = s.jamKeluar;
+      let diff = (new Date(k) - new Date(m)) / 60000;
+      (s.breaks || []).forEach(b => {
+        if (b.start && b.end) diff -= (new Date(b.end) - new Date(b.start)) / 60000;
+      });
+      totalMenit += Math.max(0, diff);
+    }
+  });
+  const totalH = Math.floor(totalMenit / 60), totalM = Math.round(totalMenit % 60);
+  const totalStr = totalMenit > 0 ? (totalM > 0 ? `${totalH}h ${totalM}m` : `${totalH}h`) : "—";
+
+  let html = `
+    <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:13px;font-weight:700;color:var(--text);">${tglStr}</div>
+      <div style="font-size:12px;color:var(--muted);">Total: <b style="color:var(--primary);">${totalStr}</b></div>
+    </div>`;
+
+  if (_drSesiList.length === 0) {
+    html += `
+      <div style="padding:40px 20px;text-align:center;">
+        <div style="font-size:40px;margin-bottom:12px;">📋</div>
+        <div style="font-size:14px;color:var(--muted);font-weight:600;">Belum ada data absensi</div>
+        <div style="font-size:12px;color:#bbb;margin-top:4px;">hari ini belum ada entri waktu</div>
+      </div>`;
+  } else {
+    _drSesiList.forEach((s, idx) => {
+      const masukStr  = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "--:--";
+      const keluarStr = s.jamKeluar ? fmtTime(s.jamKeluar) : "--:--";
+      const isAktif   = s.jamMasuk && !s.jamKeluar;
+      const sesiLabel = _drSesiList.length > 1 ? `Sesi ${s.sesi || idx+1}` : "Sesi";
+
+      // Hitung jam sesi ini
+      let sesiMenit = 0;
+      if (s.jamMasuk && s.jamKeluar) {
+        let diff = (new Date(s.jamKeluar) - new Date(s.jamMasuk)) / 60000;
+        (s.breaks || []).forEach(b => {
+          if (b.start && b.end) diff -= (new Date(b.end) - new Date(b.start)) / 60000;
+        });
+        sesiMenit = Math.max(0, diff);
+      }
+      const sesiJamStr = sesiMenit > 0
+        ? (() => { const h=Math.floor(sesiMenit/60),m=Math.round(sesiMenit%60); return m>0?`${h}h ${m}m`:`${h}h`; })()
+        : (isAktif ? "▶ aktif" : "—");
+
+      // Breaks
+      let breaksHtml = "";
+      if (s.breaks && s.breaks.length > 0) {
+        s.breaks.forEach(b => {
+          const bs = b.start ? fmtTime(b.start) : "--:--";
+          const be = b.end   ? fmtTime(b.end)   : "--:--";
+          breaksHtml += `
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                        border-top:1px dashed #f0f2f5;background:#fafafa;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#ff9800;flex-shrink:0;margin-left:4px;"></div>
+              <div style="font-size:12px;color:var(--muted);">Istirahat</div>
+              <div style="flex:1;font-size:12px;font-weight:600;color:var(--text);text-align:right;">
+                ${bs} → ${be}
+              </div>
+            </div>`;
+        });
+      }
+
+      const editBtn = _drUser.canEdit ? `
+        <button onclick="tsDrawerEditSesi(${idx})"
+          style="background:#f5f7ff;border:1.5px solid #e0e6ff;border-radius:8px;
+                 padding:6px 10px;font-size:12px;cursor:pointer;color:#3949ab;font-weight:600;">
+          ✏️ Edit
+        </button>` : "";
+
+      html += `
+        <div style="margin:8px 16px;border:1.5px solid #e8ecf0;border-radius:14px;overflow:hidden;background:white;">
+          <!-- Baris masuk -->
+          <div style="display:flex;align-items:center;padding:12px 14px;gap:10px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:#43a047;flex-shrink:0;"></div>
+            <div style="flex:1;">
+              <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">
+                ${sesiLabel} · Clock in
+              </div>
+              <div style="font-size:20px;font-weight:800;color:var(--text);letter-spacing:.5px;">${masukStr}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px;color:var(--muted);">${s.lokasiNama || ""}</div>
+              <div style="font-size:11px;color:${isAktif?"#43a047":"var(--muted)"};font-weight:600;">
+                ${isAktif ? "▶ Sedang aktif" : sesiJamStr}
+              </div>
+            </div>
+          </div>
+          ${breaksHtml}
+          <!-- Baris keluar -->
+          <div style="display:flex;align-items:center;padding:10px 14px;gap:10px;
+                      border-top:1px solid #f0f2f5;background:${isAktif?"#fffde7":""};">
+            <div style="width:10px;height:10px;border-radius:50%;background:${isAktif?"#ffca28":"#e53935"};flex-shrink:0;"></div>
+            <div style="flex:1;">
+              <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Clock out</div>
+              <div style="font-size:20px;font-weight:800;color:${isAktif?"#f9a825":"var(--text)"};letter-spacing:.5px;">
+                ${isAktif ? "Belum keluar" : keluarStr}
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              ${editBtn}
+              ${_drUser.canEdit ? `<button onclick="tsDrawerHapusSesi(${idx})"
+                style="background:#fff5f5;border:1.5px solid #ffcdd2;border-radius:8px;
+                       padding:6px 10px;font-size:12px;cursor:pointer;color:#e53935;font-weight:600;">
+                🗑
+              </button>` : ""}
+            </div>
+          </div>
+          ${s.catatan ? `<div style="padding:8px 14px;border-top:1px dashed #f0f2f5;
+                             font-size:11px;color:var(--muted);background:#fafafa;">
+            📝 ${s.catatan}</div>` : ""}
+        </div>`;
+    });
+  }
+
+  // Summary jam terlacak & penggajian
+  html += `
+    <div style="margin:16px 16px 8px;border:1.5px solid #e8ecf0;border-radius:14px;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:13px 16px;border-bottom:1px solid #f0f2f5;">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text);">JAM TERLACAK</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">Jam kerja aktual hari ini</div>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--primary);">${totalStr}</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text);">JAM PENGGAJIAN</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">Termasuk jam cuti & libur</div>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--primary);">${totalStr}</div>
+      </div>
+    </div>`;
+
+  body.innerHTML = html;
+}
+
+// ── Edit sesi tertentu ────────────────────────────────────────
+function tsDrawerEditSesi(idx) {
+  const s = _drSesiList[idx];
+  if (!s) return;
+  _tsSesiEditIdx = idx;
+  _openTsSesiForm({
+    title: `Edit Sesi ${s.sesi || idx+1}`,
+    sub:   `${_drUser.nama} · ${_drDate}`,
+    isNew: false,
+    date:      _drDate,
+    jamMasuk:  s.jamMasuk  ? fmtTime(s.jamMasuk)  : "",
+    jamKeluar: s.jamKeluar ? fmtTime(s.jamKeluar) : "",
+    breakMulai:  s.breaks?.[0]?.start ? fmtTime(s.breaks[0].start) : "",
+    breakSelesai:s.breaks?.[0]?.end   ? fmtTime(s.breaks[0].end)   : "",
+    lokasi:    s.lokasiNama || "",
+    aktivitas: s.aktivitas  || "",
+    catatan:   s.catatan    || "",
   });
 }
 
-async function _tsLoadAreas() {
-  try {
-    const r = await authFetch("/areas");
-    if (!r.ok) return; // non-admin: tidak bisa edit, tidak perlu dropdown area
-    const areas = await r.json();
-    ["ts-lokasi","ts-jam-lokasi"].forEach(id => {
-      const sel = document.getElementById(id);
-      if (!sel) return;
-      // Hapus semua kecuali option pertama
-      while (sel.options.length > 1) sel.remove(1);
-      areas.filter(a => a.active !== false).forEach(a => {
-        const o = document.createElement("option");
-        o.value = a.name; o.textContent = a.name;
-        sel.appendChild(o);
-      });
-    });
-  } catch {}
+// ── Tambah sesi baru ──────────────────────────────────────────
+function tsDrawerTambahSesi() {
+  _tsSesiEditIdx = -1; // -1 = baru
+  const nowTime = new Date().toTimeString().slice(0,5);
+  _openTsSesiForm({
+    title: "Tambah Sesi Baru",
+    sub:   `${_drUser.nama} · ${_drDate}`,
+    isNew: true,
+    date:       _drDate,
+    jamMasuk:  nowTime,
+    jamKeluar: "",
+    breakMulai: "", breakSelesai: "",
+    lokasi: "", aktivitas: "", catatan: "",
+  });
 }
 
-// Live preview jam total di panel Entri Jam
-function tsUpdateJamPreview() {
-  const masuk   = document.getElementById("ts-jam-masuk")?.value;
-  const keluar  = document.getElementById("ts-jam-keluar")?.value;
-  const bMulai  = document.getElementById("ts-jam-istirahat-mulai")?.value;
-  const bSelesai= document.getElementById("ts-jam-istirahat-selesai")?.value;
-  const el      = document.getElementById("ts-jam-preview");
+let _tsSesiEditIdx = -1;
+
+function _openTsSesiForm(opts) {
+  document.getElementById("ts-sesi-title").textContent = opts.title;
+  document.getElementById("ts-sesi-sub").textContent   = opts.sub;
+  document.getElementById("ts-sf-date").value          = opts.date;
+  document.getElementById("ts-sf-masuk").value         = opts.jamMasuk;
+  document.getElementById("ts-sf-keluar").value        = opts.jamKeluar;
+  document.getElementById("ts-sf-break-mulai").value   = opts.breakMulai;
+  document.getElementById("ts-sf-break-selesai").value = opts.breakSelesai;
+  document.getElementById("ts-sf-catatan").value       = opts.catatan;
+  document.getElementById("ts-sf-aktivitas").value     = opts.aktivitas;
+
+  // Isi dropdown lokasi
+  const sel = document.getElementById("ts-sf-lokasi");
+  while (sel.options.length > 1) sel.remove(1);
+  _drAreas.forEach(a => {
+    const o = document.createElement("option");
+    o.value = a.name; o.textContent = a.name;
+    sel.appendChild(o);
+  });
+  sel.value = opts.lokasi || "";
+
+  // Tampilkan/sembunyikan tombol hapus
+  document.getElementById("ts-sf-btn-hapus").style.display = opts.isNew ? "none" : "flex";
+
+  // Live preview
+  ["ts-sf-masuk","ts-sf-keluar","ts-sf-break-mulai","ts-sf-break-selesai"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.oninput = _tsSfUpdatePreview;
+  });
+  _tsSfUpdatePreview();
+
+  const ov = document.getElementById("ts-sesi-overlay");
+  ov.style.display = "flex";
+  ov.onclick = e => { if (e.target === ov) closeTsSesiForm(); };
+}
+
+function _tsSfUpdatePreview() {
+  const m  = document.getElementById("ts-sf-masuk")?.value;
+  const k  = document.getElementById("ts-sf-keluar")?.value;
+  const bm = document.getElementById("ts-sf-break-mulai")?.value;
+  const bs = document.getElementById("ts-sf-break-selesai")?.value;
+  const el = document.getElementById("ts-sf-preview");
   if (!el) return;
-  if (!masuk || !keluar) { el.textContent = "—"; return; }
-  let diff = (toMin(keluar) - toMin(masuk));
-  if (bMulai && bSelesai) diff -= (toMin(bSelesai) - toMin(bMulai));
+  if (!m || !k) { el.textContent = "—"; return; }
+  let diff = (toMin(k) - toMin(m));
+  if (bm && bs) diff -= (toMin(bs) - toMin(bm));
   if (diff <= 0) { el.textContent = "—"; return; }
-  const h = Math.floor(diff/60), m = diff % 60;
-  el.textContent = m > 0 ? `${h}j ${m}m` : `${h}j`;
+  const h = Math.floor(diff/60), mn = diff % 60;
+  el.textContent = mn > 0 ? `${h}j ${mn}m` : `${h}j`;
 }
 function toMin(t) { const [h,m] = t.split(":").map(Number); return h*60+m; }
 
-async function openTsModal(username, date, jamMasuk, jamKeluar) {
-  _tsCurrent  = { username, date };
-  _tsEntries  = [];
-  _tsMode     = "waktu";
-  _tsSubTab   = "masuk";
-
-  const isNew = !jamMasuk;
-  const u = _tsData?.users?.find(u => u.username === username);
-  const nama = u?.nama || username;
-  document.getElementById("modal-ts-title").textContent    = isNew ? "Tambahkan Entri Waktu Manual" : "Edit Entri Waktu";
-  const hapusBtn = document.getElementById("ts-btn-hapus");
-  if (hapusBtn) hapusBtn.style.display = isNew ? "none" : "block";
-  document.getElementById("modal-ts-subtitle").textContent = `${nama} · ${date}`;
-
-  // Set nilai default
-  const nowTime = new Date().toTimeString().slice(0,5);
-  document.getElementById("ts-masuk-time").value  = jamMasuk ? fmtTime(jamMasuk) : nowTime;
-  document.getElementById("ts-masuk-date").value  = date;
-  document.getElementById("ts-keluar-time").value = jamKeluar ? fmtTime(jamKeluar) : "";
-  document.getElementById("ts-keluar-date").value = date;
-  document.getElementById("ts-istirahat-mulai").value   = "";
-  document.getElementById("ts-istirahat-selesai").value = "";
-
-  // Panel Entri Jam
-  document.getElementById("ts-jam-date").value    = date;
-  document.getElementById("ts-jam-masuk").value   = jamMasuk ? fmtTime(jamMasuk) : "";
-  document.getElementById("ts-jam-keluar").value  = jamKeluar ? fmtTime(jamKeluar) : "";
-  document.getElementById("ts-jam-istirahat-mulai").value   = "";
-  document.getElementById("ts-jam-istirahat-selesai").value = "";
-  document.getElementById("ts-catatan").value     = "";
-  document.getElementById("ts-jam-catatan").value = "";
-  document.getElementById("ts-aktivitas").value   = "";
-  document.getElementById("ts-jam-aktivitas").value = "";
-  document.getElementById("ts-lokasi").value      = "";
-  document.getElementById("ts-jam-lokasi").value  = "";
-  tsUpdateJamPreview();
-
-  // Tambahkan listener live preview
-  ["ts-jam-masuk","ts-jam-keluar","ts-jam-istirahat-mulai","ts-jam-istirahat-selesai"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.oninput = tsUpdateJamPreview;
-  });
-
-  tsSwitchMode("waktu");
-  tsSwitchTab("masuk");
-  await _tsLoadAreas();
-
-  const overlay = document.getElementById("modal-ts-absen-overlay");
-  overlay.style.display = "flex";
-  overlay.onclick = e => { if (e.target === overlay) closeTsModal(); };
+function closeTsSesiForm() {
+  document.getElementById("ts-sesi-overlay").style.display = "none";
 }
 
-function closeTsModal() {
-  document.getElementById("modal-ts-absen-overlay").style.display = "none";
-  _tsCurrent = null;
-}
+// ── Simpan sesi (tambah baru atau edit) ───────────────────────
+async function tsSesiSimpan() {
+  const date      = document.getElementById("ts-sf-date").value;
+  const tMasuk    = document.getElementById("ts-sf-masuk").value;
+  const tKeluar   = document.getElementById("ts-sf-keluar").value;
+  const bMulai    = document.getElementById("ts-sf-break-mulai").value;
+  const bSelesai  = document.getElementById("ts-sf-break-selesai").value;
+  const lokasiNama= document.getElementById("ts-sf-lokasi").value;
+  const aktivitas = document.getElementById("ts-sf-aktivitas").value;
+  const catatan   = document.getElementById("ts-sf-catatan").value.trim();
 
-async function hapusTsAbsen() {
-  if (!_tsCurrent) return;
-  const { username, date } = _tsCurrent;
-  // Tutup modal edit dulu agar form confirm tidak tertutup di belakangnya
-  closeTsModal();
-  uConfirm({
-    icon: "🗑",
-    title: "Hapus Entri Absensi",
-    msg: `Hapus semua entri <b>${username}</b> pada <b>${date}</b>?<br>Tindakan ini tidak bisa dibatalkan.`,
-    btnOk: "Hapus",
-    btnOkClass: "danger",
-    onOk: async () => {
-      try {
-        const res = await authFetch(`/timesheet/absen/${username}/${date}`, { method: "DELETE" });
-        const data = await res.json();
-        if (data.status === "OK") {
-          closeTsModal();
-          loadTimesheet();
-        } else {
-          alert("Gagal hapus: " + (data.message || "Unknown error"));
-        }
-      } catch (e) {
-        alert("Error: " + e.message);
-      }
-    }
-  });
-}
+  if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
+  if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
 
-function tsTambahBaru() {
-  // Reset form untuk entri berikutnya (multi-entry)
-  if (_tsMode === "waktu") {
-    const nowTime = new Date().toTimeString().slice(0,5);
-    if (_tsSubTab === "masuk") {
-      document.getElementById("ts-masuk-time").value = nowTime;
-    } else if (_tsSubTab === "istirahat") {
-      document.getElementById("ts-istirahat-mulai").value   = "";
-      document.getElementById("ts-istirahat-selesai").value = "";
-    } else {
-      document.getElementById("ts-keluar-time").value = nowTime;
-    }
-  }
-  showToast("✅ Entri ditambahkan, isi entri berikutnya", "warning");
-}
+  const jamMasukFull  = localISOStr(new Date(`${date}T${tMasuk}:00`));
+  const jamKeluarFull = tKeluar ? localISOStr(new Date(`${date}T${tKeluar}:00`)) : null;
+  const breaks = (bMulai && bSelesai)
+    ? [{ start: localISOStr(new Date(`${date}T${bMulai}:00`)), end: localISOStr(new Date(`${date}T${bSelesai}:00`)) }]
+    : [];
 
-async function saveTsAbsen() {
-  if (!_tsCurrent) return;
-  const me = localStorage.getItem("user");
-  const { username, date } = _tsCurrent;
+  const username = _drUser.username;
+  const isNew    = _tsSesiEditIdx === -1;
 
-  let jamMasukFull, jamKeluarFull, breaks = [], catatan = "", aktivitas = "", lokasiNama = "";
-
-  if (_tsMode === "waktu") {
-    const tMasuk  = document.getElementById("ts-masuk-time").value;
-    const tKeluar = document.getElementById("ts-keluar-time").value;
-    const dMasuk  = document.getElementById("ts-masuk-date").value || date;
-    const dKeluar = document.getElementById("ts-keluar-date").value || date;
-    lokasiNama = document.getElementById("ts-lokasi").value;
-    aktivitas  = document.getElementById("ts-aktivitas").value;
-    catatan    = document.getElementById("ts-catatan").value.trim();
-
-    if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
-    if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
-    if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
-
-    // Gunakan localISOStr agar ada offset timezone — konsisten dengan clock-in normal
-    jamMasukFull  = localISOStr(new Date(`${dMasuk}T${tMasuk}:00`));
-    jamKeluarFull = localISOStr(new Date(`${dKeluar}T${tKeluar}:00`));
-
-    const isMulai  = document.getElementById("ts-istirahat-mulai").value;
-    const isSelesai= document.getElementById("ts-istirahat-selesai").value;
-    if (isMulai && isSelesai) {
-      breaks = [{ start: localISOStr(new Date(`${date}T${isMulai}:00`)), end: localISOStr(new Date(`${date}T${isSelesai}:00`)) }];
-    }
+  let endpoint, method, body;
+  if (isNew) {
+    endpoint = "/timesheet/absen-manual";
+    method   = "POST";
+    body     = { targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama };
   } else {
-    // Entri jam
-    const tDate   = document.getElementById("ts-jam-date").value || date;
-    const tMasuk  = document.getElementById("ts-jam-masuk").value;
-    const tKeluar = document.getElementById("ts-jam-keluar").value;
-    lokasiNama = document.getElementById("ts-jam-lokasi").value;
-    aktivitas  = document.getElementById("ts-jam-aktivitas").value;
-    catatan    = document.getElementById("ts-jam-catatan").value.trim();
-
-    if (!lokasiNama) { showToast("⚠️ Pilih lokasi terlebih dahulu", "warning"); return; }
-    if (!tMasuk)     { showToast("⚠️ Isi jam masuk", "warning"); return; }
-    if (!tKeluar)    { showToast("⚠️ Isi jam keluar", "warning"); return; }
-
-    // Gunakan localISOStr agar ada offset timezone — konsisten dengan clock-in normal
-    jamMasukFull  = localISOStr(new Date(`${tDate}T${tMasuk}:00`));
-    jamKeluarFull = localISOStr(new Date(`${tDate}T${tKeluar}:00`));
-
-    const isMulai  = document.getElementById("ts-jam-istirahat-mulai").value;
-    const isSelesai= document.getElementById("ts-jam-istirahat-selesai").value;
-    if (isMulai && isSelesai) {
-      breaks = [{ start: localISOStr(new Date(`${tDate}T${isMulai}:00`)), end: localISOStr(new Date(`${tDate}T${isSelesai}:00`)) }];
-    }
+    const sesiNum = _drSesiList[_tsSesiEditIdx]?.sesi;
+    endpoint = `/timesheet/absen/${username}/${date}`;
+    method   = "PUT";
+    body     = { jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama, sesi: sesiNum };
   }
-
-  const uData   = _tsData?.users?.find(u => u.username === username);
-  const dayData = uData?.days?.find(d => d.date === date);
-  const isNew   = !dayData?.jamMasuk;
-  const endpoint = isNew ? "/timesheet/absen-manual" : `/timesheet/absen/${username}/${date}`;
-  const method   = isNew ? "POST" : "PUT";
 
   try {
     const r = await authFetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetUser: username, date, jamMasuk: jamMasukFull, jamKeluar: jamKeluarFull, breaks, catatan, aktivitas, lokasiNama })
+      body: JSON.stringify(body)
     });
     const d = await r.json();
     if (d.status === "OK") {
-      showToast("✅ Absen berhasil disimpan!");
-      closeTsModal();
-      await loadTimesheet(); // reload data + render ulang (termasuk data-jammasuk terbaru)
-      startTsTicker();       // restart ticker agar hitung dari jamMasuk yg sudah diedit
+      showToast(isNew ? "✅ Sesi baru berhasil ditambahkan!" : "✅ Sesi berhasil disimpan!");
+      closeTsSesiForm();
+      await _tsDrawerLoadDay(_drDate);
+      await loadTimesheet();
+      startTsTicker();
     } else {
       showToast("❌ " + (d.msg || "Gagal menyimpan"), "error");
     }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
+}
+
+// ── Hapus satu sesi ───────────────────────────────────────────
+function tsDrawerHapusSesi(idx) {
+  const s = _drSesiList[idx];
+  if (!s) return;
+  const sesiNum = s.sesi || idx + 1;
+  const masukStr = s.jamMasuk ? fmtTime(s.jamMasuk) : "--:--";
+  uConfirm({
+    icon: "🗑",
+    title: "Hapus Sesi",
+    msg: `Hapus sesi ${sesiNum} (masuk: <b>${masukStr}</b>) untuk <b>${_drUser.nama}</b> pada <b>${_drDate}</b>?<br>Tindakan ini tidak bisa dibatalkan.`,
+    btnOk: "Hapus",
+    btnOkClass: "danger",
+    onOk: async () => {
+      try {
+        const r = await authFetch(`/timesheet/absen/${_drUser.username}/${_drDate}?sesi=${sesiNum}`, { method: "DELETE" });
+        const d = await r.json();
+        if (d.status === "OK") {
+          showToast("✅ Sesi berhasil dihapus");
+          await _tsDrawerLoadDay(_drDate);
+          await loadTimesheet();
+        } else {
+          showToast("❌ " + (d.message || "Gagal hapus"), "error");
+        }
+      } catch { showToast("❌ Gagal hapus", "error"); }
+    }
+  });
+}
+
+// ── Hapus dari form edit (tombol Hapus di form sesi) ──────────
+function tsSesiHapus() {
+  if (_tsSesiEditIdx < 0) return;
+  closeTsSesiForm();
+  tsDrawerHapusSesi(_tsSesiEditIdx);
+}
+
+// ── Klik nama user di tabel → buka drawer ────────────────────
+// (dipanggil dari tsRender via onclick di kolom nama)
+function _tsDrawerOpenByUsername(username, date) {
+  const u = _tsData?.users?.find(u => u.username === username);
+  if (u) openTsDrawer(u, date || u.days[0]?.date);
 }
 
 // ============================================================

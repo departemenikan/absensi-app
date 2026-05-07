@@ -1928,6 +1928,27 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   save(F.data, data);
   res.send({ status: "OK", sesi: rec.sesi });
 });
+// GET: ambil semua sesi (parts) untuk user + tanggal tertentu
+app.get("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
+  const { user, date } = req.params;
+  const data = load(F.data, []);
+  const recs = data
+    .filter(d => d.user === user && d.date === date)
+    .map(r => ({
+      sesi:       r.sesi || 1,
+      jamMasuk:   r.jamMasuk  || null,
+      jamKeluar:  r.jamKeluar || null,
+      breaks:     r.breaks    || [],
+      catatan:    r.catatan   || "",
+      aktivitas:  r.aktivitas || "",
+      lokasiNama: r.lokasiNama || "",
+      createdManually: !!r.createdManually,
+      autoClockIn: !!r.autoClockIn,
+    }))
+    .sort((a, b) => a.sesi - b.sesi);
+  res.json({ status: "OK", sesi: recs });
+});
+
 app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   const { user, date } = req.params;
   // Jika query ?sesi=N dikirim → hapus sesi spesifik saja

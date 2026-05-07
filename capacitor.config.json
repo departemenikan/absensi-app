@@ -3,7 +3,7 @@
   "appName": "absensi-smart",
   "webDir": "public",
   "server": {
-    "url": "https://absensi-app-production-827c.up.railway.app",
+    "url": "https://absensi-app.onrender.com",
     "cleartext": false
   }
 }
