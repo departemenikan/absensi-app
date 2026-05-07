@@ -50,26 +50,52 @@
     .tp-panel {
       position:absolute; top:calc(100% + 8px); left:0; z-index:9999;
       background:white; border:1.5px solid #e8ecf0; border-radius:14px;
-      box-shadow:0 8px 32px rgba(0,0,0,.14); overflow:hidden; width:180px;
+      box-shadow:0 8px 32px rgba(0,0,0,.14); overflow:hidden; width:200px;
     }
-    .tp-cols { display:flex; height:200px; }
+    .tp-cols {
+      display:flex; height:220px; position:relative;
+    }
+    /* Garis highlight tengah */
+    .tp-cols::before, .tp-cols::after {
+      content:''; position:absolute; left:0; right:0; pointer-events:none; z-index:2;
+    }
+    .tp-cols::before {
+      top:0; height:calc(50% - 22px);
+      background:linear-gradient(to bottom, white 60%, rgba(255,255,255,0));
+    }
+    .tp-cols::after {
+      bottom:0; height:calc(50% - 22px);
+      background:linear-gradient(to top, white 60%, rgba(255,255,255,0));
+    }
     .tp-col {
-      flex:1; overflow-y:scroll; scroll-snap-type:y mandatory;
+      flex:1; overflow-y:scroll;
       scrollbar-width:none; -ms-overflow-style:none;
       border-right:1px solid #f0f2f5;
+      scroll-behavior:smooth;
+      -webkit-overflow-scrolling:touch;
     }
     .tp-col:last-child { border-right:none; }
     .tp-col::-webkit-scrollbar { display:none; }
-    .tp-item {
-      padding:10px 0; text-align:center; font-size:15px;
-      font-weight:600; color:#888; cursor:pointer;
-      scroll-snap-align:start; transition:.1s;
-      font-variant-numeric:tabular-nums;
+    /* Padding atas bawah agar item pertama/terakhir bisa ke tengah */
+    .tp-col-inner {
+      padding: 88px 0;
     }
-    .tp-item:hover { background:#fff8f0; color:#f57c00; }
+    .tp-item {
+      height:44px; line-height:44px; text-align:center; font-size:16px;
+      font-weight:600; color:#bbb; cursor:pointer;
+      font-variant-numeric:tabular-nums;
+      transition: color .15s, font-size .15s, font-weight .15s;
+      user-select:none;
+    }
     .tp-item.tp-sel {
-      background:#f57c00; color:white; border-radius:8px;
-      font-weight:800;
+      color:#f57c00; font-size:20px; font-weight:800;
+    }
+    /* Highlight bar di tengah */
+    .tp-highlight {
+      position:absolute; left:0; right:0;
+      top:calc(50% - 22px); height:44px;
+      background:#fff4e8; border-radius:0;
+      pointer-events:none; z-index:1;
     }
 
     /* TOAST */

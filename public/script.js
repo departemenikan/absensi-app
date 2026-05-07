@@ -5034,94 +5034,166 @@ function timeInputHtml({ id, value = "", onchange = "", extraStyle = "", placeho
 }
 
 // Auto-format: ketik 4 digit → otomatis jadi HH:MM
-// ── Time Picker Dropdown (Jibble-style, 24 jam) ──────────────
+// ── Time Picker Dropdown — smooth momentum scroll ─────────────
 /**
- * Render HTML time picker dropdown: dua kolom scroll (jam 00-23, menit 00-59)
- * @param {string} id      - id unik picker ini (untuk DOM & event binding)
- * @param {string} value   - nilai awal "HH:MM" atau ""
- * @param {string} onChange - JS expression yang dipanggil saat nilai berubah, terima arg (jam, menit)
+ * Render time picker: dua kolom scroll smooth (jam 00-23, menit 00-59)
+ * Sistem: item HEIGHT = 44px, padding 88px atas/bawah agar item bisa ke tengah.
+ * Highlight bar di tengah panel (posisi 50% - 22px).
+ * Saat scroll berhenti → snap ke item terdekat, update value & highlight.
  */
+const ITEM_H = 44;
+
 function renderTimePicker(id, value, onChange) {
-  const curH = value ? parseInt(value.split(":")[0]) : new Date().getHours();
-  const curM = value ? parseInt(value.split(":")[1]) : 0;
+  const curH = value && /^\d{1,2}:\d{2}$/.test(value) ? parseInt(value.split(":")[0]) : new Date().getHours();
+  const curM = value && /^\d{1,2}:\d{2}$/.test(value) ? parseInt(value.split(":")[1]) : 0;
 
   const hours   = Array.from({length:24}, (_,i) => String(i).padStart(2,"0"));
   const minutes = Array.from({length:60}, (_,i) => String(i).padStart(2,"0"));
 
-  const hItems  = hours.map(h => `
-    <div class="tp-item${parseInt(h)===curH?" tp-sel":""}"
-         onclick="tpSelect('${id}','h',${parseInt(h)})"
-         id="tph_${id}_${h}">${h}</div>`).join("");
-  const mItems  = minutes.map(m => `
-    <div class="tp-item${parseInt(m)===curM?" tp-sel":""}"
-         onclick="tpSelect('${id}','m',${parseInt(m)})"
-         id="tpm_${id}_${m}">${m}</div>`).join("");
+  const hItems = hours.map((h,i) =>
+    `<div class="tp-item${i===curH?" tp-sel":""}" data-val="${i}">${h}</div>`).join("");
+  const mItems = minutes.map((m,i) =>
+    `<div class="tp-item${i===curM?" tp-sel":""}" data-val="${i}">${m}</div>`).join("");
 
   return `
-    <div class="tp-wrap" id="tp_${id}" data-h="${curH}" data-m="${curM}" data-cb="${onChange.replace(/"/g,"&quot;")}">
+    <div class="tp-wrap" id="tp_${id}"
+         data-h="${curH}" data-m="${curM}"
+         data-cb="${onChange.replace(/"/g,"&quot;")}">
       <div class="tp-display" onclick="tpToggle('${id}')">
-        <span id="tp_val_${id}" style="font-size:28px;font-weight:800;color:#222;letter-spacing:2px;font-variant-numeric:tabular-nums;">
+        <span id="tp_val_${id}"
+              style="font-size:28px;font-weight:800;color:#222;letter-spacing:2px;font-variant-numeric:tabular-nums;">
           ${String(curH).padStart(2,"0")}:${String(curM).padStart(2,"0")}
         </span>
-        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;margin-left:8px;">GMT+8</span>
+        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;
+                     border-radius:5px;padding:2px 7px;margin-left:8px;">GMT+8</span>
       </div>
       <div class="tp-panel" id="tp_panel_${id}" style="display:none;">
         <div class="tp-cols">
-          <div class="tp-col" id="tp_hcol_${id}">${hItems}</div>
-          <div class="tp-col" id="tp_mcol_${id}">${mItems}</div>
+          <div class="tp-highlight"></div>
+          <div class="tp-col" id="tp_hcol_${id}"
+               onscroll="tpOnScroll(event,'${id}','h')">
+            <div class="tp-col-inner">${hItems}</div>
+          </div>
+          <div class="tp-col" id="tp_mcol_${id}"
+               onscroll="tpOnScroll(event,'${id}','m')">
+            <div class="tp-col-inner">${mItems}</div>
+          </div>
         </div>
       </div>
     </div>`;
 }
 
+// ── tpToggle: buka/tutup panel ──────────────────────────────
 function tpToggle(id) {
   const panel = document.getElementById(`tp_panel_${id}`);
   if (!panel) return;
-  const open = panel.style.display !== "none";
-  // Tutup semua panel dulu
+  const isOpen = panel.style.display !== "none";
+
+  // Tutup semua dulu
   document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
-  if (!open) {
-    panel.style.display = "block";
-    // Auto-scroll ke item terpilih
-    setTimeout(() => {
-      ["h","m"].forEach(col => {
-        const wrap  = document.getElementById(`tp_${id}`);
-        const val   = col === "h" ? parseInt(wrap.dataset.h) : parseInt(wrap.dataset.m);
-        const colEl = document.getElementById(`tp_${col}col_${id}`);
-        const selEl = colEl?.querySelector(".tp-sel");
-        if (selEl) selEl.scrollIntoView({ block:"center", behavior:"smooth" });
-      });
-    }, 50);
+  if (isOpen) return;
+
+  panel.style.display = "block";
+
+  // Scroll kolom ke posisi item terpilih (instant, tanpa animasi agar tidak delay)
+  const wrap = document.getElementById(`tp_${id}`);
+  requestAnimationFrame(() => {
+    _tpScrollTo(id, "h", parseInt(wrap.dataset.h), false);
+    _tpScrollTo(id, "m", parseInt(wrap.dataset.m), false);
+  });
+}
+
+// ── Scroll kolom ke item idx ─────────────────────────────────
+function _tpScrollTo(id, col, idx, smooth = true) {
+  const colEl = document.getElementById(`tp_${col}col_${id}`);
+  if (!colEl) return;
+  const target = idx * ITEM_H;
+  if (smooth) {
+    colEl.scrollTo({ top: target, behavior: "smooth" });
+  } else {
+    colEl.scrollTop = target;
   }
 }
 
+// ── Debounce per-kolom scroll end ────────────────────────────
+const _tpScrollTimer = {};
+
+function tpOnScroll(evt, id, col) {
+  const colEl = evt.currentTarget;
+  const key   = `${id}_${col}`;
+
+  // Clear timer sebelumnya
+  if (_tpScrollTimer[key]) clearTimeout(_tpScrollTimer[key]);
+
+  // Highlight item yang paling dekat ke tengah secara realtime
+  _tpHighlight(id, col, colEl.scrollTop);
+
+  // Setelah scroll berhenti → snap ke item terdekat
+  _tpScrollTimer[key] = setTimeout(() => {
+    const idx = Math.round(colEl.scrollTop / ITEM_H);
+    const clamped = Math.max(0, Math.min(col === "h" ? 23 : 59, idx));
+
+    // Snap smooth ke posisi tepat
+    colEl.scrollTo({ top: clamped * ITEM_H, behavior: "smooth" });
+
+    // Update nilai & highlight
+    const wrap = document.getElementById(`tp_${id}`);
+    if (!wrap) return;
+    if (col === "h") wrap.dataset.h = clamped;
+    else             wrap.dataset.m = clamped;
+
+    _tpHighlight(id, col, clamped * ITEM_H);
+    _tpUpdateDisplay(id);
+    _tpFireCb(id);
+  }, 120);  // 120ms setelah scroll berhenti
+}
+
+// ── Highlight item paling dekat ke tengah ────────────────────
+function _tpHighlight(id, col, scrollTop) {
+  const idx   = Math.round(scrollTop / ITEM_H);
+  const colEl = document.getElementById(`tp_${col}col_${id}`);
+  if (!colEl) return;
+  colEl.querySelectorAll(".tp-item").forEach((el, i) => {
+    el.classList.toggle("tp-sel", i === idx);
+  });
+}
+
+// ── Update teks tampilan HH:MM ────────────────────────────────
+function _tpUpdateDisplay(id) {
+  const wrap = document.getElementById(`tp_${id}`);
+  if (!wrap) return;
+  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
+  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
+  const valEl = document.getElementById(`tp_val_${id}`);
+  if (valEl) valEl.textContent = `${h}:${m}`;
+}
+
+// ── Panggil callback ──────────────────────────────────────────
+function _tpFireCb(id) {
+  const wrap = document.getElementById(`tp_${id}`);
+  if (!wrap) return;
+  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
+  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
+  const cb = wrap.dataset.cb;
+  if (cb) {
+    try { eval(cb.replace("{H}", h).replace("{M}", m)); }
+    catch(e) { console.warn("tpFireCb:", e); }
+  }
+}
+
+// ── tpSelect: masih dipakai sebagai fallback klik item ────────
 function tpSelect(id, col, val) {
   const wrap = document.getElementById(`tp_${id}`);
   if (!wrap) return;
   if (col === "h") wrap.dataset.h = val;
   else             wrap.dataset.m = val;
-
-  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
-  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
-
-  // Update tampilan jam
-  const valEl = document.getElementById(`tp_val_${id}`);
-  if (valEl) valEl.textContent = `${h}:${m}`;
-
-  // Update class terpilih pada kolom yang berubah
-  const colEl = document.getElementById(`tp_${col}col_${id}`);
-  colEl?.querySelectorAll(".tp-item").forEach(el => el.classList.remove("tp-sel"));
-  const itemId = col === "h" ? `tph_${id}_${h}` : `tpm_${id}_${m}`;
-  document.getElementById(itemId)?.classList.add("tp-sel");
-
-  // Panggil callback
-  const cb = wrap.dataset.cb;
-  if (cb) {
-    try { eval(cb.replace("{H}", h).replace("{M}", m)); } catch(e) { console.warn("tpSelect cb:", e); }
-  }
+  _tpScrollTo(id, col, val, true);
+  _tpHighlight(id, col, val * ITEM_H);
+  _tpUpdateDisplay(id);
+  _tpFireCb(id);
 }
 
-// Tutup semua picker jika klik di luar
+// ── Tutup semua picker jika klik di luar ─────────────────────
 document.addEventListener("click", e => {
   if (!e.target.closest(".tp-wrap")) {
     document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
