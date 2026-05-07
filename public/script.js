@@ -5015,6 +5015,50 @@ function fmtTime(isoStr) {
   return isoStr.slice(0, 5);
 }
 
+// ── Custom time input: text biasa format HH:MM, bebas AM/PM ──────────────────────
+// Dipakai di semua form agar tidak bergantung format browser/OS
+function timeInputHtml({ id, value = "", onchange = "", extraStyle = "", placeholder = "HH:MM" }) {
+  const oc = onchange ? `data-onchange="${onchange}"` : "";
+  return `<input
+    id="${id}"
+    type="text"
+    inputmode="numeric"
+    maxlength="5"
+    placeholder="${placeholder}"
+    value="${value}"
+    autocomplete="off"
+    ${oc}
+    oninput="autoFormatTimeInput(this)"
+    onblur="validateTimeInput(this)"
+    style="font-variant-numeric:tabular-nums;${extraStyle}">`;
+}
+
+// Auto-format: ketik 4 digit → otomatis jadi HH:MM
+function autoFormatTimeInput(el) {
+  let v = el.value.replace(/[^0-9]/g, "").slice(0, 4);
+  if (v.length >= 3) v = v.slice(0, 2) + ":" + v.slice(2);
+  el.value = v;
+  // Panggil onchange callback jika ada
+  const cb = el.getAttribute("data-onchange");
+  if (cb) { try { eval(cb + "(el)"); } catch(e) {} }
+  // Dispatch change event agar onchange= attribute juga terpanggil
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// Validasi saat blur: pastikan HH:MM valid 24 jam
+function validateTimeInput(el) {
+  const v = el.value.trim();
+  if (!v) return;
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) { el.style.color = "#e53935"; el.title = "Format salah, gunakan HH:MM (contoh: 08:30)"; return; }
+  const h = parseInt(m[1]), mn = parseInt(m[2]);
+  if (h > 23 || mn > 59) { el.style.color = "#e53935"; el.title = "Jam tidak valid"; return; }
+  // Normalize: pastikan dua digit
+  el.value = String(h).padStart(2,"0") + ":" + String(mn).padStart(2,"0");
+  el.style.color = "";
+  el.title = "";
+}
+
 async function loadTimesheet() {
   const me = localStorage.getItem("user");
   // Selalu validasi: pastikan _tsWeekStart adalah hari Senin yang valid
@@ -5601,9 +5645,11 @@ function closeTsErForm() {
 async function tsSimpanEditRow() {
   const ctx = _tsEditRowCtx;
   if (!ctx) return;
-  const jam  = document.getElementById("ts-er-jam").value;
-  const date = document.getElementById("ts-er-date").value;
-  if (!jam)  { showToast("⚠️ Isi jam terlebih dahulu", "warning"); return; }
+  const jamRaw = document.getElementById("ts-er-jam").value.trim();
+  const date   = document.getElementById("ts-er-date").value;
+  if (!jamRaw) { showToast("⚠️ Isi jam terlebih dahulu", "warning"); return; }
+  if (!/^\d{2}:\d{2}$/.test(jamRaw)) { showToast("⚠️ Format jam harus HH:MM (contoh: 08:30)", "warning"); return; }
+  const jam = jamRaw;
 
   const s       = JSON.parse(JSON.stringify(_drSesiList[ctx.sIdx])); // clone
   const isoFull = localISOStr(new Date(`${date}T${jam}:00`));
@@ -5777,25 +5823,34 @@ function _renderTambahEntriForm() {
             <div style="display:flex;gap:8px;align-items:center;">
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
                 <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mulai Istirahat</div>
-                <input type="time" lang="id-001" value="${e.jam||""}"
-                  onchange="_drSetField(${i},'jam',this.value)"
-                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#e65100;">
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                  value="${e.jam||""}" autocomplete="off"
+                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
+                  onblur="validateTimeInput(this)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
+                         color:#e65100;font-variant-numeric:tabular-nums;">
               </div>
               <span style="color:var(--muted);font-weight:700;">→</span>
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
                 <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Selesai Istirahat</div>
-                <input type="time" lang="id-001" value="${e.jamSelesai||""}"
-                  onchange="_drSetField(${i},'jamSelesai',this.value)"
-                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;color:#2e7d32;">
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                  value="${e.jamSelesai||""}" autocomplete="off"
+                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jamSelesai',this.value)"
+                  onblur="validateTimeInput(this)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
+                         color:#2e7d32;font-variant-numeric:tabular-nums;">
               </div>
             </div>
           ` : `
             <!-- Masuk / Keluar: satu jam -->
             <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;
                         display:flex;align-items:center;gap:10px;">
-              <input type="time" lang="id-001" value="${e.jam || nowTime}"
-                onchange="_drSetField(${i},'jam',this.value)"
-                style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;">
+              <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                value="${e.jam || nowTime}" autocomplete="off"
+                oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
+                onblur="validateTimeInput(this)"
+                style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;
+                       font-variant-numeric:tabular-nums;letter-spacing:1px;">
               <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
             </div>
           `}
