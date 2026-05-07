@@ -408,6 +408,75 @@ setInterval(() => {
   });
 
   if (changed) save(F.data, data);
+
+  // ── MIDNIGHT SPLIT — jam 23:59, split semua sesi yang masih aktif ──────────
+  if (hour === 23 && min === 59) {
+    const dataMid  = load(F.data, []);
+    const usersMid = load(F.users, {});
+    const todayMid = now.toLocaleDateString("sv-SE");
+
+    // Hitung tanggal besok
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toLocaleDateString("sv-SE");
+
+    // Waktu 23:59:59 hari ini sebagai jamKeluar sesi lama
+    const cutTime = new Date(now);
+    cutTime.setHours(23, 59, 59, 0);
+    const cutISO = cutTime.toISOString();
+
+    // Waktu 00:00:00 besok sebagai jamMasuk sesi baru
+    const startNew = new Date(tomorrow);
+    startNew.setHours(0, 0, 0, 0);
+    const startISO = startNew.toISOString();
+
+    let midChanged = false;
+    const newRecords = [];
+
+    dataMid.forEach(rec => {
+      // Hanya record aktif hari ini (belum clock out)
+      if (rec.date !== todayMid || rec.jamKeluar) return;
+
+      // Tutup sesi hari ini jam 23:59:59
+      const lb = rec.breaks.at(-1);
+      if (lb && !lb.end) lb.end = cutISO; // tutup break kalau masih istirahat
+      rec.jamKeluar       = cutISO;
+      rec.autoClockOut    = true;
+      rec.autoClockOutReason = "midnight-split";
+      midChanged = true;
+
+      // Buat record baru untuk hari besok jam 00:00:00
+      const sesiBerikut = dataMid.filter(d => d.user === rec.user && d.date === tomorrowStr).length + newRecords.filter(d => d.user === rec.user && d.date === tomorrowStr).length + 1;
+      newRecords.push({
+        user:       rec.user,
+        date:       tomorrowStr,
+        jamMasuk:   startISO,
+        jamKeluar:  null,
+        lokasi:     rec.lokasi || {},
+        foto:       rec.foto   || "",
+        breaks:     [],
+        aktivitas:  rec.aktivitas || "", // salin aktivitas dari sesi sebelumnya
+        sesi:       sesiBerikut,
+        autoClockIn: true,
+        autoClockInReason: "midnight-split"
+      });
+
+      // Notif Web Push ke karyawan
+      const user = usersMid[rec.user] || {};
+      sendPushToUser(rec.user,
+        "🌙 Pergantian Hari Otomatis",
+        `Sesi kerja dilanjutkan otomatis ke hari baru pukul 00:00`
+      ).catch(() => {});
+
+      console.log(`[MIDNIGHT] Split sesi ${rec.user}: ${todayMid} 23:59 → ${tomorrowStr} 00:00`);
+    });
+
+    if (midChanged) {
+      newRecords.forEach(r => dataMid.push(r));
+      save(F.data, dataMid);
+    }
+  }
+
 }, 60000); // cek setiap 1 menit
 
 // Inisialisasi default groups jika belum ada
@@ -650,17 +719,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   // Cari record aktif hari ini
   let record = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
 
-  // Edge case: clock in lewat tengah malam (misal masuk 23:50, clock out 01:00 esoknya)
-  // Jika tidak ada record hari ini, cari record kemarin yang masih aktif
-  if (!record && type !== "IN") {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yStr = yesterday.toLocaleDateString("sv-SE");
-    const recKemarin = data.find(d => d.user === user && d.date === yStr && !d.jamKeluar);
-    if (recKemarin) {
-      record = recKemarin; // pakai record kemarin untuk clock out / break
-    }
-  }
+  // Midnight split aktif — tidak perlu cek record kemarin
 
   // Normalisasi timestamp ke UTC ISO agar konsisten di semua perhitungan
   const timeNorm = normalizeTime(time) || time;
@@ -702,13 +761,7 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   // Cari record aktif hari ini
   let aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
 
-  // Edge case: clock in lewat tengah malam → cek juga record kemarin
-  if (!aktif) {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yStr = yesterday.toLocaleDateString("sv-SE");
-    aktif = data.find(d => d.user === req.params.user && d.date === yStr && !d.jamKeluar);
-  }
+  // Midnight split aktif — tidak perlu cek record kemarin
 
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
