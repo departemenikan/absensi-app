@@ -26,6 +26,43 @@ const app      = express();
 const { dbLoad, dbSave, migrateFromTmp } = require("./db");
 const { sendWA, waStatus, getWAQR, logoutWA } = require("./wa");
 
+// ── Fonnte WA API — hanya untuk notif penting (cuti) ─────────────────────────
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN || "jGuCsXaWAkPvmbKrg9mt";
+async function sendFonnte(nomor, pesan) {
+  if (!nomor) return;
+  try {
+    const https = require("https");
+    let n = String(nomor).replace(/\D/g, "");
+    if (n.startsWith("0")) n = "62" + n.slice(1);
+    if (!n.startsWith("62")) n = "62" + n;
+    const body = JSON.stringify({ target: n, message: pesan, countryCode: "62" });
+    await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: "api.fonnte.com",
+        path: "/send",
+        method: "POST",
+        headers: {
+          "Authorization": FONNTE_TOKEN,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body)
+        }
+      }, res => {
+        let raw = "";
+        res.on("data", c => raw += c);
+        res.on("end", () => {
+          console.log("[Fonnte] Terkirim ke", nomor, "|", raw);
+          resolve();
+        });
+      });
+      req.on("error", e => { console.error("[Fonnte] Error:", e.message); resolve(); });
+      req.write(body);
+      req.end();
+    });
+  } catch(e) {
+    console.error("[Fonnte] Gagal kirim:", e.message);
+  }
+}
+
 const BCRYPT_ROUNDS = 10;
 
 const PORT     = process.env.PORT || 3000;
@@ -290,7 +327,7 @@ setInterval(() => {
         "⏰ Pengingat Absen",
         "Kamu belum Clock In hari ini. Jangan lupa absen!"
       ).catch(() => {});
-      if (user.noHp) sendWA(user.noHp, `⏰ *Pengingat Absen*\nHai *${user.nama || username}*, kamu belum Clock In hari ini. Jangan lupa absen!`).catch(() => {});
+      // WA Pengingat Clock In dihapus — sudah pakai Web Push
     });
   }
 
@@ -335,7 +372,7 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} (karyawan mess)`
         ).catch(() => {});
-        if (user.noHp) sendWA(user.noHp, `🔴 *Clock Out Otomatis*\nHai *${user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* (karyawan mess).`).catch(() => {});
+        // WA Clock Out Otomatis dihapus — sudah pakai Web Push
       }
     } else {
       // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
@@ -362,7 +399,7 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} karena berada di luar radius area kantor`
         ).catch(() => {});
-        if (user.noHp) sendWA(user.noHp, `🔴 *Clock Out Otomatis*\nHai *${user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* karena berada di luar radius area kantor.`).catch(() => {});
+        // WA Clock Out Otomatis luar area dihapus — sudah pakai Web Push
       }
     }
   });
@@ -508,22 +545,8 @@ app.post("/signup", async (req, res) => {
       `${namaLengkap || username} baru saja mendaftar sebagai anggota`
     ).catch(() => {});
 
-    // WA ke user baru — konfirmasi berhasil sign up
-    if (noHp) sendWA(noHp,
-      `*Absensi Smart* ✅\nHai *${namaLengkap || username}*, pendaftaran kamu berhasil!\n\n` +
-      `👤 Username: *${username}*\n📱 No HP: *${noHp}*\n\nSimpan nomor ini sebagai kontak: *Absensi Smart*\nSelamat bergabung! 🎉`
-    ).catch(() => {});
-
-    // WA ke semua owner & admin — notif anggota baru + nomor HP
+    // WA Signup dihapus — sudah pakai Web Push ke admin/owner
     const usersAll = load(F.users, {});
-    for (const [uname, udata] of Object.entries(usersAll)) {
-      if (["owner", "admin"].includes(udata.group) && udata.noHp && uname !== username) {
-        sendWA(udata.noHp,
-          `*Absensi Smart* 🎉\nAnggota baru mendaftar!\n\n` +
-          `👤 Nama: *${namaLengkap || username}*\n🔑 Username: *${username}*\n📱 No HP: *${noHp || "-"}*\n\nSilakan buka aplikasi untuk mengatur akses.`
-        ).catch(() => {});
-      }
-    }
   }
 
   res.send({ status: "OK" });
@@ -663,7 +686,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   // WA — konfirmasi absen ke user
   const labelWA = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Mulai Istirahat ☕", BREAK_END: "Selesai Istirahat 💪" };
   console.log(`[WA-DEBUG] type=${type} user=${user} noHp=${userData.noHp || "KOSONG"} namaLengkap=${userData.namaLengkap || "KOSONG"}`);
-  if (userData.noHp) sendWA(userData.noHp, `*Absensi Smart*\nHai *${userData.namaLengkap || userData.nama || user}*, ${labelWA[type] || type} — pukul *${jamFmt}*`).catch((e) => console.error("[WA-DEBUG] sendWA error:", e.message));
+  // WA Clock In/Out/Istirahat dihapus — sudah pakai Web Push
 
   res.send({ status: "OK" });
 });
@@ -2494,7 +2517,7 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
   Object.entries(allUsers).forEach(([uname, udata]) => {
     const grp = (groups[uname] || {}).group || udata.group || "";
     if (["owner","admin","manager"].includes(grp) && udata.noHp) {
-      sendWA(udata.noHp, `📋 *Pengajuan Cuti Baru*\n*${namaUser}* mengajukan *${kebijakanNama}*${tglLabel ? " — " + tglLabel : ""}\n\nSilakan buka aplikasi untuk menyetujui/menolak.`).catch(() => {});
+      sendFonnte(udata.noHp, `📋 *Pengajuan Cuti Baru*\n*${namaUser}* mengajukan *${kebijakanNama}*${tglLabel ? " — " + tglLabel : ""}\n\nSilakan buka aplikasi untuk menyetujui/menolak.`);
     }
   });
 
@@ -2540,7 +2563,7 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
   ).catch(() => {});
   // WA ke pengaju — disetujui
   const usersAll = load(F.users, {});
-  if (usersAll[p.username]?.noHp) sendWA(usersAll[p.username].noHp, `✅ *Cuti Disetujui*\nHai *${usersAll[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabel ? " (" + tglLabel + ")" : ""} telah *disetujui* oleh ${approver}.`).catch(() => {});
+  if (usersAll[p.username]?.noHp) sendFonnte(usersAll[p.username].noHp, `✅ *Cuti Disetujui*\nHai *${usersAll[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabel ? " (" + tglLabel + ")" : ""} telah *disetujui* oleh ${approver}.`);
 
   res.send({ status: "OK" });
 });
@@ -2609,7 +2632,7 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   ).catch(() => {});
   // WA ke pengaju — ditolak
   const usersAllR = load(F.users, {});
-  if (usersAllR[p.username]?.noHp) sendWA(usersAllR[p.username].noHp, `❌ *Cuti Ditolak*\nHai *${usersAllR[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabelR ? " (" + tglLabelR + ")" : ""} *ditolak*${reason ? "\nAlasan: " + reason : ""}.`).catch(() => {});
+  if (usersAllR[p.username]?.noHp) sendFonnte(usersAllR[p.username].noHp, `❌ *Cuti Ditolak*\nHai *${usersAllR[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabelR ? " (" + tglLabelR + ")" : ""} *ditolak*${reason ? "\nAlasan: " + reason : ""}.`);
 
   res.send({ status: "OK" });
 });
