@@ -372,7 +372,10 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} (karyawan mess)`
         ).catch(() => {});
-        // WA Clock Out Otomatis dihapus — sudah pakai Web Push
+        // WA Fonnte — khusus karyawan mess
+        if (user.noHp) sendFonnte(user.noHp,
+          `🔴 *Clock Out Otomatis*\nHai *${user.namaLengkap || user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* (karyawan mess).`
+        );
       }
     } else {
       // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
