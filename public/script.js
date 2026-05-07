@@ -796,10 +796,31 @@ async function sendAbsen(type, label) {
       return;
     }
 
+    // Validasi aktivitas — required saat Clock In
+    if (type === "IN") {
+      const selAkt = document.getElementById("home-aktivitas-select");
+      const aktivitasVal = selAkt ? selAkt.value.trim() : "";
+      if (!aktivitasVal) {
+        showToast("⚠️ Pilih aktivitas terlebih dahulu sebelum Clock In", "warning", 4000);
+        // Highlight dropdown
+        if (selAkt) {
+          selAkt.style.borderColor = "#e74c3c";
+          selAkt.focus();
+          setTimeout(() => { selAkt.style.borderColor = "#e8ecf0"; }, 3000);
+        }
+        [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+        return;
+      }
+    }
+
     // Verifikasi wajah (buka kamera modal)
     const ok = await verifyFace(label);
     if (!ok) return;
     const photo = takePhoto();
+
+    // Ambil nilai aktivitas
+    const selAktFinal = document.getElementById("home-aktivitas-select");
+    const aktivitas = selAktFinal ? selAktFinal.value.trim() : "";
 
     // Kirim waktu dalam ISO string dengan offset lokal agar konsisten dengan edit manual timesheet
     const now = localISOStr(new Date()); // format: 2026-05-04T08:46:00+08:00
@@ -812,7 +833,8 @@ async function sendAbsen(type, label) {
         lat: loc.lat,
         lng: loc.lng,
         accuracy: loc.accuracy || 0,  // ← kirim accuracy agar server toleran GPS lemah
-        photo
+        photo,
+        aktivitas: type === "IN" ? aktivitas : undefined  // hanya kirim saat Clock In
       })
     });
     const d = await r.json();

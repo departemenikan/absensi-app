@@ -667,7 +667,8 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
-    data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
+    const aktivitas = req.body.aktivitas || "";
+    data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
     record.jamKeluar = timeNorm;
     const lb = record.breaks.at(-1);
