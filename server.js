@@ -1543,14 +1543,37 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
         ...(infoLiburTs && !rec ? [infoLiburTs.namaLibur] : [])
       ].join(", ");
 
-      // Hari libur tidak masuk → isi jam otomatis agar tidak defisit
-      if (infoLiburTs && !rec && jamKerja === 0 && jamCuti === 0) {
+      // Cek apakah ada record yang benar-benar masuk kerja di hari ini
+      // Record midnight-split (autoClockIn jam 00:00) TIDAK dihitung sebagai masuk kerja di hari libur
+      // karena itu hanya lanjutan shift dari hari sebelumnya
+      const recMasukBeneran = recs.find(r => {
+        if (!r.jamMasuk) return false;
+        if (r.autoClockIn && r.autoClockInReason === "midnight-split") return false;
+        return true;
+      });
+
+      // Hari libur tidak masuk (atau hanya ada midnight-split) → isi jam otomatis agar tidak defisit
+      if (infoLiburTs && !recMasukBeneran && jamKerja === 0 && jamCuti === 0) {
         jamKerja = infoLiburTs.jamLibur;
       }
-      // Hari libur masuk kerja → jam kerja jadi TL, jam libur tetap diisi
-      const jamTLHariIni = (infoLiburTs && rec && !isActive) ? jamKerja : 0;
-      if (infoLiburTs && rec) {
-        jamKerja = infoLiburTs.jamLibur;
+
+      // Hari libur, masuk kerja beneran (bukan midnight-split):
+      // - Jam kerja aktual → masuk tabungan Tukar Libur (jamTL)
+      // - Jam libur tetap diisi di kolom jamKerja (untuk keperluan rekap 40jam)
+      // Hari Minggu masuk kerja → tetap reguler, tidak jadi TL
+      const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
+      let jamTLHariIni = 0;
+      if (infoLiburTs && recMasukBeneran && !isActive && !isHariMinggu) {
+        // Hari libur nasional/agama masuk → jam kerja aktual masuk TL
+        jamTLHariIni = jamKerja;
+        jamKerja     = infoLiburTs.jamLibur;
+      } else if (infoLiburTs && recMasukBeneran && !isActive && isHariMinggu) {
+        // Minggu masuk → reguler, jamKerja tetap, tidak ada TL
+        jamTLHariIni = 0;
+        // jamKerja tetap dari hasil hitung aktual (tidak di-override)
+      } else if (infoLiburTs && !recMasukBeneran) {
+        // Libur tidak masuk → jamKerja sudah diisi di atas, tidak ada TL
+        jamTLHariIni = 0;
       }
 
       return {
@@ -1811,8 +1834,14 @@ app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
   if (!canCreate) return res.send({ status: "FORBIDDEN" });
 
   const data = load(F.data, []);
-  // Cek duplikat (per user per date yang belum closed)
-  const existing = data.find(d => d.user === targetUser && d.date === date);
+  // Cek duplikat per sesi — jika sesi dikirim cari record spesifik, else ambil yang pertama
+  const sesiManual = req.body.sesi != null ? Number(req.body.sesi) : null;
+  const allExisting = data.filter(d => d.user === targetUser && d.date === date);
+  let existing;
+  if (sesiManual != null) {
+    existing = allExisting.find(r => r.sesi === sesiManual);
+  }
+  if (!existing) existing = allExisting[0] || null;
   // Normalisasi timestamp ke UTC ISO agar konsisten
   const jamMasukNorm  = normalizeTime(jamMasuk)  || jamMasuk;
   const jamKeluarNorm = normalizeTime(jamKeluar) || jamKeluar;
@@ -1872,8 +1901,19 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   if (!canEdit) return res.send({ status: "FORBIDDEN" });
 
   const data = load(F.data, []);
-  const rec  = data.find(d => d.user === targetUser && d.date === date);
+
+  // Cari record spesifik — pakai sesi jika dikirim, fallback ke record pertama
+  // sesi dikirim dari client untuk multi-sesi / midnight-split
+  const sesi = req.body.sesi != null ? Number(req.body.sesi) : null;
+  const allRecs = data.filter(d => d.user === targetUser && d.date === date);
+  let rec;
+  if (sesi != null) {
+    rec = allRecs.find(r => r.sesi === sesi);
+  }
+  // Fallback: jika sesi tidak ditemukan atau tidak dikirim, ambil record pertama
+  if (!rec) rec = allRecs[0];
   if (!rec) return res.send({ status: "NOT_FOUND" });
+
   if (jamMasuk)        rec.jamMasuk  = normalizeTime(jamMasuk)  || jamMasuk;
   if (jamKeluar)       rec.jamKeluar = normalizeTime(jamKeluar) || jamKeluar;
   if (req.body.breaks !== undefined) {
@@ -1882,17 +1922,25 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
       end:   b.end ? (normalizeTime(b.end) || b.end) : null
     }));
   }
-  if (req.body.catatan !== undefined) rec.catatan = req.body.catatan;
-  if (req.body.aktivitas !== undefined) rec.aktivitas = req.body.aktivitas;
+  if (req.body.catatan   !== undefined) rec.catatan    = req.body.catatan;
+  if (req.body.aktivitas !== undefined) rec.aktivitas  = req.body.aktivitas;
   if (req.body.lokasiNama !== undefined) rec.lokasiNama = req.body.lokasiNama;
   save(F.data, data);
-  res.send({ status: "OK" });
+  res.send({ status: "OK", sesi: rec.sesi });
 });
 app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   const { user, date } = req.params;
+  // Jika query ?sesi=N dikirim → hapus sesi spesifik saja
+  // Jika tidak dikirim → hapus semua sesi di tanggal itu
+  const sesiDel = req.query.sesi != null ? Number(req.query.sesi) : null;
   const data = load(F.data, []);
   const before = data.length;
-  const filtered = data.filter(d => !(d.user === user && d.date === date));
+  let filtered;
+  if (sesiDel != null) {
+    filtered = data.filter(d => !(d.user === user && d.date === date && d.sesi === sesiDel));
+  } else {
+    filtered = data.filter(d => !(d.user === user && d.date === date));
+  }
   if (filtered.length === before) return res.status(404).json({ status: "NOT_FOUND", message: "Record tidak ditemukan" });
   save(F.data, filtered);
   res.json({ status: "OK", deleted: before - filtered.length });
