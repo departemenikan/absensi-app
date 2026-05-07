@@ -23,18 +23,6 @@ let isConnected  = false;
 let isConnecting = false;
 const msgQueue   = [];
 
-// FIX BUG 1: debounce save session — jangan tulis Supabase terlalu sering
-let _saveTimer = null;
-function debouncedSaveSession(delayMs = 4000) {
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => {
-    _saveTimer = null;
-    saveSessionToSupabase().catch(e =>
-      console.error("[WA] Debounced save error:", e.message)
-    );
-  }, delayMs);
-}
-
 function supaReq(method, spath, body = null) {
   return new Promise((resolve, reject) => {
     const url     = new URL(SUPABASE_URL);
@@ -171,21 +159,9 @@ function waStatus() {
 
 function getWAQR() { return qrCode; }
 
-// FIX BUG 2: cleanup socket lama sebelum buat koneksi baru
-async function cleanupSocket() {
-  if (!sock) return;
-  try { sock.ev.removeAllListeners(); } catch {}
-  try { sock.end(); } catch {}
-  sock = null;
-  await new Promise(r => setTimeout(r, 1000)); // beri jeda 1 detik sebelum reconnect
-}
-
 async function connectWA() {
   if (isConnecting) return;
   isConnecting = true;
-
-  // FIX BUG 2: cleanup socket lama agar tidak ada 2 socket aktif sekaligus
-  await cleanupSocket();
 
   try {
     await loadSessionFromSupabase();
@@ -197,7 +173,7 @@ async function connectWA() {
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-  // FIX BUG 3: update fallback version ke yang lebih baru
+  // Timeout 10 detik — agar tidak hang saat cold start Render
   let version;
   try {
     const raceResult = await Promise.race([
@@ -205,21 +181,16 @@ async function connectWA() {
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000))
     ]);
     version = raceResult.version;
-    console.log("[WA] Versi Baileys:", version.join("."));
   } catch (e) {
     console.warn("[WA] Gagal fetch versi Baileys, pakai fallback:", e.message);
-    version = [2, 3000, 1023141470]; // FIX: fallback versi lebih baru
+    version = [2, 3000, 1015901307]; // versi stabil fallback
   }
 
   sock = makeWASocket({
     version,
-    auth:                  state,
-    logger:                pino({ level: "silent" }),
-    browser:               ["Absensi Smart", "Chrome", "1.0"],
-    connectTimeoutMs:      30000,
-    keepAliveIntervalMs:   15000, // ping setiap 15 detik agar koneksi tidak idle-timeout
-    retryRequestDelayMs:   2000,
-    maxMsgRetryCount:      3,
+    auth:    state,
+    logger:  pino({ level: "silent" }),
+    browser: ["Absensi Smart", "Chrome", "1.0"],
   });
 
   sock.ev.on("connection.update", async (update) => {
@@ -236,9 +207,11 @@ async function connectWA() {
       isConnecting = false;
       qrCode       = null;
       console.log("[WA] WhatsApp terhubung!");
-      // Simpan session sekali saat connect — tidak perlu debounce di sini
       await saveSessionToSupabase();
+      // Flush antrian beberapa kali agar pesan yang masuk saat connecting terkirim
       await flushQueue();
+      setTimeout(flushQueue, 3000);
+      setTimeout(flushQueue, 8000);
     }
 
     if (connection === "close") {
@@ -251,27 +224,20 @@ async function connectWA() {
         console.warn("[WA] Logged out! Hapus session dan scan ulang QR");
         await deleteSessionFromSupabase();
         if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        setTimeout(connectWA, 5000);
-      } else if (reason === 440) {
-        // 440 = session conflict — hapus session lokal saja, load ulang dari Supabase
-        console.warn("[WA] Session conflict (440) — reload session dari Supabase");
-        if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        setTimeout(connectWA, 8000); // tunggu lebih lama agar WA server settle
+        setTimeout(connectWA, 3000);
       } else {
         setTimeout(connectWA, 5000);
       }
     }
   });
 
-  // FIX BUG 1: pakai debounce — tidak simpan ke Supabase setiap kali creds.update
-  sock.ev.on("creds.update", () => {
+  sock.ev.on("creds.update", async () => {
     saveCreds();
-    debouncedSaveSession(4000); // simpan ke Supabase paling cepat 4 detik sekali
+    await saveSessionToSupabase();
   });
 }
 
 async function logoutWA() {
-  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
   try { if (sock) sock.ev.removeAllListeners(); } catch {}
   try { if (sock) await sock.logout(); } catch {}
   try { if (sock) sock.end(); } catch {}
@@ -288,8 +254,17 @@ async function logoutWA() {
 }
 
 // Jalankan dengan delay 3 detik — beri waktu server Express ready dulu
+// Error tidak akan crash server utama
 setTimeout(() => {
   connectWA().catch(e => console.error("[WA] Init error (non-fatal):", e.message));
 }, 3000);
+
+// Safety net: flush antrian setiap 30 detik jika WA sudah konek
+setInterval(() => {
+  if (isConnected && msgQueue.length > 0) {
+    console.log(`[WA] Auto-flush antrian: ${msgQueue.length} pesan`);
+    flushQueue().catch(() => {});
+  }
+}, 30000);
 
 module.exports = { sendWA, waStatus, getWAQR, logoutWA };
