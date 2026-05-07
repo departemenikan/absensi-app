@@ -1867,7 +1867,7 @@ async function getLoc() {
 }
 
 function fmt(iso) {
-  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false});
 }
 
 // ============================================================
@@ -4827,7 +4827,7 @@ async function loadMonitorKehadiran() {
         const isBreak   = x.status === "BREAK";
         const dotColor  = isBreak ? "#f39c12" : "#27ae60";
         const statusTxt = isBreak ? "Sedang Istirahat" : "Sedang Berlangsung";
-        const masukTxt  = x.jamMasuk ? " · Masuk " + new Date(x.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
+        const masukTxt  = x.jamMasuk ? " · Masuk " + new Date(x.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false}) : "";
         return `<div style="display:flex;align-items:center;justify-content:space-between;
           padding:10px 0;border-bottom:1px solid #f5f5f5;">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -4852,7 +4852,7 @@ async function loadMonitorKehadiran() {
         const isDone   = x.status === "DONE";
         const dotColor = isDone ? "#4f8ef7" : "#bdc3c7";
         const subTxt   = isDone
-          ? "Selesai · Keluar " + new Date(x.jamKeluar).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
+          ? "Selesai · Keluar " + new Date(x.jamKeluar).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})
           : "Belum Absen";
         return `<div style="display:flex;align-items:center;gap:10px;
           padding:10px 0;border-bottom:1px solid #f5f5f5;">
@@ -6347,7 +6347,7 @@ function renderLiveList(list) {
   el.innerHTML = list.map(a => {
     const color = _statusColor[a.status] || "#bdc3c7";
     const label = _statusLabel[a.status] || a.status;
-    const lastTime = a.last ? new Date(a.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "—";
+    const lastTime = a.last ? new Date(a.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—";
     const hasLoc   = a.last && a.last.lat;
     return `
       <div onclick="openTrkDetail('${a.username}')"
@@ -6398,7 +6398,7 @@ function renderLiveMap(list) {
     const marker = L.marker([a.last.lat, a.last.lng], { icon })
       .addTo(_trkLiveMap)
       .bindPopup(`<b>${a.namaLengkap||a.username}</b><br>${_statusLabel[a.status]||a.status}<br>
-        ${new Date(a.last.time).toLocaleTimeString("id-ID")}`);
+        ${new Date(a.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})}`);
     marker.on("click", () => openTrkDetail(a.username));
     _trkLiveMarkers.push(marker);
     bounds.push([a.last.lat, a.last.lng]);
@@ -6430,7 +6430,7 @@ async function openTrkDetail(username) {
     if (info) {
       const color = _statusColor[info.status] || "#bdc3c7";
       const label = _statusLabel[info.status] || info.status;
-      const lastTime = info.last ? new Date(info.last.time).toLocaleTimeString("id-ID") : "—";
+      const lastTime = info.last ? new Date(info.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—";
       const coords   = info.last ? `${info.last.lat.toFixed(5)}, ${info.last.lng.toFixed(5)}` : "Tidak tersedia";
       document.getElementById("trkd-body").innerHTML =
         `<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;">
@@ -6508,13 +6508,13 @@ async function loadRiwayatRute() {
     // Marker start
     L.marker(latlngs[0], {
       icon: L.divIcon({ className:"", html:`<div style="background:#27ae60;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">▶</div>`, iconSize:[26,26], iconAnchor:[13,13] })
-    }).addTo(_trkRiwayatMap).bindPopup(`Mulai: ${new Date(pts[0].time).toLocaleTimeString("id-ID")}`);
+    }).addTo(_trkRiwayatMap).bindPopup(`Mulai: ${new Date(pts[0].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})}`);
 
     // Marker end
     if (latlngs.length > 1) {
       L.marker(latlngs[latlngs.length-1], {
         icon: L.divIcon({ className:"", html:`<div style="background:#e74c3c;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">■</div>`, iconSize:[26,26], iconAnchor:[13,13] })
-      }).addTo(_trkRiwayatMap).bindPopup(`Terakhir: ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID")}`);
+      }).addTo(_trkRiwayatMap).bindPopup(`Terakhir: ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})}`);
     }
 
     _trkRiwayatLayer = polyline;
@@ -6524,14 +6524,14 @@ async function loadRiwayatRute() {
     // Info ringkasan
     const durMenit = Math.round((new Date(pts[pts.length-1].time) - new Date(pts[0].time)) / 60000);
     info.innerHTML = `<b>${pts.length} titik lokasi</b> · Durasi: <b>${durMenit} menit</b> · 
-      ${new Date(pts[0].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})} – ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}`;
+      ${new Date(pts[0].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})} – ${new Date(pts[pts.length-1].time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})}`;
 
     // Timeline
     // Ambil setiap N titik agar tidak terlalu panjang (maks 20 entri)
     const step = Math.max(1, Math.floor(pts.length / 20));
     const shown = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
     tl.innerHTML = shown.map((p, i) => {
-      const t = new Date(p.time).toLocaleTimeString("id-ID", {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      const t = new Date(p.time).toLocaleTimeString("id-ID", {hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
       const isFirst = i === 0, isLast = i === shown.length - 1;
       const dot = isFirst ? "🟢" : isLast ? "🔴" : "🔵";
       return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
