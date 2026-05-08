@@ -5876,15 +5876,25 @@ function _tsPickerInit(prefix, jamStr) {
 
 // Ambil nilai dari picker (string "HH:MM")
 function _tsPickerGetVal(prefix) {
+  // Prioritas 1: hidden input (selalu diupdate saat scroll/click)
+  const hiddenJam = document.getElementById(`${prefix}-jam`);
+  if (hiddenJam && hiddenJam.value && /^\d{2}:\d{2}$/.test(hiddenJam.value)) {
+    return hiddenJam.value;
+  }
+
+  // Prioritas 2: display text (diupdate saat scroll)
+  const disp = document.getElementById(`${prefix}-display`);
+  if (disp) {
+    const txt = disp.textContent.trim();
+    if (txt && /^\d{2}:\d{2}$/.test(txt)) return txt;
+  }
+
+  // Prioritas 3: baca scrollTop drum (hanya valid saat drum terbuka)
   const colH = document.getElementById(`${prefix}-col-h`);
   const colM = document.getElementById(`${prefix}-col-m`);
-  if (!colH || !colM) {
-    // Fallback: ambil dari display
-    const disp = document.getElementById(`${prefix}-display`);
-    return disp ? disp.textContent.trim() : "";
-  }
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 32)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 32)));
+  if (!colH || !colM) return "";
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 38)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 38)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
