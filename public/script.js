@@ -5612,44 +5612,44 @@ function _tsPickerFillDrum(idPrefix, h, m) {
     <div style="position:relative;">
       <!-- highlight baris aktif -->
       <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
-                  height:38px;background:rgba(245,124,0,.09);pointer-events:none;z-index:1;
+                  height:32px;background:rgba(245,124,0,.09);pointer-events:none;z-index:1;
                   border-top:1.5px solid rgba(245,124,0,.35);
                   border-bottom:1.5px solid rgba(245,124,0,.35);"></div>
-      <div style="display:flex;height:152px;overflow:hidden;">
+      <div style="display:flex;height:128px;overflow:hidden;">
         <!-- Kolom Jam -->
         <div id="${idPrefix}-col-h" class="ts-dr-col"
              style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;
                     border-right:1px solid #f0f2f5;"
              onscroll="_tsPickerScrollH('${idPrefix}',this)">
-          <div style="height:57px;"></div>
+          <div style="height:48px;"></div>
           ${Array.from({length:24},(_,n)=>`
             <div data-v="${n}"
-              style="height:38px;display:flex;align-items:center;justify-content:center;
-                     font-size:15px;font-weight:${n===h?"700":"400"};
+              style="height:32px;display:flex;align-items:center;justify-content:center;
+                     font-size:14px;font-weight:${n===h?"700":"400"};
                      scroll-snap-align:center;cursor:pointer;
                      color:${n===h?"#e65100":"var(--text)"};"
               class="ts-pk-h ${n===h?"ts-picker-selected":""}"
               onclick="_tsPickerClickH('${idPrefix}',${n})">
               ${String(n).padStart(2,"0")}
             </div>`).join("")}
-          <div style="height:57px;"></div>
+          <div style="height:48px;"></div>
         </div>
         <!-- Kolom Menit -->
         <div id="${idPrefix}-col-m" class="ts-dr-col"
              style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
              onscroll="_tsPickerScrollM('${idPrefix}',this)">
-          <div style="height:57px;"></div>
+          <div style="height:48px;"></div>
           ${Array.from({length:60},(_,n)=>`
             <div data-v="${n}"
-              style="height:38px;display:flex;align-items:center;justify-content:center;
-                     font-size:15px;font-weight:${n===m?"700":"400"};
+              style="height:32px;display:flex;align-items:center;justify-content:center;
+                     font-size:14px;font-weight:${n===m?"700":"400"};
                      scroll-snap-align:center;cursor:pointer;
                      color:${n===m?"#e65100":"var(--text)"};"
               class="ts-pk-m ${n===m?"ts-picker-selected":""}"
               onclick="_tsPickerClickM('${idPrefix}',${n})">
               ${String(n).padStart(2,"0")}
             </div>`).join("")}
-          <div style="height:57px;"></div>
+          <div style="height:48px;"></div>
         </div>
       </div>
     </div>`;
@@ -5729,11 +5729,11 @@ function _tsPickerToggle(prefix) {
       const colM = document.getElementById(`${prefix}-col-m`);
       if (colH) {
         const sel = colH.querySelector(".ts-picker-selected");
-        colH.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
+        colH.scrollTop = sel ? parseInt(sel.dataset.v) * 32 : 0;
       }
       if (colM) {
         const sel = colM.querySelector(".ts-picker-selected");
-        colM.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
+        colM.scrollTop = sel ? parseInt(sel.dataset.v) * 32 : 0;
       }
     }, 10);
   }
@@ -5929,11 +5929,31 @@ function tsDrawerEditRow(sIdx, type, breakIdx) {
   if (collRow) collRow.style.background = "white";
   const clockIcon = document.getElementById("ts-er-clock-icon");
   if (clockIcon) clockIcon.setAttribute("stroke", "#bbb");
-  // Tutup dropdown jika terbuka
+  // Isi drum dengan nilai baru dan langsung tampilkan
   const drum = document.getElementById("ts-er-drum-wrap");
-  if (drum) { drum.style.display = "none"; drum.innerHTML = ""; }
-  // Isi drum dengan nilai baru (siap saat diklik)
-  _tsPickerFillDrum("ts-er", h, m);
+  if (drum) {
+    drum.innerHTML = "";
+    _tsPickerFillDrum("ts-er", h, m);
+    // Posisikan dan buka langsung
+    const row = document.getElementById("ts-er-collapsed-row");
+    if (row) {
+      const rect = row.getBoundingClientRect();
+      drum.style.top   = (rect.bottom + 4) + "px";
+      drum.style.left  = rect.left + "px";
+      drum.style.width = rect.width + "px";
+    }
+    drum.style.display = "block";
+    if (collRow) { collRow.style.background = "#fff8f2"; collRow.style.borderColor = "#e65100"; }
+    if (clockIcon) clockIcon.setAttribute("stroke", "#e65100");
+    if (display) display.style.color = "#e65100";
+    // Scroll ke jam yang diedit
+    setTimeout(() => {
+      const colH = document.getElementById("ts-er-col-h");
+      const colM = document.getElementById("ts-er-col-m");
+      if (colH) colH.scrollTop = h * 32;
+      if (colM) colM.scrollTop = m * 32;
+    }, 30);
+  }
 
   // Hidden value
   const hiddenJam = document.getElementById("ts-er-jam");
