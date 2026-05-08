@@ -39,8 +39,10 @@
       display: none !important;
     }
     }
-
-    /* Time Picker CSS dihapus — kembali pakai text input */
+    /* Highlight item terpilih di scroll picker jam/menit */
+    .ts-picker-selected { color: #e65100 !important; font-weight: 900 !important; }
+    #ts-er-col-jam::-webkit-scrollbar, #ts-er-col-menit::-webkit-scrollbar { width: 0; }
+    .ts-dr-col::-webkit-scrollbar { width: 0; }
 
     /* TOAST */
     #toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-100px);
@@ -1759,17 +1761,12 @@
     </div>
 
     <div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px;">
-      <!-- Jam -->
-      <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:12px 16px;
-                  display:flex;align-items:center;gap:10px;">
-        <input id="ts-er-jam" type="text" inputmode="numeric" maxlength="5"
-          placeholder="HH:MM" autocomplete="off"
-          oninput="autoFormatTimeInput(this)" onblur="validateTimeInput(this)"
-          style="flex:1;border:none;outline:none;font-size:28px;font-weight:800;color:#222;
-                 font-variant-numeric:tabular-nums;letter-spacing:2px;width:100px;">
-        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;
-                     padding:2px 7px;">GMT+8</span>
-      </div>
+
+      <!-- Jam — drum picker dirender oleh JS saat form dibuka -->
+      <div id="ts-er-picker-wrap" style="border:1.5px solid #e8ecf0;border-radius:12px;overflow:hidden;min-height:60px;"></div>
+      <!-- Hidden value untuk dipakai JS saat simpan -->
+      <input type="hidden" id="ts-er-jam">
+
       <!-- Tanggal -->
       <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:12px 14px;
                   display:flex;align-items:center;gap:8px;">
@@ -1777,6 +1774,7 @@
         <input id="ts-er-date" type="date"
           style="flex:1;border:none;outline:none;font-size:14px;color:var(--text);">
       </div>
+
       <!-- Meta (lokasi, aktivitas, catatan) — hanya untuk masuk/keluar -->
       <div id="ts-er-meta-wrap" style="display:flex;flex-direction:column;gap:10px;">
         <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;">
@@ -1791,11 +1789,6 @@
           <select id="ts-er-aktivitas"
             style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;appearance:auto;">
             <option value="">-- Pilih aktivitas --</option>
-            <option value="WFO">WFO (Work From Office)</option>
-            <option value="WFH">WFH (Work From Home)</option>
-            <option value="Tugas Luar">Tugas Luar</option>
-            <option value="Rapat">Rapat / Meeting</option>
-            <option value="Perjalanan Dinas">Perjalanan Dinas</option>
           </select>
         </div>
         <div style="border:1.5px solid #e8ecf0;border-radius:12px;padding:11px 14px;">
