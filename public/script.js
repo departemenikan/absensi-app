@@ -3367,68 +3367,121 @@ async function loadRules() {
     return;
   }
 
-  el.innerHTML = anggota
+  // ── Header kolom ──────────────────────────────────────────────
+  const colHeaderHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:8px 0 10px;border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
+    <div style="flex:1;"></div>
+    <div style="display:flex;align-items:center;gap:0;">
+
+      <!-- Header: Peran -->
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  min-width:110px;padding:6px 10px;margin-right:8px;
+                  background:#f0f0ff;border-radius:10px;border:1px solid #d0d0f0;">
+        <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
+                     letter-spacing:.6px;margin-bottom:6px;">🎖️ Peran</span>
+        <div style="display:flex;gap:20px;">
+          <span style="font-size:11px;font-weight:600;color:#6a1b9a;min-width:36px;text-align:center;">Owner</span>
+          <span style="font-size:11px;font-weight:600;color:#1565c0;min-width:36px;text-align:center;">Admin</span>
+        </div>
+      </div>
+
+      <!-- Header: Status Kerja -->
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  min-width:80px;padding:6px 10px;margin-right:8px;
+                  background:#fff4ee;border-radius:10px;border:1px solid #f0d0c0;">
+        <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
+                     letter-spacing:.6px;margin-bottom:6px;">🚗 Status Kerja</span>
+        <span style="font-size:11px;font-weight:600;color:#e65100;min-width:64px;text-align:center;">Tugas Luar</span>
+      </div>
+
+      <!-- Header: Hunian -->
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  min-width:60px;padding:6px 10px;
+                  background:#fff8e1;border-radius:10px;border:1px solid #f0e0a0;">
+        <span style="font-size:10px;font-weight:800;color:#e65100;text-transform:uppercase;
+                     letter-spacing:.6px;margin-bottom:6px;">🏠 Hunian</span>
+        <span style="font-size:11px;font-weight:600;color:#e67e22;min-width:44px;text-align:center;">Mess</span>
+      </div>
+
+    </div>
+  </div>`;
+
+  // ── Baris per anggota ──────────────────────────────────────────
+  const rowsHTML = anggota
     .map(u => {
-      const isMess     = _rulesMessList.includes(u.username);
-      const isTL       = _rulesTugasLuarList.includes(u.username);
-      const isOwner    = u.group === "owner";
-      const isAdmin    = u.group === "admin";
-      const nama       = u.namaLengkap || u.username;
-      const initials   = nama.charAt(0).toUpperCase();
-      const avatar     = u.photo
-        ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-        : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+      const isMess  = _rulesMessList.includes(u.username);
+      const isTL    = _rulesTugasLuarList.includes(u.username);
+      const isOwner = u.group === "owner";
+      const isAdmin = u.group === "admin";
+      const nama    = u.namaLengkap || u.username;
+      const initials = nama.charAt(0).toUpperCase();
+      const avatar  = u.photo
+        ? `<img src="${u.photo}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
              display:flex;align-items:center;justify-content:center;color:white;
-             font-weight:800;font-size:14px;flex-shrink:0;">${initials}</div>`;
+             font-weight:800;font-size:15px;flex-shrink:0;">${initials}</div>`;
 
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;
-                  padding:10px 0;border-bottom:1px solid #f5f5f5;">
-        <div style="display:flex;align-items:center;gap:10px;">
+                  padding:12px 0;border-bottom:1px solid #f0f2f5;">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
           ${avatar}
-          <div>
-            <div style="display:flex;align-items:center;gap:6px;">
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</span>
-              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;color:white;
-                background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
+              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;
+                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
             </div>
-            <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
-              ${isMess ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess"}
+            <div id="mess-label-${u.username}" style="font-size:11px;margin-top:2px;
+              color:${isMess?"#e67e22":"var(--muted)"};">
+              ${isMess ? "🏠 Mess" : "🚗 Luar Mess"}
             </div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:14px;">
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
-            <input type="checkbox" id="owner-cb-${u.username}"
-              ${isOwner ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
-              style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
-            <span style="font-size:11px;color:var(--muted);">Owner</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
-            <input type="checkbox" id="admin-cb-${u.username}"
-              ${isAdmin ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
-              style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
-            <span style="font-size:11px;color:var(--muted);">Admin</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+
+        <div style="display:flex;align-items:center;gap:0;flex-shrink:0;">
+
+          <!-- Grup Peran -->
+          <div style="display:flex;gap:20px;align-items:center;justify-content:center;
+                      min-width:110px;padding:0 10px;margin-right:8px;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+              <input type="checkbox" id="owner-cb-${u.username}"
+                ${isOwner ? "checked" : ""}
+                onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
+                style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+              <input type="checkbox" id="admin-cb-${u.username}"
+                ${isAdmin ? "checked" : ""}
+                onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
+                style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
+            </div>
+          </div>
+
+          <!-- Status Kerja -->
+          <div style="display:flex;align-items:center;justify-content:center;
+                      min-width:80px;padding:0 10px;margin-right:8px;">
             <input type="checkbox" id="tl-cb-${u.username}"
               ${isTL ? "checked" : ""}
               onchange="onTugasLuarToggle('${u.username}', this.checked)"
               style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
-            <span style="font-size:11px;color:var(--muted);">Tugas Luar</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+          </div>
+
+          <!-- Hunian -->
+          <div style="display:flex;align-items:center;justify-content:center;
+                      min-width:60px;padding:0 10px;">
             <input type="checkbox" id="mess-cb-${u.username}"
               ${isMess ? "checked" : ""}
               onchange="onMessToggle('${u.username}', this.checked)"
-              style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
-            <span style="font-size:12px;color:var(--muted);">Mess</span>
-          </label>
+              style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
+          </div>
+
         </div>
       </div>`;
     }).join("");
+
+  el.innerHTML = colHeaderHTML + rowsHTML;
 }
 
 function onMessToggle(username, checked) {
