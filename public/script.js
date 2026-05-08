@@ -5433,11 +5433,7 @@ async function _tsDrawerLoadDay(date) {
 // Inject CSS hover untuk ts-row-actions
 (function() {
   const st = document.createElement("style");
-  st.textContent = \`
-    .ts-dr-row:hover .ts-row-actions { opacity: 1 !important; }
-    .ts-dr-row { transition: background .1s; }
-    .ts-dr-row:hover { background: #fafafa; }
-  \`;
+  st.textContent = ".ts-dr-row:hover .ts-row-actions { opacity: 1 !important; } .ts-dr-row { transition: background .1s; } .ts-dr-row:hover { background: #fafafa; }";
   document.head.appendChild(st);
 })();
 
