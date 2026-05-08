@@ -3043,23 +3043,156 @@ async function saveDetailDivisi() {
   } catch { showToast("❌ Gagal", "error"); }
 }
 
+// ================================================================
+// GANTI fungsi deleteDetailDivisi di script.js
+// ================================================================
 function deleteDetailDivisi() {
   if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   const d = _divisiList.find(x => x.id === _detailDivisiId);
   if (!d) return;
+
+  // Tutup modal detail divisi DULU sebelum buka uConfirm
+  // supaya tidak tumpang tindih dan confirm bisa diklik
+  document.getElementById("modal-detail-divisi").style.display = "none";
+
   uConfirm({
-    icon: "🏢", title: "Hapus Divisi",
+    icon: "🏢",
+    title: "Hapus Divisi",
     msg: `Hapus divisi <b>${d.nama}</b>?<br>Anggota akan dilepas dari divisi ini.`,
     btnOk: "Hapus", btnOkClass: "danger",
     onOk: async () => {
       try {
         const r = await authFetch(`/divisi/${_detailDivisiId}`, { method: "DELETE" });
+        if (!r.ok) {
+          showToast("❌ Server error: " + r.status, "error");
+          return;
+        }
         const res = await r.json();
-        if (res.status === "OK") { showToast("🗑 Divisi dihapus"); closeDetailDivisi(); loadDivisi(); }
-        else showToast("❌ Gagal menghapus", "error");
-      } catch { showToast("❌ Gagal", "error"); }
+        if (res.status === "OK") {
+          showToast("🗑 Divisi berhasil dihapus");
+          _detailDivisiId = null;
+          await loadDivisi();
+          loadAnggota();
+        } else {
+          showToast("❌ Gagal menghapus: " + (res.msg || res.status), "error");
+        }
+      } catch (e) {
+        console.error("deleteDetailDivisi error:", e);
+        showToast("❌ Gagal menghapus (network error)", "error");
+      }
     }
   });
+}
+
+// ================================================================
+// GANTI fungsi openDetailDivisi — pindah tombol Hapus ke ATAS form
+// supaya tidak tersembunyi di belakang scroll
+// ================================================================
+async function openDetailDivisi(id) {
+  try {
+    const [divisiRes, usersRes] = await Promise.all([authFetch("/divisi"), authFetch("/anggota")]);
+    _divisiList = await divisiRes.json();
+    _anggotaAll = await usersRes.json();
+  } catch(e) { /* pakai cache */ }
+
+  const d = _divisiList.find(x => x.id === id);
+  if (!d) { showToast("⚠️ Data divisi tidak ditemukan", "warning"); return; }
+  _detailDivisiId = id;
+
+  const anggotaDivisi = _anggotaAll.filter(a => {
+    const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+    return arr.includes(d.nama) || a.username === d.owner || a.username === d.manager || a.username === d.koordinator;
+  });
+  const uniqAnggota = [...new Map(anggotaDivisi.map(a => [a.username, a])).values()];
+
+  document.getElementById("dd-judul").textContent = "🏢 " + d.nama;
+  const ownerObj   = _anggotaAll.find(a => a.username === d.owner);
+  const managerObj = _anggotaAll.find(a => a.username === d.manager);
+  const koordObj   = _anggotaAll.find(a => a.username === d.koordinator);
+  const ownerLabel   = ownerObj   ? (ownerObj.namaLengkap   || ownerObj.username)   : (d.owner   || "—");
+  const managerLabel = managerObj ? (managerObj.namaLengkap || managerObj.username) : (d.manager || "—");
+  const koordLabel   = koordObj   ? (koordObj.namaLengkap   || koordObj.username)   : "";
+  document.getElementById("dd-manager-label").textContent =
+    "Owner: " + ownerLabel +
+    " · Manager: " + managerLabel +
+    (koordLabel ? " · Koordinator: " + koordLabel : "");
+
+  // Daftar anggota read-only
+  const viewEl = document.getElementById("dd-anggota-view");
+  if (uniqAnggota.length) {
+    viewEl.innerHTML = `<div style="margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">ANGGOTA (${uniqAnggota.length})</div>` +
+      uniqAnggota.map(a => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
+          <div style="width:30px;height:30px;border-radius:50%;background:var(--primary);color:white;
+                      display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">
+            ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;">${a.namaLengkap || a.username}</div>
+            <div style="font-size:11px;color:var(--muted);">${a.jabatan || a.groupName}</div>
+          </div>
+        </div>`).join('');
+  } else {
+    viewEl.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:8px 0;">Belum ada anggota</p>';
+  }
+
+  // Edit section — hanya owner/admin
+  const editSec = document.getElementById("dd-edit-section");
+  if (userLevel <= 2) {
+    editSec.style.display = "block";
+    document.getElementById("dd-nama").value = d.nama;
+
+    document.getElementById("dd-owner").innerHTML =
+      '<option value="">— Pilih Owner —</option>' +
+      _anggotaAll.filter(a => a.group === "owner").map(a =>
+        `<option value="${a.username}" ${a.username===(d.owner||'')?'selected':''}>${a.namaLengkap||a.username}</option>`
+      ).join('');
+
+    const opts = '<option value="">— Pilih —</option>' +
+      _anggotaAll.map(a =>
+        `<option value="${a.username}">${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`
+      ).join('');
+    document.getElementById("dd-manager").innerHTML    = opts;
+    document.getElementById("dd-koordinator").innerHTML = opts;
+    document.getElementById("dd-manager").value    = d.manager    || "";
+    document.getElementById("dd-koordinator").value = d.koordinator || "";
+
+    const nonOwner = _anggotaAll.filter(a => a.group !== "owner");
+    document.getElementById("dd-anggota-edit").innerHTML = nonOwner.map(a => {
+      const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+      const isIn = arr.includes(d.nama);
+      return `
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" value="${a.username}" ${isIn?'checked':''} style="width:15px;height:15px;">
+          ${a.namaLengkap || a.username}
+          <span style="font-size:11px;color:var(--muted);">(${a.jabatan||a.groupName})</span>
+        </label>`;
+    }).join('');
+
+    // ── Tombol Hapus dipindah ke ATAS — tampil sebagai bar di bagian atas edit section
+    // Ini supaya tidak tersembunyi di bawah scroll yang panjang
+    const existingHapusBar = editSec.querySelector(".hapus-bar");
+    if (!existingHapusBar) {
+      const hapusBar = document.createElement("div");
+      hapusBar.className = "hapus-bar";
+      hapusBar.style.cssText = `
+        display:flex;justify-content:flex-end;
+        padding:0 0 12px;border-bottom:1px solid #f0f2f5;margin-bottom:14px;`;
+      hapusBar.innerHTML = `
+        <button onclick="deleteDetailDivisi()"
+          style="padding:9px 18px;border:none;border-radius:10px;
+                 background:#fce4ec;color:var(--danger);font-weight:700;
+                 font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+          🗑 Hapus Divisi Ini
+        </button>`;
+      // Sisipkan di awal edit section
+      editSec.insertBefore(hapusBar, editSec.firstChild);
+    }
+  } else {
+    editSec.style.display = "none";
+  }
+
+  document.getElementById("modal-detail-divisi").style.display = "flex";
 }
 
 async function assignDivisi(username, divisiNama) {
