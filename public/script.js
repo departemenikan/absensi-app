@@ -5612,44 +5612,44 @@ function _tsPickerFillDrum(idPrefix, h, m) {
     <div style="position:relative;">
       <!-- highlight baris aktif -->
       <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
-                  height:32px;background:rgba(245,124,0,.09);pointer-events:none;z-index:1;
+                  height:38px;background:rgba(245,124,0,.09);pointer-events:none;z-index:1;
                   border-top:1.5px solid rgba(245,124,0,.35);
                   border-bottom:1.5px solid rgba(245,124,0,.35);"></div>
-      <div style="display:flex;height:128px;overflow:hidden;">
+      <div style="display:flex;height:152px;overflow:hidden;">
         <!-- Kolom Jam -->
         <div id="${idPrefix}-col-h" class="ts-dr-col"
              style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;
                     border-right:1px solid #f0f2f5;"
              onscroll="_tsPickerScrollH('${idPrefix}',this)">
-          <div style="height:48px;"></div>
+          <div style="height:57px;"></div>
           ${Array.from({length:24},(_,n)=>`
             <div data-v="${n}"
-              style="height:32px;display:flex;align-items:center;justify-content:center;
-                     font-size:14px;font-weight:${n===h?"700":"400"};
+              style="height:38px;display:flex;align-items:center;justify-content:center;
+                     font-size:15px;font-weight:${n===h?"700":"400"};
                      scroll-snap-align:center;cursor:pointer;
                      color:${n===h?"#e65100":"var(--text)"};"
               class="ts-pk-h ${n===h?"ts-picker-selected":""}"
               onclick="_tsPickerClickH('${idPrefix}',${n})">
               ${String(n).padStart(2,"0")}
             </div>`).join("")}
-          <div style="height:48px;"></div>
+          <div style="height:57px;"></div>
         </div>
         <!-- Kolom Menit -->
         <div id="${idPrefix}-col-m" class="ts-dr-col"
              style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
              onscroll="_tsPickerScrollM('${idPrefix}',this)">
-          <div style="height:48px;"></div>
+          <div style="height:57px;"></div>
           ${Array.from({length:60},(_,n)=>`
             <div data-v="${n}"
-              style="height:32px;display:flex;align-items:center;justify-content:center;
-                     font-size:14px;font-weight:${n===m?"700":"400"};
+              style="height:38px;display:flex;align-items:center;justify-content:center;
+                     font-size:15px;font-weight:${n===m?"700":"400"};
                      scroll-snap-align:center;cursor:pointer;
                      color:${n===m?"#e65100":"var(--text)"};"
               class="ts-pk-m ${n===m?"ts-picker-selected":""}"
               onclick="_tsPickerClickM('${idPrefix}',${n})">
               ${String(n).padStart(2,"0")}
             </div>`).join("")}
-          <div style="height:48px;"></div>
+          <div style="height:57px;"></div>
         </div>
       </div>
     </div>`;
@@ -5729,11 +5729,11 @@ function _tsPickerToggle(prefix) {
       const colM = document.getElementById(`${prefix}-col-m`);
       if (colH) {
         const sel = colH.querySelector(".ts-picker-selected");
-        colH.scrollTop = sel ? parseInt(sel.dataset.v) * 32 : 0;
+        colH.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
       }
       if (colM) {
         const sel = colM.querySelector(".ts-picker-selected");
-        colM.scrollTop = sel ? parseInt(sel.dataset.v) * 32 : 0;
+        colM.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
       }
     }, 10);
   }
@@ -5868,8 +5868,8 @@ function _tsPickerGetVal(prefix) {
     const disp = document.getElementById(`${prefix}-display`);
     return disp ? disp.textContent.trim() : "";
   }
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 38)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 38)));
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 32)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 32)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
@@ -5890,16 +5890,33 @@ async function _tsLoadAktivitasKustom(selEl, currentVal) {
   if (currentVal) selEl.value = currentVal;
 }
 
+// Helper: ekstrak {h, m} dari ISO string atau HH:MM secara reliable
+function _extractHM(isoStr) {
+  if (!isoStr) return { h: 0, m: 0 };
+  // Format HH:MM plain
+  if (/^\d{1,2}:\d{2}$/.test(isoStr)) {
+    const p = isoStr.split(":");
+    return { h: parseInt(p[0]) || 0, m: parseInt(p[1]) || 0 };
+  }
+  // ISO string — pakai Date object, ambil jam lokal
+  const d = new Date(isoStr);
+  if (!isNaN(d)) return { h: d.getHours(), m: d.getMinutes() };
+  return { h: 0, m: 0 };
+}
+
 // ── Edit satu baris (masuk / break-start / break-end / keluar) ────────────────────
 function tsDrawerEditRow(sIdx, type, breakIdx) {
   const s = _drSesiList[sIdx];
   if (!s) return;
 
-  let jamVal = "";
-  if (type === "masuk")       jamVal = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "";
-  else if (type === "keluar") jamVal = s.jamKeluar ? fmtTime(s.jamKeluar) : "";
-  else if (type === "break-start" && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.start ? fmtTime(s.breaks[breakIdx].start) : "";
-  else if (type === "break-end"   && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.end   ? fmtTime(s.breaks[breakIdx].end)   : "";
+  // Ambil raw ISO string langsung — jangan lewat fmtTime (rentan locale)
+  let _rawIso = "";
+  if (type === "masuk")       _rawIso = s.jamMasuk || "";
+  else if (type === "keluar") _rawIso = s.jamKeluar || "";
+  else if (type === "break-start" && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.start || "";
+  else if (type === "break-end"   && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.end   || "";
+  const { h: _rh, m: _rm } = _extractHM(_rawIso);
+  const jamVal = _rawIso ? `${String(_rh).padStart(2,"0")}:${String(_rm).padStart(2,"0")}` : "";
 
   const typeLabel = {
     "masuk":       "Clock In",
@@ -5929,31 +5946,11 @@ function tsDrawerEditRow(sIdx, type, breakIdx) {
   if (collRow) collRow.style.background = "white";
   const clockIcon = document.getElementById("ts-er-clock-icon");
   if (clockIcon) clockIcon.setAttribute("stroke", "#bbb");
-  // Isi drum dengan nilai baru dan langsung tampilkan
+  // Tutup dropdown jika terbuka
   const drum = document.getElementById("ts-er-drum-wrap");
-  if (drum) {
-    drum.innerHTML = "";
-    _tsPickerFillDrum("ts-er", h, m);
-    // Posisikan dan buka langsung
-    const row = document.getElementById("ts-er-collapsed-row");
-    if (row) {
-      const rect = row.getBoundingClientRect();
-      drum.style.top   = (rect.bottom + 4) + "px";
-      drum.style.left  = rect.left + "px";
-      drum.style.width = rect.width + "px";
-    }
-    drum.style.display = "block";
-    if (collRow) { collRow.style.background = "#fff8f2"; collRow.style.borderColor = "#e65100"; }
-    if (clockIcon) clockIcon.setAttribute("stroke", "#e65100");
-    if (display) display.style.color = "#e65100";
-    // Scroll ke jam yang diedit
-    setTimeout(() => {
-      const colH = document.getElementById("ts-er-col-h");
-      const colM = document.getElementById("ts-er-col-m");
-      if (colH) colH.scrollTop = h * 32;
-      if (colM) colM.scrollTop = m * 32;
-    }, 30);
-  }
+  if (drum) { drum.style.display = "none"; drum.innerHTML = ""; }
+  // Isi drum dengan nilai baru (siap saat diklik)
+  _tsPickerFillDrum("ts-er", h, m);
 
   // Hidden value
   const hiddenJam = document.getElementById("ts-er-jam");
