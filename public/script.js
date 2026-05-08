@@ -5608,54 +5608,54 @@ function _tsPickerHTML(idPrefix, initJam, initMenit) {
   const h = initJam   !== undefined ? initJam   : new Date().getHours();
   const m = initMenit !== undefined ? initMenit : new Date().getMinutes();
   return `
-    <!-- Tampilan jam besar -->
-    <div style="padding:14px 16px 10px;border-bottom:1px solid #f0f2f5;
-                display:flex;align-items:center;gap:8px;">
+    <!-- Tampilan jam ringkas -->
+    <div style="padding:10px 14px 8px;border-bottom:1px solid #f0f2f5;
+                display:flex;align-items:center;gap:6px;">
       <span id="${idPrefix}-display"
-        style="font-size:36px;font-weight:800;color:#e65100;font-variant-numeric:tabular-nums;
-               letter-spacing:2px;flex:1;">
+        style="font-size:18px;font-weight:600;color:#e65100;font-variant-numeric:tabular-nums;
+               letter-spacing:1px;flex:1;">
         ${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}
       </span>
-      <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;
-                   padding:3px 8px;white-space:nowrap;">GMT+8</span>
+      <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:4px;
+                   padding:2px 6px;white-space:nowrap;">GMT+8</span>
     </div>
     <!-- Drum scroll -->
-    <div style="display:flex;height:160px;overflow:hidden;position:relative;">
+    <div style="display:flex;height:130px;overflow:hidden;position:relative;">
       <!-- Garis highlight tengah -->
       <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
-                  height:40px;background:rgba(245,124,0,.08);pointer-events:none;z-index:1;
-                  border-top:1.5px solid rgba(245,124,0,.3);border-bottom:1.5px solid rgba(245,124,0,.3);"></div>
+                  height:32px;background:rgba(245,124,0,.07);pointer-events:none;z-index:1;
+                  border-top:1px solid rgba(245,124,0,.25);border-bottom:1px solid rgba(245,124,0,.25);"></div>
       <!-- Kolom Jam -->
       <div id="${idPrefix}-col-h" class="ts-dr-col"
            style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;border-right:1px solid #f0f2f5;"
            onscroll="_tsPickerScrollH('${idPrefix}',this)">
-        <div style="height:60px;"></div>
+        <div style="height:49px;"></div>
         ${Array.from({length:24},(_,n)=>`
           <div data-v="${n}"
-            style="height:40px;display:flex;align-items:center;justify-content:center;
-                   font-size:20px;font-weight:700;scroll-snap-align:center;cursor:pointer;
-                   color:${n===h?"#e65100":"var(--text)"};font-weight:${n===h?"900":"700"};"
+            style="height:32px;display:flex;align-items:center;justify-content:center;
+                   font-size:14px;font-weight:${n===h?"700":"400"};scroll-snap-align:center;cursor:pointer;
+                   color:${n===h?"#e65100":"var(--text)"};"
             class="ts-pk-h ${n===h?"ts-picker-selected":""}"
             onclick="_tsPickerClickH('${idPrefix}',${n})">
             ${String(n).padStart(2,"0")}
           </div>`).join("")}
-        <div style="height:60px;"></div>
+        <div style="height:49px;"></div>
       </div>
       <!-- Kolom Menit -->
       <div id="${idPrefix}-col-m" class="ts-dr-col"
            style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
            onscroll="_tsPickerScrollM('${idPrefix}',this)">
-        <div style="height:60px;"></div>
+        <div style="height:49px;"></div>
         ${Array.from({length:60},(_,n)=>`
           <div data-v="${n}"
-            style="height:40px;display:flex;align-items:center;justify-content:center;
-                   font-size:20px;font-weight:700;scroll-snap-align:center;cursor:pointer;
-                   color:${n===m?"#e65100":"var(--text)"};font-weight:${n===m?"900":"700"};"
+            style="height:32px;display:flex;align-items:center;justify-content:center;
+                   font-size:14px;font-weight:${n===m?"700":"400"};scroll-snap-align:center;cursor:pointer;
+                   color:${n===m?"#e65100":"var(--text)"};"
             class="ts-pk-m ${n===m?"ts-picker-selected":""}"
             onclick="_tsPickerClickM('${idPrefix}',${n})">
             ${String(n).padStart(2,"0")}
           </div>`).join("")}
-        <div style="height:60px;"></div>
+        <div style="height:49px;"></div>
       </div>
     </div>`;
 }
@@ -5663,13 +5663,13 @@ function _tsPickerHTML(idPrefix, initJam, initMenit) {
 // Scroll ke posisi nilai tertentu
 function _tsPickerScrollTo(colEl, val) {
   if (!colEl) return;
-  // Tiap item tingginya 40px, spacer atas 60px
-  colEl.scrollTop = val * 40;
+  // Tiap item tingginya 32px, spacer atas 49px
+  colEl.scrollTop = val * 32;
 }
 
 // Ambil nilai jam aktif berdasarkan posisi scroll
 function _tsPickerGetValFromScroll(colEl) {
-  return Math.round(colEl.scrollTop / 40);
+  return Math.round(colEl.scrollTop / 32);
 }
 
 // Update display + hidden value
@@ -5689,11 +5689,13 @@ function _tsPickerUpdate(prefix) {
     const isActive = parseInt(el.dataset.v) === h;
     el.classList.toggle("ts-picker-selected", isActive);
     el.style.color = isActive ? "#e65100" : "var(--text)";
+    el.style.fontWeight = isActive ? "700" : "400";
   });
   colM.querySelectorAll(".ts-pk-m").forEach(el => {
     const isActive = parseInt(el.dataset.v) === m;
     el.classList.toggle("ts-picker-selected", isActive);
     el.style.color = isActive ? "#e65100" : "var(--text)";
+    el.style.fontWeight = isActive ? "700" : "400";
   });
 
   // Tulis ke hidden input / state
@@ -5713,27 +5715,27 @@ let _tsPickerScrollTimer = {};
 function _tsPickerScrollH(prefix, el) {
   clearTimeout(_tsPickerScrollTimer[prefix+"h"]);
   _tsPickerScrollTimer[prefix+"h"] = setTimeout(() => {
-    const v = Math.round(el.scrollTop / 40);
-    el.scrollTop = v * 40; // snap
+    const v = Math.round(el.scrollTop / 32);
+    el.scrollTop = v * 32; // snap
     _tsPickerUpdate(prefix);
   }, 60);
 }
 function _tsPickerScrollM(prefix, el) {
   clearTimeout(_tsPickerScrollTimer[prefix+"m"]);
   _tsPickerScrollTimer[prefix+"m"] = setTimeout(() => {
-    const v = Math.round(el.scrollTop / 40);
-    el.scrollTop = v * 40;
+    const v = Math.round(el.scrollTop / 32);
+    el.scrollTop = v * 32;
     _tsPickerUpdate(prefix);
   }, 60);
 }
 function _tsPickerClickH(prefix, val) {
   const col = document.getElementById(`${prefix}-col-h`);
-  if (col) { col.scrollTop = val * 40; }
+  if (col) { col.scrollTop = val * 32; }
   setTimeout(() => _tsPickerUpdate(prefix), 50);
 }
 function _tsPickerClickM(prefix, val) {
   const col = document.getElementById(`${prefix}-col-m`);
-  if (col) { col.scrollTop = val * 40; }
+  if (col) { col.scrollTop = val * 32; }
   setTimeout(() => _tsPickerUpdate(prefix), 50);
 }
 
@@ -5745,8 +5747,8 @@ function _tsPickerInit(prefix, jamStr) {
   requestAnimationFrame(() => {
     const colH = document.getElementById(`${prefix}-col-h`);
     const colM = document.getElementById(`${prefix}-col-m`);
-    if (colH) { colH.scrollTop = h * 40; }
-    if (colM) { colM.scrollTop = m * 40; }
+    if (colH) { colH.scrollTop = h * 32; }
+    if (colM) { colM.scrollTop = m * 32; }
     _tsPickerUpdate(prefix);
   });
 }
@@ -5756,8 +5758,8 @@ function _tsPickerGetVal(prefix) {
   const colH = document.getElementById(`${prefix}-col-h`);
   const colM = document.getElementById(`${prefix}-col-m`);
   if (!colH || !colM) return "";
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 40)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 40)));
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 32)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 32)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
@@ -6035,111 +6037,111 @@ function _renderTambahEntriForm() {
             <div style="display:flex;gap:0;">
               <!-- Picker mulai -->
               <div style="flex:1;border-right:1px solid #f0f2f5;">
-                <div style="padding:8px 12px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Mulai</div>
+                <div style="padding:8px 12px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Mulai</div>
                 <div style="padding:4px 12px 8px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #f0f2f5;">
-                  <span id="${prefix}-disp-a" style="font-size:24px;font-weight:800;color:#e65100;font-variant-numeric:tabular-nums;">
+                  <span id="${prefix}-disp-a" style="font-size:16px;font-weight:600;color:#e65100;font-variant-numeric:tabular-nums;">
                     ${String(eH).padStart(2,"0")}:${String(eM).padStart(2,"0")}
                   </span>
                 </div>
-                <div style="display:flex;height:140px;overflow:hidden;position:relative;">
-                  <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:36px;
-                              background:rgba(245,124,0,.07);border-top:1.5px solid rgba(245,124,0,.25);
-                              border-bottom:1.5px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
+                <div style="display:flex;height:120px;overflow:hidden;position:relative;">
+                  <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:30px;
+                              background:rgba(245,124,0,.07);border-top:1px solid rgba(245,124,0,.25);
+                              border-bottom:1px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
                   <div id="${prefix}-col-ah" class="ts-dr-col"
                     style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;border-right:1px solid #f5f5f5;"
                     onscroll="_tsPickerScrollH('${prefix}-a',this)">
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                     ${Array.from({length:24},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickH('${prefix}-a',${n})"
-                      style="height:36px;display:flex;align-items:center;justify-content:center;font-size:17px;
-                             font-weight:${n===eH?900:700};color:${n===eH?"#e65100":"var(--text)"};
+                      style="height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;
+                             font-weight:${n===eH?700:400};color:${n===eH?"#e65100":"var(--text)"};
                              scroll-snap-align:center;cursor:pointer;" class="ts-pk-h ${n===eH?"ts-picker-selected":""}">
                       ${String(n).padStart(2,"0")}</div>`).join("")}
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                   </div>
                   <div id="${prefix}-col-am" class="ts-dr-col"
                     style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
                     onscroll="_tsPickerScrollM('${prefix}-a',this)">
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                     ${Array.from({length:60},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickM('${prefix}-a',${n})"
-                      style="height:36px;display:flex;align-items:center;justify-content:center;font-size:17px;
-                             font-weight:${n===eM?900:700};color:${n===eM?"#e65100":"var(--text)"};
+                      style="height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;
+                             font-weight:${n===eM?700:400};color:${n===eM?"#e65100":"var(--text)"};
                              scroll-snap-align:center;cursor:pointer;" class="ts-pk-m ${n===eM?"ts-picker-selected":""}">
                       ${String(n).padStart(2,"0")}</div>`).join("")}
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                   </div>
                 </div>
               </div>
               <!-- Picker selesai -->
               <div style="flex:1;">
-                <div style="padding:8px 12px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Selesai</div>
+                <div style="padding:8px 12px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Selesai</div>
                 <div style="padding:4px 12px 8px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #f0f2f5;">
-                  <span id="${prefix}-disp-b" style="font-size:24px;font-weight:800;color:#e65100;font-variant-numeric:tabular-nums;">
+                  <span id="${prefix}-disp-b" style="font-size:16px;font-weight:600;color:#e65100;font-variant-numeric:tabular-nums;">
                     ${String(eSH).padStart(2,"0")}:${String(eSM).padStart(2,"0")}
                   </span>
                 </div>
-                <div style="display:flex;height:140px;overflow:hidden;position:relative;">
-                  <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:36px;
-                              background:rgba(245,124,0,.07);border-top:1.5px solid rgba(245,124,0,.25);
-                              border-bottom:1.5px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
+                <div style="display:flex;height:120px;overflow:hidden;position:relative;">
+                  <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:30px;
+                              background:rgba(245,124,0,.07);border-top:1px solid rgba(245,124,0,.25);
+                              border-bottom:1px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
                   <div id="${prefix}-col-bh" class="ts-dr-col"
                     style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;border-right:1px solid #f5f5f5;"
                     onscroll="_tsPickerScrollH('${prefix}-b',this)">
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                     ${Array.from({length:24},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickH('${prefix}-b',${n})"
-                      style="height:36px;display:flex;align-items:center;justify-content:center;font-size:17px;
-                             font-weight:${n===eSH?900:700};color:${n===eSH?"#e65100":"var(--text)"};
+                      style="height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;
+                             font-weight:${n===eSH?700:400};color:${n===eSH?"#e65100":"var(--text)"};
                              scroll-snap-align:center;cursor:pointer;" class="ts-pk-h ${n===eSH?"ts-picker-selected":""}">
                       ${String(n).padStart(2,"0")}</div>`).join("")}
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                   </div>
                   <div id="${prefix}-col-bm" class="ts-dr-col"
                     style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
                     onscroll="_tsPickerScrollM('${prefix}-b',this)">
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                     ${Array.from({length:60},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickM('${prefix}-b',${n})"
-                      style="height:36px;display:flex;align-items:center;justify-content:center;font-size:17px;
-                             font-weight:${n===eSM?900:700};color:${n===eSM?"#e65100":"var(--text)"};
+                      style="height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;
+                             font-weight:${n===eSM?700:400};color:${n===eSM?"#e65100":"var(--text)"};
                              scroll-snap-align:center;cursor:pointer;" class="ts-pk-m ${n===eSM?"ts-picker-selected":""}">
                       ${String(n).padStart(2,"0")}</div>`).join("")}
-                    <div style="height:52px;"></div>
+                    <div style="height:45px;"></div>
                   </div>
                 </div>
               </div>
             </div>
           ` : `
             <!-- Masuk / Keluar: satu picker penuh -->
-            <div style="padding:10px 14px 8px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f2f5;">
-              <span id="${prefix}-disp-a" style="font-size:32px;font-weight:800;color:#e65100;
+            <div style="padding:8px 14px 6px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f2f5;">
+              <span id="${prefix}-disp-a" style="font-size:18px;font-weight:600;color:#e65100;
                      font-variant-numeric:tabular-nums;flex:1;">
                 ${String(eH).padStart(2,"0")}:${String(eM).padStart(2,"0")}
               </span>
-              <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:3px 7px;">GMT+8</span>
+              <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:4px;padding:2px 6px;">GMT+8</span>
             </div>
-            <div style="display:flex;height:160px;overflow:hidden;position:relative;">
-              <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:40px;
-                          background:rgba(245,124,0,.07);border-top:1.5px solid rgba(245,124,0,.25);
-                          border-bottom:1.5px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
+            <div style="display:flex;height:130px;overflow:hidden;position:relative;">
+              <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:32px;
+                          background:rgba(245,124,0,.07);border-top:1px solid rgba(245,124,0,.25);
+                          border-bottom:1px solid rgba(245,124,0,.25);pointer-events:none;z-index:1;"></div>
               <div id="${prefix}-col-ah" class="ts-dr-col"
                 style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;border-right:1px solid #f0f2f5;"
                 onscroll="_tsPickerScrollH('${prefix}-a',this)">
-                <div style="height:60px;"></div>
+                <div style="height:49px;"></div>
                 ${Array.from({length:24},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickH('${prefix}-a',${n})"
-                  style="height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;
-                         font-weight:${n===eH?900:700};color:${n===eH?"#e65100":"var(--text)"};
+                  style="height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;
+                         font-weight:${n===eH?700:400};color:${n===eH?"#e65100":"var(--text)"};
                          scroll-snap-align:center;cursor:pointer;" class="ts-pk-h ${n===eH?"ts-picker-selected":""}">
                   ${String(n).padStart(2,"0")}</div>`).join("")}
-                <div style="height:60px;"></div>
+                <div style="height:49px;"></div>
               </div>
               <div id="${prefix}-col-am" class="ts-dr-col"
                 style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
                 onscroll="_tsPickerScrollM('${prefix}-a',this)">
-                <div style="height:60px;"></div>
+                <div style="height:49px;"></div>
                 ${Array.from({length:60},(_,n)=>`<div data-v="${n}" onclick="_tsPickerClickM('${prefix}-a',${n})"
-                  style="height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;
-                         font-weight:${n===eM?900:700};color:${n===eM?"#e65100":"var(--text)"};
+                  style="height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;
+                         font-weight:${n===eM?700:400};color:${n===eM?"#e65100":"var(--text)"};
                          scroll-snap-align:center;cursor:pointer;" class="ts-pk-m ${n===eM?"ts-picker-selected":""}">
                   ${String(n).padStart(2,"0")}</div>`).join("")}
-                <div style="height:60px;"></div>
+                <div style="height:49px;"></div>
               </div>
             </div>
           `}
@@ -6201,7 +6203,7 @@ function _renderTambahEntriForm() {
       const colAH = document.getElementById(`${prefix}-col-ah`);
       const colAM = document.getElementById(`${prefix}-col-am`);
       const isIstirahat = e.tab === "istirahat";
-      const itemH = isIstirahat ? 36 : 40;
+      const itemH = isIstirahat ? 30 : 32;
       if (colAH) colAH.scrollTop = h * itemH;
       if (colAM) colAM.scrollTop = m * itemH;
 
@@ -6210,8 +6212,8 @@ function _renderTambahEntriForm() {
         const sH = parseInt(partsS[0])||0, sM = parseInt(partsS[1])||0;
         const colBH = document.getElementById(`${prefix}-col-bh`);
         const colBM = document.getElementById(`${prefix}-col-bm`);
-        if (colBH) colBH.scrollTop = sH * 36;
-        if (colBM) colBM.scrollTop = sM * 36;
+        if (colBH) colBH.scrollTop = sH * 30;
+        if (colBM) colBM.scrollTop = sM * 30;
       }
 
       // Load aktivitas kustom
@@ -6248,7 +6250,7 @@ async function tsSimpanTambahEntri() {
   // Baca nilai jam dari picker untuk setiap entri
   _drEntries.forEach((e, i) => {
     const prefix = `tse-${i}`;
-    const itemH = e.tab === "istirahat" ? 36 : 40;
+    const itemH = e.tab === "istirahat" ? 30 : 32;
     const colAH = document.getElementById(`${prefix}-col-ah`);
     const colAM = document.getElementById(`${prefix}-col-am`);
     if (colAH && colAM) {
@@ -6260,8 +6262,8 @@ async function tsSimpanTambahEntri() {
       const colBH = document.getElementById(`${prefix}-col-bh`);
       const colBM = document.getElementById(`${prefix}-col-bm`);
       if (colBH && colBM) {
-        const h2 = Math.min(23, Math.max(0, Math.round(colBH.scrollTop / 36)));
-        const m2 = Math.min(59, Math.max(0, Math.round(colBM.scrollTop / 36)));
+        const h2 = Math.min(23, Math.max(0, Math.round(colBH.scrollTop / 30)));
+        const m2 = Math.min(59, Math.max(0, Math.round(colBM.scrollTop / 30)));
         e.jamSelesai = `${String(h2).padStart(2,"0")}:${String(m2).padStart(2,"0")}`;
       }
     }
