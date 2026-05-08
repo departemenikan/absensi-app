@@ -5883,8 +5883,8 @@ function _tsPickerGetVal(prefix) {
     const disp = document.getElementById(`${prefix}-display`);
     return disp ? disp.textContent.trim() : "";
   }
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 38)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 38)));
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 32)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 32)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
@@ -5905,16 +5905,30 @@ async function _tsLoadAktivitasKustom(selEl, currentVal) {
   if (currentVal) selEl.value = currentVal;
 }
 
+// Helper: ekstrak {h, m} dari ISO string atau HH:MM secara reliable (tidak bergantung locale)
+function _extractHM(isoStr) {
+  if (!isoStr) return { h: 0, m: 0 };
+  if (/^\d{1,2}:\d{2}$/.test(isoStr)) {
+    const p = isoStr.split(":");
+    return { h: parseInt(p[0]) || 0, m: parseInt(p[1]) || 0 };
+  }
+  const d = new Date(isoStr);
+  if (!isNaN(d)) return { h: d.getHours(), m: d.getMinutes() };
+  return { h: 0, m: 0 };
+}
+
 // ── Edit satu baris (masuk / break-start / break-end / keluar) ────────────────────
 function tsDrawerEditRow(sIdx, type, breakIdx) {
   const s = _drSesiList[sIdx];
   if (!s) return;
 
-  let jamVal = "";
-  if (type === "masuk")       jamVal = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "";
-  else if (type === "keluar") jamVal = s.jamKeluar ? fmtTime(s.jamKeluar) : "";
-  else if (type === "break-start" && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.start ? fmtTime(s.breaks[breakIdx].start) : "";
-  else if (type === "break-end"   && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.end   ? fmtTime(s.breaks[breakIdx].end)   : "";
+  let _rawIso = "";
+  if (type === "masuk")       _rawIso = s.jamMasuk || "";
+  else if (type === "keluar") _rawIso = s.jamKeluar || "";
+  else if (type === "break-start" && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.start || "";
+  else if (type === "break-end"   && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.end   || "";
+  const { h: _rh, m: _rm } = _extractHM(_rawIso);
+  const jamVal = _rawIso ? String(_rh).padStart(2,"0") + ":" + String(_rm).padStart(2,"0") : "";
 
   const typeLabel = {
     "masuk":       "Clock In",
