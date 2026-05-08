@@ -3425,9 +3425,11 @@ async function loadRules() {
                     position:sticky;left:0;background:${rowBg};
                     border-right:2px solid #e0e4f0;z-index:5;">
           ${avatar}
-          <div style="min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#2c3e50;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:88px;">${nama}</div>
+          <div style="min-width:0;position:relative;">
+            <div onclick="showNamaTooltip(this, '${nama.replace(/'/g,"&#39;")}')"
+                 style="font-size:12px;font-weight:700;color:#2c3e50;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                        max-width:88px;cursor:pointer;user-select:none;">${nama}</div>
             <span id="peran-badge-${u.username}" style="font-size:9px;font-weight:700;padding:1px 6px;
               border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
               display:inline-block;margin-top:2px;">${u.groupName||u.group}</span>
@@ -3673,6 +3675,72 @@ function updateRulesCardStyle(username) {
   // Tidak perlu aksi tambahan — onPeranToggle sudah update badge
   // Border label di-handle oleh CSS accent-color saja
 }
+
+// Tooltip nama lengkap untuk mobile spreadsheet layout
+(function() {
+  let _tooltip = null;
+  let _closeTimer = null;
+
+  window.showNamaTooltip = function(el, namaLengkap) {
+    // Hapus tooltip lama jika ada
+    if (_tooltip) { _tooltip.remove(); _tooltip = null; }
+    if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
+
+    const tip = document.createElement('div');
+    tip.textContent = namaLengkap;
+    tip.style.cssText = `
+      position:fixed;
+      background:#1a237e;
+      color:white;
+      font-size:12px;
+      font-weight:600;
+      padding:6px 12px;
+      border-radius:20px;
+      white-space:nowrap;
+      z-index:9999;
+      box-shadow:0 4px 16px rgba(0,0,0,.25);
+      pointer-events:none;
+      opacity:0;
+      transition:opacity .15s ease;
+    `;
+    document.body.appendChild(tip);
+    _tooltip = tip;
+
+    // Posisikan di atas elemen yang disentuh
+    const rect = el.getBoundingClientRect();
+    const tipW  = tip.offsetWidth || 160;
+    let left = rect.left + rect.width / 2 - tipW / 2;
+    // Jangan sampai keluar layar kanan/kiri
+    left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+    tip.style.left = left + 'px';
+    tip.style.top  = (rect.top - 36) + 'px';
+
+    // Fade in
+    requestAnimationFrame(() => { tip.style.opacity = '1'; });
+
+    // Auto-hilang setelah 2 detik
+    _closeTimer = setTimeout(() => {
+      if (_tooltip) {
+        _tooltip.style.opacity = '0';
+        setTimeout(() => { if (_tooltip) { _tooltip.remove(); _tooltip = null; } }, 150);
+      }
+    }, 2000);
+
+    // Tap di luar = tutup
+    const dismiss = (e) => {
+      if (e.target !== el) {
+        if (_tooltip) { _tooltip.style.opacity='0'; setTimeout(()=>{ if(_tooltip){_tooltip.remove();_tooltip=null;} },150); }
+        if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer=null; }
+        document.removeEventListener('touchstart', dismiss);
+        document.removeEventListener('mousedown', dismiss);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('touchstart', dismiss, { once: false, passive: true });
+      document.addEventListener('mousedown', dismiss, { once: false });
+    }, 100);
+  };
+})();
 
 async function saveRulesMess() {
   try {
