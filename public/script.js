@@ -5429,6 +5429,18 @@ async function _tsDrawerLoadDay(date) {
 }
 
 // ── Render daftar sesi (tampilan per-baris: Clock In, Istirahat, Clock Out) ──────────
+
+// Inject CSS hover untuk ts-row-actions
+(function() {
+  const st = document.createElement("style");
+  st.textContent = \`
+    .ts-dr-row:hover .ts-row-actions { opacity: 1 !important; }
+    .ts-dr-row { transition: background .1s; }
+    .ts-dr-row:hover { background: #fafafa; }
+  \`;
+  document.head.appendChild(st);
+})();
+
 function _tsDrawerRenderBody() {
   const body = document.getElementById("ts-dr-body");
   if (!body || !_drUser) return;
@@ -5438,13 +5450,20 @@ function _tsDrawerRenderBody() {
   const BLN    = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
   const tglStr = `${DOW[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`;
 
-  // Hitung total jam hari ini
+  // Hitung total jam hari ini — pakai hitungJamKerjaRec agar konsisten
   let totalMenit = 0;
   _drSesiList.forEach(s => {
     if (s.jamMasuk && s.jamKeluar) {
-      let diff = (new Date(s.jamKeluar) - new Date(s.jamMasuk)) / 60000;
+      const masuk  = new Date(s.jamMasuk).getTime();
+      const keluar = new Date(s.jamKeluar).getTime();
+      if (isNaN(masuk) || isNaN(keluar)) return;
+      let diff = (keluar - masuk) / 60000;
       (s.breaks || []).forEach(b => {
-        if (b.start && b.end) diff -= (new Date(b.end) - new Date(b.start)) / 60000;
+        if (b.start && b.end) {
+          const bs = new Date(b.start).getTime();
+          const be = new Date(b.end).getTime();
+          if (!isNaN(bs) && !isNaN(be)) diff -= (be - bs) / 60000;
+        }
       });
       totalMenit += Math.max(0, diff);
     }
@@ -5478,14 +5497,14 @@ function _tsDrawerRenderBody() {
       const multiSesi = _drSesiList.length > 1;
       const sesiLabel = multiSesi ? ` · Sesi ${s.sesi || sIdx+1}` : "";
 
-      // Baris edit/hapus helper
+      // Baris edit/hapus helper — icon hanya muncul saat hover
       const canEdit = _drUser.canEdit;
       const rowActions = (type, breakIdx) => {
         if (!canEdit) return "";
         const editArgs  = `${sIdx},'${type}',${breakIdx ?? -1}`;
         const hapusArgs = `${sIdx},'${type}',${breakIdx ?? -1}`;
         return `
-          <div style="display:flex;gap:4px;flex-shrink:0;">
+          <div class="ts-row-actions" style="display:flex;gap:4px;flex-shrink:0;opacity:0;transition:opacity .15s;">
             <button onclick="tsDrawerEditRow(${editArgs})"
               style="background:none;border:none;padding:4px 6px;cursor:pointer;font-size:16px;color:#888;border-radius:6px;"
               title="Edit">✏️</button>
@@ -5497,7 +5516,7 @@ function _tsDrawerRenderBody() {
 
       // ── Baris Clock In ──
       html += `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;
+        <div class="ts-dr-row" style="display:flex;align-items:center;gap:10px;padding:8px 16px;
                     border-bottom:1px solid #f5f5f5;">
           ${avatarHtml}
           <div style="flex:1;min-width:0;">
@@ -5523,7 +5542,7 @@ function _tsDrawerRenderBody() {
 
           // Baris Mulai Istirahat
           html += `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;
+            <div class="ts-dr-row" style="display:flex;align-items:center;gap:10px;padding:8px 16px;
                         border-bottom:1px solid #f5f5f5;background:#fffde7;">
               ${avatarHtml}
               <div style="flex:1;min-width:0;">
@@ -5539,7 +5558,7 @@ function _tsDrawerRenderBody() {
           // Baris Lanjut Kerja (break end)
           if (b.end) {
             html += `
-              <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;
+              <div class="ts-dr-row" style="display:flex;align-items:center;gap:10px;padding:8px 16px;
                           border-bottom:1px solid #f5f5f5;background:#f3fff3;">
                 ${avatarHtml}
                 <div style="flex:1;min-width:0;">
@@ -5557,7 +5576,7 @@ function _tsDrawerRenderBody() {
 
       // ── Baris Clock Out ──
       html += `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;
+        <div class="ts-dr-row" style="display:flex;align-items:center;gap:10px;padding:8px 16px;
                     border-bottom:1px solid #f5f5f5;${isAktif?"background:#fffde7;":""}">
           ${avatarHtml}
           <div style="flex:1;min-width:0;">
@@ -5868,8 +5887,8 @@ function _tsPickerGetVal(prefix) {
     const disp = document.getElementById(`${prefix}-display`);
     return disp ? disp.textContent.trim() : "";
   }
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 32)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 32)));
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 38)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 38)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
@@ -5890,33 +5909,16 @@ async function _tsLoadAktivitasKustom(selEl, currentVal) {
   if (currentVal) selEl.value = currentVal;
 }
 
-// Helper: ekstrak {h, m} dari ISO string atau HH:MM secara reliable
-function _extractHM(isoStr) {
-  if (!isoStr) return { h: 0, m: 0 };
-  // Format HH:MM plain
-  if (/^\d{1,2}:\d{2}$/.test(isoStr)) {
-    const p = isoStr.split(":");
-    return { h: parseInt(p[0]) || 0, m: parseInt(p[1]) || 0 };
-  }
-  // ISO string — pakai Date object, ambil jam lokal
-  const d = new Date(isoStr);
-  if (!isNaN(d)) return { h: d.getHours(), m: d.getMinutes() };
-  return { h: 0, m: 0 };
-}
-
 // ── Edit satu baris (masuk / break-start / break-end / keluar) ────────────────────
 function tsDrawerEditRow(sIdx, type, breakIdx) {
   const s = _drSesiList[sIdx];
   if (!s) return;
 
-  // Ambil raw ISO string langsung — jangan lewat fmtTime (rentan locale)
-  let _rawIso = "";
-  if (type === "masuk")       _rawIso = s.jamMasuk || "";
-  else if (type === "keluar") _rawIso = s.jamKeluar || "";
-  else if (type === "break-start" && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.start || "";
-  else if (type === "break-end"   && breakIdx >= 0) _rawIso = s.breaks?.[breakIdx]?.end   || "";
-  const { h: _rh, m: _rm } = _extractHM(_rawIso);
-  const jamVal = _rawIso ? `${String(_rh).padStart(2,"0")}:${String(_rm).padStart(2,"0")}` : "";
+  let jamVal = "";
+  if (type === "masuk")       jamVal = s.jamMasuk  ? fmtTime(s.jamMasuk)  : "";
+  else if (type === "keluar") jamVal = s.jamKeluar ? fmtTime(s.jamKeluar) : "";
+  else if (type === "break-start" && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.start ? fmtTime(s.breaks[breakIdx].start) : "";
+  else if (type === "break-end"   && breakIdx >= 0) jamVal = s.breaks?.[breakIdx]?.end   ? fmtTime(s.breaks[breakIdx].end)   : "";
 
   const typeLabel = {
     "masuk":       "Clock In",
