@@ -1867,7 +1867,12 @@ async function getLoc() {
 }
 
 function fmt(iso) {
-  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false});
+  if (!iso) return "--:--";
+  // HH:MM plain → langsung kembalikan
+  if (/^\d{2}:\d{2}$/.test(iso)) return iso;
+  const d = new Date(iso);
+  if (isNaN(d)) return "--:--";
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 // ============================================================
@@ -5010,8 +5015,14 @@ function fmtJamRealtime(jam) {
 
 function fmtTime(isoStr) {
   if (!isoStr) return "--:--";
-  // bisa berupa "HH:MM" atau ISO full
-  if (isoStr.includes("T")) return isoStr.slice(11, 16);
+  // HH:MM plain → langsung kembalikan
+  if (/^\d{2}:\d{2}$/.test(isoStr)) return isoStr;
+  // ISO string (dengan atau tanpa timezone) → parse lalu format lokal
+  if (isoStr.includes("T")) {
+    const d = new Date(isoStr);
+    if (isNaN(d)) return "--:--";
+    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
   return isoStr.slice(0, 5);
 }
 
@@ -5034,174 +5045,6 @@ function timeInputHtml({ id, value = "", onchange = "", extraStyle = "", placeho
 }
 
 // Auto-format: ketik 4 digit → otomatis jadi HH:MM
-// ── Time Picker Dropdown — smooth momentum scroll ─────────────
-/**
- * Render time picker: dua kolom scroll smooth (jam 00-23, menit 00-59)
- * Sistem: item HEIGHT = 44px, padding 88px atas/bawah agar item bisa ke tengah.
- * Highlight bar di tengah panel (posisi 50% - 22px).
- * Saat scroll berhenti → snap ke item terdekat, update value & highlight.
- */
-const ITEM_H = 44;
-
-function renderTimePicker(id, value, onChange) {
-  const curH = value && /^\d{1,2}:\d{2}$/.test(value) ? parseInt(value.split(":")[0]) : new Date().getHours();
-  const curM = value && /^\d{1,2}:\d{2}$/.test(value) ? parseInt(value.split(":")[1]) : 0;
-
-  const hours   = Array.from({length:24}, (_,i) => String(i).padStart(2,"0"));
-  const minutes = Array.from({length:60}, (_,i) => String(i).padStart(2,"0"));
-
-  const hItems = hours.map((h,i) =>
-    `<div class="tp-item${i===curH?" tp-sel":""}" data-val="${i}">${h}</div>`).join("");
-  const mItems = minutes.map((m,i) =>
-    `<div class="tp-item${i===curM?" tp-sel":""}" data-val="${i}">${m}</div>`).join("");
-
-  return `
-    <div class="tp-wrap" id="tp_${id}"
-         data-h="${curH}" data-m="${curM}"
-         data-cb="${onChange.replace(/"/g,"&quot;")}">
-      <div class="tp-display" onclick="tpToggle('${id}')">
-        <span id="tp_val_${id}"
-              style="font-size:28px;font-weight:800;color:#222;letter-spacing:2px;font-variant-numeric:tabular-nums;">
-          ${String(curH).padStart(2,"0")}:${String(curM).padStart(2,"0")}
-        </span>
-        <span style="font-size:10px;color:var(--muted);background:#f5f5f5;
-                     border-radius:5px;padding:2px 7px;margin-left:8px;">GMT+8</span>
-      </div>
-      <div class="tp-panel" id="tp_panel_${id}" style="display:none;">
-        <div class="tp-cols">
-          <div class="tp-highlight"></div>
-          <div class="tp-fade-top"></div>
-          <div class="tp-fade-bot"></div>
-          <div class="tp-col" id="tp_hcol_${id}"
-               onscroll="tpOnScroll(event,'${id}','h')">
-            <div class="tp-col-inner">${hItems}</div>
-          </div>
-          <div class="tp-col" id="tp_mcol_${id}"
-               onscroll="tpOnScroll(event,'${id}','m')">
-            <div class="tp-col-inner">${mItems}</div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-}
-
-// ── tpToggle: buka/tutup panel ──────────────────────────────
-function tpToggle(id) {
-  const panel = document.getElementById(`tp_panel_${id}`);
-  if (!panel) return;
-  const isOpen = panel.style.display !== "none";
-
-  // Tutup semua dulu
-  document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
-  if (isOpen) return;
-
-  panel.style.display = "block";
-
-  // Scroll kolom ke posisi item terpilih (instant, tanpa animasi agar tidak delay)
-  const wrap = document.getElementById(`tp_${id}`);
-  requestAnimationFrame(() => {
-    _tpScrollTo(id, "h", parseInt(wrap.dataset.h), false);
-    _tpScrollTo(id, "m", parseInt(wrap.dataset.m), false);
-  });
-}
-
-// ── Scroll kolom ke item idx ─────────────────────────────────
-function _tpScrollTo(id, col, idx, smooth = true) {
-  const colEl = document.getElementById(`tp_${col}col_${id}`);
-  if (!colEl) return;
-  const target = idx * ITEM_H;
-  if (smooth) {
-    colEl.scrollTo({ top: target, behavior: "smooth" });
-  } else {
-    colEl.scrollTop = target;
-  }
-}
-
-// ── Debounce per-kolom scroll end ────────────────────────────
-const _tpScrollTimer = {};
-
-function tpOnScroll(evt, id, col) {
-  const colEl = evt.currentTarget;
-  const key   = `${id}_${col}`;
-
-  // Clear timer sebelumnya
-  if (_tpScrollTimer[key]) clearTimeout(_tpScrollTimer[key]);
-
-  // Highlight item yang paling dekat ke tengah secara realtime
-  _tpHighlight(id, col, colEl.scrollTop);
-
-  // Setelah scroll berhenti → snap ke item terdekat
-  _tpScrollTimer[key] = setTimeout(() => {
-    const idx = Math.round(colEl.scrollTop / ITEM_H);
-    const clamped = Math.max(0, Math.min(col === "h" ? 23 : 59, idx));
-
-    // Snap smooth ke posisi tepat
-    colEl.scrollTo({ top: clamped * ITEM_H, behavior: "smooth" });
-
-    // Update nilai & highlight
-    const wrap = document.getElementById(`tp_${id}`);
-    if (!wrap) return;
-    if (col === "h") wrap.dataset.h = clamped;
-    else             wrap.dataset.m = clamped;
-
-    _tpHighlight(id, col, clamped * ITEM_H);
-    _tpUpdateDisplay(id);
-    _tpFireCb(id);
-  }, 120);  // 120ms setelah scroll berhenti
-}
-
-// ── Highlight item paling dekat ke tengah ────────────────────
-function _tpHighlight(id, col, scrollTop) {
-  const idx   = Math.round(scrollTop / ITEM_H);
-  const colEl = document.getElementById(`tp_${col}col_${id}`);
-  if (!colEl) return;
-  colEl.querySelectorAll(".tp-item").forEach((el, i) => {
-    el.classList.toggle("tp-sel", i === idx);
-  });
-}
-
-// ── Update teks tampilan HH:MM ────────────────────────────────
-function _tpUpdateDisplay(id) {
-  const wrap = document.getElementById(`tp_${id}`);
-  if (!wrap) return;
-  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
-  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
-  const valEl = document.getElementById(`tp_val_${id}`);
-  if (valEl) valEl.textContent = `${h}:${m}`;
-}
-
-// ── Panggil callback ──────────────────────────────────────────
-function _tpFireCb(id) {
-  const wrap = document.getElementById(`tp_${id}`);
-  if (!wrap) return;
-  const h = String(parseInt(wrap.dataset.h)).padStart(2,"0");
-  const m = String(parseInt(wrap.dataset.m)).padStart(2,"0");
-  const cb = wrap.dataset.cb;
-  if (cb) {
-    try { eval(cb.replace("{H}", h).replace("{M}", m)); }
-    catch(e) { console.warn("tpFireCb:", e); }
-  }
-}
-
-// ── tpSelect: masih dipakai sebagai fallback klik item ────────
-function tpSelect(id, col, val) {
-  const wrap = document.getElementById(`tp_${id}`);
-  if (!wrap) return;
-  if (col === "h") wrap.dataset.h = val;
-  else             wrap.dataset.m = val;
-  _tpScrollTo(id, col, val, true);
-  _tpHighlight(id, col, val * ITEM_H);
-  _tpUpdateDisplay(id);
-  _tpFireCb(id);
-}
-
-// ── Tutup semua picker jika klik di luar ─────────────────────
-document.addEventListener("click", e => {
-  if (!e.target.closest(".tp-wrap")) {
-    document.querySelectorAll(".tp-panel").forEach(p => p.style.display = "none");
-  }
-});
-
 function autoFormatTimeInput(el) {
   let v = el.value.replace(/[^0-9]/g, "").slice(0, 4);
   if (v.length >= 3) v = v.slice(0, 2) + ":" + v.slice(2);
@@ -5781,19 +5624,8 @@ function tsDrawerEditRow(sIdx, type, breakIdx) {
   _tsEditRowCtx = { sIdx, type, breakIdx };
   document.getElementById("ts-er-title").textContent = `Edit ${typeLabel}`;
   document.getElementById("ts-er-sub").textContent   = `${_drUser.nama || _drUser.username} · ${_drDate}`;
+  document.getElementById("ts-er-jam").value         = jamVal;
   document.getElementById("ts-er-date").value        = _drDate;
-
-  // Render time picker dropdown di wrap
-  const erWrap = document.getElementById("ts-er-jam-wrap");
-  if (erWrap) {
-    erWrap.innerHTML = renderTimePicker(
-      "er",
-      jamVal || new Date().toTimeString().slice(0,5),
-      `(function(h,m){ document.getElementById('ts-er-jam').value = h+':'+m; })('{H}','{M}')`
-    );
-  }
-  // Sync hidden input dengan nilai awal
-  document.getElementById("ts-er-jam").value = jamVal || new Date().toTimeString().slice(0,5);
 
   // Lokasi & aktivitas hanya untuk masuk/keluar
   const showMeta = (type === "masuk" || type === "keluar");
@@ -5857,6 +5689,11 @@ async function tsSimpanEditRow() {
       closeTsErForm();
       await _tsDrawerLoadDay(_drDate);
       await loadTimesheet();
+      // Sinkronisasi beranda jika tanggal yang diedit = hari ini
+      const today = todayLocalStr();
+      if (_drDate === today) {
+        await loadTodayDetail();
+      }
       startTsTicker();
     } else { showToast("❌ " + (d.msg || "Gagal"), "error"); }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
@@ -5912,6 +5749,7 @@ async function tsSimpanHapusRow() {
         closeTsHapusForm();
         await _tsDrawerLoadDay(_drDate);
         await loadTimesheet();
+        if (_drDate === todayLocalStr()) await loadTodayDetail();
       } else { showToast("❌ " + (d.message||"Gagal hapus"), "error"); }
     } catch { showToast("❌ Gagal hapus", "error"); }
     return;
@@ -5939,6 +5777,7 @@ async function tsSimpanHapusRow() {
         closeTsHapusForm();
         await _tsDrawerLoadDay(_drDate);
         await loadTimesheet();
+        if (_drDate === todayLocalStr()) await loadTodayDetail();
       } else { showToast("❌ " + (d.msg||"Gagal"), "error"); }
     } catch { showToast("❌ Gagal hapus", "error"); }
   }
@@ -5998,25 +5837,39 @@ function _renderTambahEntriForm() {
 
         <div style="padding:14px 14px 10px;display:flex;flex-direction:column;gap:8px;">
           ${isIstirahat ? `
-            <!-- Istirahat: dua time picker (mulai & selesai) -->
-            <div style="display:flex;gap:8px;align-items:flex-start;">
+            <!-- Istirahat: dua jam (mulai & selesai) -->
+            <div style="display:flex;gap:8px;align-items:center;">
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
-                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;">Mulai Istirahat</div>
-                ${renderTimePicker('tb'+i+'_bs', e.jam||nowTime,
-                  "(function(h,m){_drSetField("+i+",'jam',h+':'+m)})('{H}','{M}')")}
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Mulai Istirahat</div>
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                  value="${e.jam||""}" autocomplete="off"
+                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
+                  onblur="validateTimeInput(this)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
+                         color:#e65100;font-variant-numeric:tabular-nums;">
               </div>
-              <span style="color:var(--muted);font-weight:700;margin-top:36px;">→</span>
+              <span style="color:var(--muted);font-weight:700;">→</span>
               <div style="flex:1;border:1.5px solid #e8ecf0;border-radius:10px;padding:10px 12px;">
-                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;">Selesai Istirahat</div>
-                ${renderTimePicker('tb'+i+'_be', e.jamSelesai||nowTime,
-                  "(function(h,m){_drSetField("+i+",'jamSelesai',h+':'+m)})('{H}','{M}')")}
+                <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">Selesai Istirahat</div>
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                  value="${e.jamSelesai||""}" autocomplete="off"
+                  oninput="autoFormatTimeInput(this);_drSetField(${i},'jamSelesai',this.value)"
+                  onblur="validateTimeInput(this)"
+                  style="width:100%;border:none;outline:none;font-size:18px;font-weight:700;
+                         color:#2e7d32;font-variant-numeric:tabular-nums;">
               </div>
             </div>
           ` : `
-            <!-- Masuk / Keluar: satu time picker -->
-            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;">
-              ${renderTimePicker('tb'+i+'_main', e.jam||nowTime,
-                "(function(h,m){_drSetField("+i+",'jam',h+':'+m)})('{H}','{M}')")}
+            <!-- Masuk / Keluar: satu jam -->
+            <div style="border:1.5px solid #e8ecf0;border-radius:10px;padding:12px 14px;
+                        display:flex;align-items:center;gap:10px;">
+              <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                value="${e.jam || nowTime}" autocomplete="off"
+                oninput="autoFormatTimeInput(this);_drSetField(${i},'jam',this.value)"
+                onblur="validateTimeInput(this)"
+                style="flex:1;border:none;outline:none;font-size:22px;font-weight:800;color:#222;
+                       font-variant-numeric:tabular-nums;letter-spacing:1px;">
+              <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:5px;padding:2px 7px;">GMT+8</span>
             </div>
           `}
 
@@ -6138,6 +5991,11 @@ async function tsSimpanTambahEntri() {
       closeTsTambahForm();
       await _tsDrawerLoadDay(_drDate);
       await loadTimesheet();
+      // Sinkronisasi beranda jika tanggal = hari ini
+      const today = todayLocalStr();
+      if (_drDate === today) {
+        await loadTodayDetail();
+      }
       startTsTicker();
     } else { showToast("❌ " + (d.msg||"Gagal menyimpan"), "error"); }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
