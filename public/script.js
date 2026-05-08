@@ -3367,101 +3367,141 @@ async function loadRules() {
     return;
   }
 
-  // ── Deteksi mobile: lebar layar ≤ 600px pakai card layout ───────
+  // ── Deteksi mobile: lebar layar ≤ 600px pakai spreadsheet panel layout ──
   const isMobile = window.innerWidth <= 600;
 
   if (isMobile) {
-    // ── MOBILE: Card layout per karyawan ──────────────────────────
-    const cardsHTML = anggota.map(u => {
+    // ── MOBILE: Spreadsheet / frozen-pane layout seperti Timesheet ──────────
+    // Kolom kiri (nama) sticky, kolom kanan (checkbox) scroll horizontal
+    // Lebar kolom checkbox: masing-masing 64px
+    const COL_W = 64; // px per kolom checkbox
+
+    const headerRow = `
+      <div style="display:flex;background:#f8f9ff;border-bottom:2px solid #e0e4f0;
+                  position:sticky;top:0;z-index:10;">
+        <!-- Kolom nama — sticky kiri -->
+        <div style="width:140px;min-width:140px;flex-shrink:0;padding:9px 10px;
+                    font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;
+                    letter-spacing:.5px;position:sticky;left:0;background:#f8f9ff;
+                    border-right:2px solid #e0e4f0;z-index:11;">
+          ANGGOTA
+        </div>
+        <!-- Kolom-kolom checkbox — bisa di-scroll -->
+        <div style="display:flex;overflow:hidden;">
+          <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
+            <div style="font-size:8px;font-weight:800;color:#6a1b9a;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Owner</div>
+          </div>
+          <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
+            <div style="font-size:8px;font-weight:800;color:#1565c0;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Admin</div>
+          </div>
+          <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
+            <div style="font-size:8px;font-weight:800;color:#e65100;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🚗<br>Tgs.Luar</div>
+          </div>
+          <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;">
+            <div style="font-size:8px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🏠<br>Mess</div>
+          </div>
+        </div>
+      </div>`;
+
+    const dataRows = anggota.map((u, i) => {
       const isMess  = _rulesMessList.includes(u.username);
       const isTL    = _rulesTugasLuarList.includes(u.username);
       const isOwner = u.group === "owner";
       const isAdmin = u.group === "admin";
       const nama    = u.namaLengkap || u.username;
       const initials = nama.charAt(0).toUpperCase();
+      const rowBg = i % 2 === 0 ? "white" : "#fafbff";
       const avatar  = u.photo
-        ? `<img src="${u.photo}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-        : `<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+        ? `<img src="${u.photo}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
              display:flex;align-items:center;justify-content:center;color:white;
-             font-weight:800;font-size:16px;flex-shrink:0;">${initials}</div>`;
+             font-weight:800;font-size:13px;flex-shrink:0;">${initials}</div>`;
 
       return `
-      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:10px;
-                  box-shadow:0 2px 10px rgba(0,0,0,.07);border:1px solid #f0f2f5;">
-
-        <!-- Baris atas: avatar + nama + badge peran -->
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;border-bottom:1px solid #f0f2f5;background:${rowBg};">
+        <!-- Kolom nama — sticky kiri -->
+        <div style="width:140px;min-width:140px;flex-shrink:0;padding:10px 10px;
+                    display:flex;align-items:center;gap:8px;
+                    position:sticky;left:0;background:${rowBg};
+                    border-right:2px solid #e0e4f0;z-index:5;">
           ${avatar}
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:14px;font-weight:700;color:#2c3e50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nama}</div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
-              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 8px;
-                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
-              <span id="mess-label-${u.username}" style="font-size:10px;font-weight:600;
-                color:${isMess?"#e67e22":"var(--muted)"};">
-                ${isMess ? "🏠 Mess" : "🚗 Luar Mess"}
-              </span>
-            </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#2c3e50;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:88px;">${nama}</div>
+            <span id="peran-badge-${u.username}" style="font-size:9px;font-weight:700;padding:1px 6px;
+              border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
+              display:inline-block;margin-top:2px;">${u.groupName||u.group}</span>
           </div>
         </div>
-
-        <!-- Grid 3 kolom: checkbox controls -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-
-          <!-- Peran: Owner -->
-          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
-                        background:#f5f0ff;border-radius:10px;padding:10px 6px;cursor:pointer;
-                        border:1.5px solid ${isOwner?"#6a1b9a":"#e0d8f0"};">
-            <span style="font-size:9px;font-weight:800;color:#6a1b9a;text-transform:uppercase;
-                         letter-spacing:.5px;white-space:nowrap;">🎖️ Owner</span>
+        <!-- Kolom checkbox -->
+        <div style="display:flex;align-items:center;overflow:hidden;">
+          <!-- Owner -->
+          <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isOwner?"#f3eeff":"transparent"};">
             <input type="checkbox" id="owner-cb-${u.username}"
               ${isOwner ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'owner', this.checked); updateRulesCardStyle('${u.username}')"
-              style="width:20px;height:20px;accent-color:#6a1b9a;cursor:pointer;">
-          </label>
-
-          <!-- Peran: Admin -->
-          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
-                        background:#f0f4ff;border-radius:10px;padding:10px 6px;cursor:pointer;
-                        border:1.5px solid ${isAdmin?"#1565c0":"#d0dcf0"};">
-            <span style="font-size:9px;font-weight:800;color:#1565c0;text-transform:uppercase;
-                         letter-spacing:.5px;white-space:nowrap;">🎖️ Admin</span>
+              onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
+              style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
+          </div>
+          <!-- Admin -->
+          <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isAdmin?"#eef3ff":"transparent"};">
             <input type="checkbox" id="admin-cb-${u.username}"
               ${isAdmin ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'admin', this.checked); updateRulesCardStyle('${u.username}')"
-              style="width:20px;height:20px;accent-color:#1565c0;cursor:pointer;">
-          </label>
-
-          <!-- Status Kerja: Tugas Luar -->
-          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
-                        background:#fff4ee;border-radius:10px;padding:10px 6px;cursor:pointer;
-                        border:1.5px solid ${isTL?"#e65100":"#f0d0c0"};">
-            <span style="font-size:9px;font-weight:800;color:#e65100;text-transform:uppercase;
-                         letter-spacing:.5px;white-space:nowrap;">🚗 Tgs. Luar</span>
+              onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
+              style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
+          </div>
+          <!-- Tugas Luar -->
+          <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isTL?"#fff2ec":"transparent"};">
             <input type="checkbox" id="tl-cb-${u.username}"
               ${isTL ? "checked" : ""}
               onchange="onTugasLuarToggle('${u.username}', this.checked)"
-              style="width:20px;height:20px;accent-color:#e65100;cursor:pointer;">
-          </label>
-
+              style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
+          </div>
+          <!-- Mess -->
+          <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
+                      padding:10px 4px;background:${isMess?"#fffbf0":"transparent"};">
+            <input type="checkbox" id="mess-cb-${u.username}"
+              ${isMess ? "checked" : ""}
+              onchange="onMessToggle('${u.username}', this.checked)"
+              style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
+          </div>
         </div>
-
-        <!-- Baris bawah: Tempat Tinggal full-width -->
-        <label style="display:flex;align-items:center;justify-content:space-between;
-                      background:#fff8e1;border-radius:10px;padding:10px 14px;
-                      margin-top:8px;cursor:pointer;
-                      border:1.5px solid ${isMess?"#e67e22":"#f0e0a0"};">
-          <span style="font-size:12px;font-weight:700;color:#b45309;">🏠 Tinggal di Mess</span>
-          <input type="checkbox" id="mess-cb-${u.username}"
-            ${isMess ? "checked" : ""}
-            onchange="onMessToggle('${u.username}', this.checked)"
-            style="width:20px;height:20px;accent-color:#e67e22;cursor:pointer;">
-        </label>
-
       </div>`;
     }).join("");
 
-    el.innerHTML = cardsHTML;
+    // Wrapper: overflow-x scroll untuk area kolom kanan, nama tetap di kiri
+    el.innerHTML = `
+      <div style="border-radius:12px;overflow:hidden;border:1px solid #e0e4f0;
+                  background:white;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        ${headerRow}
+        ${dataRows}
+        <!-- Hint scroll jika konten melebihi layar -->
+        <div id="mess-label-hint" style="display:none;text-align:right;padding:4px 10px 6px;
+          font-size:10px;color:#b0b8c8;">← geser untuk kolom lain</div>
+      </div>`;
+
+    // Tampilkan hint scroll jika total lebar > container
+    requestAnimationFrame(() => {
+      const wrap = el.querySelector('div[style*="overflow-x:auto"]');
+      const hint = el.querySelector('#mess-label-hint');
+      if (wrap && hint && wrap.scrollWidth > wrap.clientWidth) {
+        hint.style.display = 'block';
+        wrap.addEventListener('scroll', () => { hint.style.display = 'none'; }, { once: true });
+      }
+    });
+
+    // Tambahkan id mess-label per user (dipakai onMessToggle)
+    anggota.forEach(u => {
+      // mess-label dipakai onMessToggle — inject sebagai hidden span jika belum ada
+      if (!document.getElementById(`mess-label-${u.username}`)) {
+        const span = document.createElement('span');
+        span.id = `mess-label-${u.username}`;
+        span.style.display = 'none';
+        el.appendChild(span);
+      }
+    });
 
   } else {
     // ── DESKTOP: Layout tabel dengan lebar kolom tetap ─────────────
@@ -3581,11 +3621,16 @@ function onMessToggle(username, checked) {
   } else {
     _rulesMessList = _rulesMessList.filter(u => u !== username);
   }
-  // Update label langsung via id
+  // Update label teks (desktop / card layout)
   const label = document.getElementById(`mess-label-${username}`);
   if (label) {
     label.style.color = checked ? "#e67e22" : "var(--muted)";
     label.textContent = checked ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess";
+  }
+  // Update warna sel di spreadsheet layout (mobile)
+  const cb = document.getElementById(`mess-cb-${username}`);
+  if (cb && cb.parentElement) {
+    cb.parentElement.style.background = checked ? "#fffbf0" : "transparent";
   }
 }
 
