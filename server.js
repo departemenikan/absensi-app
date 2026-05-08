@@ -1855,6 +1855,126 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
   res.send(result);
 });
 
+// ── Helper: hitung ulang overtime & tukar libur user di background (non-blocking) ──
+// Dipanggil otomatis setelah edit/hapus/tambah absen agar data selalu sinkron.
+// Tidak mengubah jamTerpakai, hariDiambil, carry-over, atau data cuti — hanya
+// update jamTL_reguler (overtime) dan jamAkumulasi (tukar libur).
+function hitungOvertimeBackground(username) {
+  try {
+    const tahun      = new Date().getFullYear();
+    const data       = load(F.data, []);
+    const kuota      = load(F.kuotaCuti, {});
+    const pengajuan  = load(F.pengajuanCuti, []);
+    const liburList  = load(F.libur, []);
+    const usersData  = load(F.users, {});
+    const agamaUser  = (usersData[username] || {}).agama || "";
+
+    const weekMap     = {};
+    let   jamTLLibur  = 0;
+    const tglAbsenSet = new Set(
+      data.filter(d => d.user === username && d.date).map(d => d.date)
+    );
+
+    // Grup per tanggal (multi-sesi), akumulasi jam
+    const dateMap = {};
+    data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
+      .forEach(d => {
+        if (!dateMap[d.date]) dateMap[d.date] = [];
+        dateMap[d.date].push(d);
+      });
+
+    Object.entries(dateMap).forEach(([dateStr, sesiList]) => {
+      const jamKerja  = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const infoLibur = cekHariLibur(dateStr, username);
+      const wk        = weekKey(dateStr);
+      if (!weekMap[wk]) weekMap[wk] = 0;
+      if (infoLibur) {
+        jamTLLibur += jamKerja;
+        weekMap[wk] += infoLibur.jamLibur;
+      } else {
+        weekMap[wk] += jamKerja;
+      }
+    });
+
+    // Hari libur tanpa absen → isi weekMap agar tidak defisit
+    liburList.forEach(l => {
+      const tgl      = l.date || l.dateStart;
+      const tglAkhir = l.dateEnd || tgl;
+      if (!tgl || !tgl.startsWith(String(tahun))) return;
+      let berlaku = false;
+      if (l.type === "nasional") berlaku = true;
+      else if (l.type === "agama") {
+        const ag = Array.isArray(l.agama) ? l.agama : [l.agama];
+        berlaku = ag.includes(agamaUser);
+      }
+      if (!berlaku) return;
+      let cur = new Date(tgl + "T12:00:00");
+      const end = new Date(tglAkhir + "T12:00:00");
+      while (cur <= end) {
+        const dateStr = cur.toLocaleDateString("sv-SE");
+        if (dateStr.startsWith(String(tahun))) {
+          const jamLibur = cutiHariKeJam(dateStr);
+          if (jamLibur > 0 && !tglAbsenSet.has(dateStr)) {
+            const wk = weekKey(dateStr);
+            if (!weekMap[wk]) weekMap[wk] = 0;
+            weekMap[wk] += jamLibur;
+          }
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
+    // Jam cuti tahunan disetujui → tambah ke weekMap
+    const cutiUser = pengajuan.filter(p =>
+      p.username === username && p.status === "disetujui" &&
+      p.kuotaKey === "tahunan" && p.tanggalMulai && p.tanggalMulai.startsWith(String(tahun))
+    );
+    cutiUser.forEach(p => {
+      let cur = new Date(p.tanggalMulai + "T12:00:00");
+      const end = new Date((p.tanggalAkhir || p.tanggalMulai) + "T12:00:00");
+      while (cur <= end) {
+        const dateStr = cur.toLocaleDateString("sv-SE");
+        const jamHari = cutiHariKeJam(dateStr);
+        if (jamHari > 0) {
+          const wk = weekKey(dateStr);
+          if (!weekMap[wk]) weekMap[wk] = 0;
+          weekMap[wk] += jamHari;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+
+    // Hitung total overtime (kelebihan 40 jam/minggu)
+    let totalOvertimeJam = 0;
+    Object.values(weekMap).forEach(jam => {
+      if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
+    });
+
+    const k        = initKuotaUser(kuota, username, tahun);
+    const tglHitung = new Date().toLocaleDateString("sv-SE");
+
+    // Update overtime — hanya timpa jamTL_reguler & riwayat otomatis
+    k.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
+    k.overtime.riwayat = (k.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
+    if (totalOvertimeJam > 0) {
+      k.overtime.riwayat.push({ tanggal: tglHitung, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan (auto)" });
+    }
+
+    // Update tukar libur — hanya timpa jamAkumulasi & riwayat otomatis
+    k.tukarLibur = k.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
+    k.tukarLibur.jamAkumulasi = parseFloat(jamTLLibur.toFixed(2));
+    k.tukarLibur.riwayat = (k.tukarLibur.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
+    if (jamTLLibur > 0) {
+      k.tukarLibur.riwayat.push({ tanggal: tglHitung, jam: parseFloat(jamTLLibur.toFixed(2)), sumber: "libur", keterangan: "Kerja di hari libur nasional/agama (auto)" });
+    }
+
+    save(F.kuotaCuti, kuota);
+    console.log(`[AUTO-OT] Overtime & tukar libur ${username} diperbarui otomatis`);
+  } catch (e) {
+    console.error(`[AUTO-OT] Gagal hitung otomatis untuk ${username}:`, e.message);
+  }
+}
+
 // POST: admin/manager create absen manual
 app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
   // Identitas requester diambil dari middleware (X-User header), bukan dari body
@@ -1915,6 +2035,8 @@ app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
     });
   }
   save(F.data, data);
+  // Hitung ulang overtime & tukar libur otomatis di background
+  setImmediate(() => hitungOvertimeBackground(targetUser));
   res.send({ status: "OK" });
 });
 
@@ -1972,6 +2094,8 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   if (req.body.aktivitas !== undefined) rec.aktivitas  = req.body.aktivitas;
   if (req.body.lokasiNama !== undefined) rec.lokasiNama = req.body.lokasiNama;
   save(F.data, data);
+  // Hitung ulang overtime & tukar libur otomatis di background
+  setImmediate(() => hitungOvertimeBackground(targetUser));
   res.send({ status: "OK", sesi: rec.sesi });
 });
 // GET: ambil semua sesi (parts) untuk user + tanggal tertentu
@@ -2010,6 +2134,8 @@ app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   }
   if (filtered.length === before) return res.status(404).json({ status: "NOT_FOUND", message: "Record tidak ditemukan" });
   save(F.data, filtered);
+  // Hitung ulang overtime & tukar libur otomatis di background
+  setImmediate(() => hitungOvertimeBackground(user));
   res.json({ status: "OK", deleted: before - filtered.length });
 });
 
