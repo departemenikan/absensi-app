@@ -2518,21 +2518,6 @@ async function openDetailAnggota(username) {
   if (userLevel <= 2) {
     editSec.style.display = "block";
 
-    // Dropdown Peran — hanya Owner dan Admin (level 1 & 2)
-    const selGroup = document.getElementById("da-select-group");
-    const peranGroups = _anggotaGroups.filter(g => g.id === "owner" || g.id === "admin");
-    selGroup.innerHTML = peranGroups.map(g =>
-      `<option value="${g.id}" ${g.id === m.group ? "selected" : ""}>${g.name}</option>`
-    ).join('');
-    // Tambahkan opsi Anggota (non-admin) jika group saat ini bukan owner/admin
-    if (m.group !== "owner" && m.group !== "admin") {
-      selGroup.innerHTML += `<option value="${m.group}" selected>${m.groupName} (Bukan Owner/Admin)</option>`;
-      // Untuk mengubah peran, tampilkan semua group
-      selGroup.innerHTML = _anggotaGroups.map(g =>
-        `<option value="${g.id}" ${g.id === m.group ? "selected" : ""}>${g.name}</option>`
-      ).join('');
-    }
-
     // Dropdown Divisi — multi-select dengan checkbox
     const selDiv = document.getElementById("da-select-divisi");
     const divisiArrM = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
@@ -2561,7 +2546,6 @@ function closeDetailAnggota() {
 async function saveDetailAnggota() {
   if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   if (!_detailUsername) return;
-  const groupId   = document.getElementById("da-select-group").value;
 
   // Ambil semua divisi yang dipilih (multi-select)
   const selDiv    = document.getElementById("da-select-divisi");
@@ -2570,16 +2554,10 @@ async function saveDetailAnggota() {
     .filter(v => v !== "");
 
   try {
-    await Promise.all([
-      authFetch(`/anggota/${_detailUsername}/group`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: groupId })
-      }),
-      authFetch(`/anggota/${_detailUsername}/divisi`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", divisiList })
-      }),
-    ]);
+    await authFetch(`/anggota/${_detailUsername}/divisi`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set", divisiList })
+    });
     showToast("✅ Data anggota berhasil diperbarui");
     closeDetailAnggota();
     loadAnggota();
@@ -3334,8 +3312,9 @@ function switchAksesTab(tab) {
 }
 
 // ─── RULES ───────────────────────────────────────────────────
-let _rulesMessList    = []; // cache server state
+let _rulesMessList      = []; // cache server state
 let _rulesTugasLuarList = []; // cache tugas luar state
+let _rulesAdminList     = []; // cache peran admin/owner state (username → groupId)
 
 async function loadRules() {
   const el = document.getElementById("rules-mess-list");
@@ -3352,6 +3331,13 @@ async function loadRules() {
     return;
   }
 
+  // Fetch groups untuk mendapatkan daftar group owner/admin
+  let allGroups = [];
+  try {
+    const rg = await authFetch("/groups");
+    allGroups = await rg.json();
+  } catch { allGroups = []; }
+
   // Fetch rules — opsional, gagal = default kosong
   try {
     const r   = await authFetch("/rules");
@@ -3366,6 +3352,16 @@ async function loadRules() {
     .filter(u => u.statusKerja === "Tugas Luar")
     .map(u => u.username);
 
+  // State peran admin saat ini: { username: groupId }
+  _rulesAdminList = {};
+  anggota.forEach(u => { _rulesAdminList[u.username] = u.group || ""; });
+
+  // Hanya tampilkan owner & admin — filter + urutkan owner dulu
+  const adminAnggota = anggota.filter(u => u.group === "owner" || u.group === "admin");
+
+  // Groups yg tersedia untuk checkbox (owner & admin saja)
+  const adminGroups = allGroups.filter(g => g.id === "owner" || g.id === "admin");
+
   if (!anggota.length) {
     el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada anggota</p>';
     return;
@@ -3375,6 +3371,8 @@ async function loadRules() {
     .map(u => {
       const isMess     = _rulesMessList.includes(u.username);
       const isTL       = _rulesTugasLuarList.includes(u.username);
+      const isOwner    = u.group === "owner";
+      const isAdmin    = u.group === "admin";
       const nama       = u.namaLengkap || u.username;
       const initials   = nama.charAt(0).toUpperCase();
       const avatar     = u.photo
@@ -3391,7 +3389,7 @@ async function loadRules() {
           <div>
             <div style="display:flex;align-items:center;gap:6px;">
               <span style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</span>
-              <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;color:white;
+              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;color:white;
                 background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
             </div>
             <div id="mess-label-${u.username}" style="font-size:11px;color:${isMess?"#e67e22":"var(--muted)"};">
@@ -3400,6 +3398,20 @@ async function loadRules() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:14px;">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+            <input type="checkbox" id="owner-cb-${u.username}"
+              ${isOwner ? "checked" : ""}
+              onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
+              style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
+            <span style="font-size:11px;color:var(--muted);">Owner</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+            <input type="checkbox" id="admin-cb-${u.username}"
+              ${isAdmin ? "checked" : ""}
+              onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
+              style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
+            <span style="font-size:11px;color:var(--muted);">Admin</span>
+          </label>
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
             <input type="checkbox" id="tl-cb-${u.username}"
               ${isTL ? "checked" : ""}
@@ -3441,9 +3453,35 @@ function onTugasLuarToggle(username, checked) {
   }
 }
 
+// Checkbox Owner/Admin — hanya satu yang aktif per anggota, yang lain otomatis uncheck
+function onPeranToggle(username, peran, checked) {
+  if (checked) {
+    // Set peran baru
+    _rulesAdminList[username] = peran;
+    // Uncheck checkbox peran lain untuk user ini
+    const other = peran === "owner" ? "admin" : "owner";
+    const otherCb = document.getElementById(`${other}-cb-${username}`);
+    if (otherCb) otherCb.checked = false;
+  } else {
+    // Unchecked → kembalikan ke group anggota biasa (akan ditentukan saat simpan)
+    _rulesAdminList[username] = "__remove__";
+  }
+  // Update badge peran tampilan
+  const badge = document.getElementById(`peran-badge-${username}`);
+  if (badge) {
+    if (checked) {
+      badge.textContent  = peran === "owner" ? "Owner" : "Admin";
+      badge.style.background = peran === "owner" ? "#6a1b9a" : "#1565c0";
+    } else {
+      badge.textContent  = "Anggota";
+      badge.style.background = "#7f8c8d";
+    }
+  }
+}
+
 async function saveRulesMess() {
   try {
-    // Simpan Mess list
+    // 1. Simpan Mess list
     const r = await authFetch("/rules/mess", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -3455,21 +3493,43 @@ async function saveRulesMess() {
       return;
     }
 
-    // Simpan status Tugas Luar untuk setiap anggota yang berubah
-    // Fetch daftar anggota untuk mengetahui state saat ini
+    // 2. Fetch state anggota terkini sebagai basis perbandingan
     const ra = await authFetch("/anggota");
     const anggota = await ra.json();
 
-    await Promise.all(anggota.map(u => {
+    // Cari group default anggota biasa (bukan owner/admin) — ambil group pertama yang bukan keduanya
+    let defaultGroup = "anggota";
+    const rg = await authFetch("/groups");
+    const allGroups = await rg.json();
+    const nonPriv = allGroups.find(g => g.id !== "owner" && g.id !== "admin");
+    if (nonPriv) defaultGroup = nonPriv.id;
+
+    // 3. Simpan status Tugas Luar yang berubah
+    const tlPromises = anggota.map(u => {
       const shouldBeTL  = _rulesTugasLuarList.includes(u.username);
       const currentlyTL = u.statusKerja === "Tugas Luar";
-      if (shouldBeTL === currentlyTL) return Promise.resolve(); // tidak perlu update
+      if (shouldBeTL === currentlyTL) return Promise.resolve();
       return authFetch(`/anggota/${u.username}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ statusKerja: shouldBeTL ? "Tugas Luar" : "" })
       });
-    }));
+    });
+
+    // 4. Simpan perubahan Peran (Owner/Admin) yang berubah
+    const peranPromises = anggota.map(u => {
+      const newGroup = _rulesAdminList[u.username];
+      if (!newGroup) return Promise.resolve(); // tidak ada perubahan
+      const targetGroup = newGroup === "__remove__" ? defaultGroup : newGroup;
+      if (targetGroup === u.group) return Promise.resolve(); // tidak ada perubahan
+      return authFetch(`/anggota/${u.username}/group`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: targetGroup })
+      });
+    });
+
+    await Promise.all([...tlPromises, ...peranPromises]);
 
     showToast("✅ Aturan absensi berhasil disimpan!");
     loadRules(); // refresh tampilan
