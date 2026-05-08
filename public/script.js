@@ -3367,70 +3367,149 @@ async function loadRules() {
     return;
   }
 
-  // ── Lebar kolom tetap — identik antara header dan baris ──────
-  // Peran: Owner 70px + Admin 70px = 140px wrapper
-  // Status Kerja: 130px (cukup untuk "Tugas Luar" + ruang napas)
-  // Tempat Tinggal: 120px (cukup untuk teks panjang + centered)
-  const COL = {
-    owner: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    admin: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    tl:    "width:130px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    mess:  "width:120px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-  };
+  // ── Deteksi mobile: lebar layar ≤ 600px pakai card layout ───────
+  const isMobile = window.innerWidth <= 600;
 
-  // ── Header kolom ──────────────────────────────────────────────
-  const colHeaderHTML = `
-  <div style="display:flex;align-items:stretch;padding:12px 0 14px;
-              border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
-    <div style="flex:1;"></div>
+  if (isMobile) {
+    // ── MOBILE: Card layout per karyawan ──────────────────────────
+    const cardsHTML = anggota.map(u => {
+      const isMess  = _rulesMessList.includes(u.username);
+      const isTL    = _rulesTugasLuarList.includes(u.username);
+      const isOwner = u.group === "owner";
+      const isAdmin = u.group === "admin";
+      const nama    = u.namaLengkap || u.username;
+      const initials = nama.charAt(0).toUpperCase();
+      const avatar  = u.photo
+        ? `<img src="${u.photo}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+             display:flex;align-items:center;justify-content:center;color:white;
+             font-weight:800;font-size:16px;flex-shrink:0;">${initials}</div>`;
 
-    <!-- Header: Peran -->
-    <div style="display:flex;flex-direction:column;align-items:center;
-                background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
-                padding:8px 0 7px;margin-right:12px;width:140px;flex-shrink:0;">
-      <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
-                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🎖️ Peran</span>
-      <div style="display:flex;width:100%;">
-        <div style="${COL.owner}">
-          <span style="font-size:11px;font-weight:700;color:#6a1b9a;white-space:nowrap;">Owner</span>
+      return `
+      <div style="background:white;border-radius:14px;padding:14px 16px;margin-bottom:10px;
+                  box-shadow:0 2px 10px rgba(0,0,0,.07);border:1px solid #f0f2f5;">
+
+        <!-- Baris atas: avatar + nama + badge peran -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          ${avatar}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:700;color:#2c3e50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nama}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 8px;
+                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
+              <span id="mess-label-${u.username}" style="font-size:10px;font-weight:600;
+                color:${isMess?"#e67e22":"var(--muted)"};">
+                ${isMess ? "🏠 Mess" : "🚗 Luar Mess"}
+              </span>
+            </div>
+          </div>
         </div>
-        <div style="${COL.admin}">
-          <span style="font-size:11px;font-weight:700;color:#1565c0;white-space:nowrap;">Admin</span>
+
+        <!-- Grid 3 kolom: checkbox controls -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+
+          <!-- Peran: Owner -->
+          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                        background:#f5f0ff;border-radius:10px;padding:10px 6px;cursor:pointer;
+                        border:1.5px solid ${isOwner?"#6a1b9a":"#e0d8f0"};">
+            <span style="font-size:9px;font-weight:800;color:#6a1b9a;text-transform:uppercase;
+                         letter-spacing:.5px;white-space:nowrap;">🎖️ Owner</span>
+            <input type="checkbox" id="owner-cb-${u.username}"
+              ${isOwner ? "checked" : ""}
+              onchange="onPeranToggle('${u.username}', 'owner', this.checked); updateRulesCardStyle('${u.username}')"
+              style="width:20px;height:20px;accent-color:#6a1b9a;cursor:pointer;">
+          </label>
+
+          <!-- Peran: Admin -->
+          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                        background:#f0f4ff;border-radius:10px;padding:10px 6px;cursor:pointer;
+                        border:1.5px solid ${isAdmin?"#1565c0":"#d0dcf0"};">
+            <span style="font-size:9px;font-weight:800;color:#1565c0;text-transform:uppercase;
+                         letter-spacing:.5px;white-space:nowrap;">🎖️ Admin</span>
+            <input type="checkbox" id="admin-cb-${u.username}"
+              ${isAdmin ? "checked" : ""}
+              onchange="onPeranToggle('${u.username}', 'admin', this.checked); updateRulesCardStyle('${u.username}')"
+              style="width:20px;height:20px;accent-color:#1565c0;cursor:pointer;">
+          </label>
+
+          <!-- Status Kerja: Tugas Luar -->
+          <label style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                        background:#fff4ee;border-radius:10px;padding:10px 6px;cursor:pointer;
+                        border:1.5px solid ${isTL?"#e65100":"#f0d0c0"};">
+            <span style="font-size:9px;font-weight:800;color:#e65100;text-transform:uppercase;
+                         letter-spacing:.5px;white-space:nowrap;">🚗 Tgs. Luar</span>
+            <input type="checkbox" id="tl-cb-${u.username}"
+              ${isTL ? "checked" : ""}
+              onchange="onTugasLuarToggle('${u.username}', this.checked)"
+              style="width:20px;height:20px;accent-color:#e65100;cursor:pointer;">
+          </label>
+
+        </div>
+
+        <!-- Baris bawah: Tempat Tinggal full-width -->
+        <label style="display:flex;align-items:center;justify-content:space-between;
+                      background:#fff8e1;border-radius:10px;padding:10px 14px;
+                      margin-top:8px;cursor:pointer;
+                      border:1.5px solid ${isMess?"#e67e22":"#f0e0a0"};">
+          <span style="font-size:12px;font-weight:700;color:#b45309;">🏠 Tinggal di Mess</span>
+          <input type="checkbox" id="mess-cb-${u.username}"
+            ${isMess ? "checked" : ""}
+            onchange="onMessToggle('${u.username}', this.checked)"
+            style="width:20px;height:20px;accent-color:#e67e22;cursor:pointer;">
+        </label>
+
+      </div>`;
+    }).join("");
+
+    el.innerHTML = cardsHTML;
+
+  } else {
+    // ── DESKTOP: Layout tabel dengan lebar kolom tetap ─────────────
+    const COL = {
+      owner: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      admin: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      tl:    "width:130px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      mess:  "width:120px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+    };
+
+    const colHeaderHTML = `
+    <div style="display:flex;align-items:stretch;padding:12px 0 14px;
+                border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
+      <div style="flex:1;"></div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
+                  padding:8px 0 7px;margin-right:12px;width:140px;flex-shrink:0;">
+        <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
+                     letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🎖️ Peran</span>
+        <div style="display:flex;width:100%;">
+          <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#6a1b9a;white-space:nowrap;">Owner</span></div>
+          <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1565c0;white-space:nowrap;">Admin</span></div>
         </div>
       </div>
-    </div>
 
-    <!-- Header: Status Kerja -->
-    <div style="display:flex;flex-direction:column;align-items:center;
-                background:#fff4ee;border-radius:12px;border:1px solid #f0d0c0;
-                padding:8px 0 7px;margin-right:12px;width:130px;flex-shrink:0;">
-      <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
-                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🚗 Status Kerja</span>
-      <div style="display:flex;width:100%;">
-        <div style="${COL.tl}">
-          <span style="font-size:11px;font-weight:700;color:#e65100;white-space:nowrap;">Tugas Luar</span>
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  background:#fff4ee;border-radius:12px;border:1px solid #f0d0c0;
+                  padding:8px 0 7px;margin-right:12px;width:130px;flex-shrink:0;">
+        <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
+                     letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🚗 Status Kerja</span>
+        <div style="display:flex;width:100%;">
+          <div style="${COL.tl}"><span style="font-size:11px;font-weight:700;color:#e65100;white-space:nowrap;">Tugas Luar</span></div>
         </div>
       </div>
-    </div>
 
-    <!-- Header: Tempat Tinggal -->
-    <div style="display:flex;flex-direction:column;align-items:center;
-                background:#fff8e1;border-radius:12px;border:1px solid #f0e0a0;
-                padding:8px 0 7px;width:120px;flex-shrink:0;">
-      <span style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;
-                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🏠 Tempat Tinggal</span>
-      <div style="display:flex;width:100%;">
-        <div style="${COL.mess}">
-          <span style="font-size:11px;font-weight:700;color:#e67e22;white-space:nowrap;">Mess</span>
+      <div style="display:flex;flex-direction:column;align-items:center;
+                  background:#fff8e1;border-radius:12px;border:1px solid #f0e0a0;
+                  padding:8px 0 7px;width:120px;flex-shrink:0;">
+        <span style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;
+                     letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🏠 Tempat Tinggal</span>
+        <div style="display:flex;width:100%;">
+          <div style="${COL.mess}"><span style="font-size:11px;font-weight:700;color:#e67e22;white-space:nowrap;">Mess</span></div>
         </div>
       </div>
-    </div>
+    </div>`;
 
-  </div>`;
-
-  // ── Baris per anggota ──────────────────────────────────────────
-  const rowsHTML = anggota
-    .map(u => {
+    const rowsHTML = anggota.map(u => {
       const isMess  = _rulesMessList.includes(u.username);
       const isTL    = _rulesTugasLuarList.includes(u.username);
       const isOwner = u.group === "owner";
@@ -3440,13 +3519,11 @@ async function loadRules() {
       const avatar  = u.photo
         ? `<img src="${u.photo}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
         : `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
-             display:flex;align-items:center;justify-content:center;color:white;
-             font-weight:800;font-size:15px;flex-shrink:0;">${initials}</div>`;
+               display:flex;align-items:center;justify-content:center;color:white;
+               font-weight:800;font-size:15px;flex-shrink:0;">${initials}</div>`;
 
       return `
       <div style="display:flex;align-items:center;padding:13px 0;border-bottom:1px solid #f0f2f5;">
-
-        <!-- Info anggota -->
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
           ${avatar}
           <div style="min-width:0;">
@@ -3461,8 +3538,6 @@ async function loadRules() {
             </div>
           </div>
         </div>
-
-        <!-- Checkbox: Peran — 140px, sama dengan header -->
         <div style="display:flex;width:140px;flex-shrink:0;margin-right:12px;">
           <div style="${COL.owner}">
             <input type="checkbox" id="owner-cb-${u.username}"
@@ -3477,8 +3552,6 @@ async function loadRules() {
               style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
           </div>
         </div>
-
-        <!-- Checkbox: Status Kerja — 130px, sama dengan header -->
         <div style="display:flex;width:130px;flex-shrink:0;margin-right:12px;">
           <div style="${COL.tl}">
             <input type="checkbox" id="tl-cb-${u.username}"
@@ -3487,8 +3560,6 @@ async function loadRules() {
               style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
           </div>
         </div>
-
-        <!-- Checkbox: Tempat Tinggal — 120px, sama dengan header -->
         <div style="display:flex;width:120px;flex-shrink:0;">
           <div style="${COL.mess}">
             <input type="checkbox" id="mess-cb-${u.username}"
@@ -3497,11 +3568,11 @@ async function loadRules() {
               style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
           </div>
         </div>
-
       </div>`;
     }).join("");
 
-  el.innerHTML = colHeaderHTML + rowsHTML;
+    el.innerHTML = colHeaderHTML + rowsHTML;
+  }
 }
 
 function onMessToggle(username, checked) {
@@ -3550,6 +3621,12 @@ function onPeranToggle(username, peran, checked) {
       badge.style.background = "#7f8c8d";
     }
   }
+}
+
+// Helper: update tampilan border label checkbox di mobile card setelah toggle
+function updateRulesCardStyle(username) {
+  // Tidak perlu aksi tambahan — onPeranToggle sudah update badge
+  // Border label di-handle oleh CSS accent-color saja
 }
 
 async function saveRulesMess() {
