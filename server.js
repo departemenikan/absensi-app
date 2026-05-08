@@ -785,49 +785,12 @@ app.get("/report/:user", requireSelfOrLevel("user", 2), (req, res) => {
 });
 
 app.get("/history/:user", requireSelfOrLevel("user", 2), (req, res) => {
-  const data    = load(F.data, []);
-  const allRecs = data.filter(d => d.user === req.params.user);
-
-  // Kelompokkan per tanggal, gabungkan multi-sesi jadi satu record per hari
-  const dateMap = new Map();
-  allRecs.forEach(r => {
-    if (!dateMap.has(r.date)) dateMap.set(r.date, []);
-    dateMap.get(r.date).push(r);
-  });
-
-  // Ambil 30 tanggal terakhir, urutkan desc
-  const dates = Array.from(dateMap.keys()).sort().slice(-30).reverse();
-
-  const records = dates.map(date => {
-    const recs = dateMap.get(date).sort((a, b) => {
-      const ta = a.jamMasuk ? new Date(a.jamMasuk).getTime() : 0;
-      const tb = b.jamMasuk ? new Date(b.jamMasuk).getTime() : 0;
-      return ta - tb;
-    });
-
-    // Sesi pertama menentukan jamMasuk
-    const firstRec = recs[0];
-    // Sesi terakhir menentukan jamKeluar (null jika masih aktif)
-    const lastRec  = recs[recs.length - 1];
-    // Sesi aktif (belum clock out)
-    const activeRec = recs.find(r => r.jamMasuk && !r.jamKeluar) || null;
-
-    // Gabungkan semua breaks dari semua sesi
-    const allBreaks = recs.flatMap(r => r.breaks || []);
-
-    return {
-      date,
-      sesi:       firstRec.sesi || 1,
-      jamMasuk:   firstRec.jamMasuk  || null,
-      jamKeluar:  activeRec ? null : (lastRec.jamKeluar || null),
-      breaks:     allBreaks,
-      catatan:    firstRec.catatan   || "",
-      aktivitas:  firstRec.aktivitas || "",
-      lokasiNama: firstRec.lokasiNama || "",
-      sesiCount:  recs.length,
-    };
-  });
-
+  const data = load(F.data, []);
+  const records = data
+    .filter(d => d.user === req.params.user)
+    .slice(-30)
+    .reverse()
+    .map(({ foto, lokasi, ...rest }) => rest);
   res.send(records);
 });
 
@@ -1728,18 +1691,42 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
     const u = users[username];
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
-    // Semua hari dalam bulan (flat) — hitung SEMUA sesi (multi-sesi)
+    // Semua hari dalam bulan (flat) — multi-sesi, termasuk sesi aktif (belum clock out)
     const days = allDates.map(dateStr => {
-      const recs = data.filter(d => d.user === username && d.date === dateStr);
+      const recs   = data.filter(d => d.user === username && d.date === dateStr);
+      const nowMs  = Date.now();
       let jamKerja = 0;
+
       recs.forEach(rec => {
-        if (rec && rec.jamMasuk && rec.jamKeluar) {
-          const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+        if (!rec.jamMasuk) return;
+        const masukMs = new Date(rec.jamMasuk).getTime();
+        if (isNaN(masukMs)) return;
+
+        // Sesi selesai (ada jamKeluar)
+        if (rec.jamKeluar) {
+          const keluarMs = new Date(rec.jamKeluar).getTime();
+          if (isNaN(keluarMs)) return;
+          const work = (keluarMs - masukMs) / 3600000;
           let bt = 0;
-          (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+          (rec.breaks || []).forEach(b => {
+            if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000;
+          });
+          jamKerja += Math.max(0, work - bt);
+        }
+        // Sesi aktif (belum clock out) — hitung sampai sekarang
+        else {
+          const work = (nowMs - masukMs) / 3600000;
+          let bt = 0;
+          (rec.breaks || []).forEach(b => {
+            const bStart = new Date(b.start).getTime();
+            if (isNaN(bStart)) return;
+            const bEnd = b.end ? new Date(b.end).getTime() : nowMs;
+            bt += (bEnd - bStart) / 3600000;
+          });
           jamKerja += Math.max(0, work - bt);
         }
       });
+
       const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
       const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
       const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
@@ -1789,15 +1776,26 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
   const users = load(F.users, {});
   const pengajuan = load(F.pengajuanCuti, []);
   const result = Object.keys(users).map(username => {
-    const recs = data.filter(d => d.user === username && d.date.startsWith(month) && d.jamKeluar);
+    // Termasuk sesi aktif (belum clock out) — filtered by month only
+    const recs = data.filter(d => d.user === username && d.date.startsWith(month) && d.jamMasuk);
     let totalJam = 0, overtime = 0;
+    const nowMs = Date.now();
 
-    // Kumpulkan jam absensi fisik per hari
+    // Kumpulkan jam absensi fisik per hari (multi-sesi + sesi aktif)
     const jamPerHari = {};
     recs.forEach(d => {
-      const work = (new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000;
-      let bt = 0; d.breaks.forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
-      const net = Math.max(0, work-bt);
+      const masukMs  = new Date(d.jamMasuk).getTime();
+      if (isNaN(masukMs)) return;
+      const keluarMs = d.jamKeluar ? new Date(d.jamKeluar).getTime() : nowMs;
+      const work = (keluarMs - masukMs) / 3600000;
+      let bt = 0;
+      d.breaks.forEach(b => {
+        const bs = new Date(b.start).getTime();
+        if (isNaN(bs)) return;
+        const be = b.end ? new Date(b.end).getTime() : (d.jamKeluar ? keluarMs : nowMs);
+        bt += (be - bs) / 3600000;
+      });
+      const net = Math.max(0, work - bt);
       jamPerHari[d.date] = (jamPerHari[d.date] || 0) + net;
       totalJam += net;
     });
@@ -1813,15 +1811,25 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
       if (jamCutiHari > 0) totalJam += jamCutiHari;
     }
 
-    // Hitung overtime berdasarkan total efektif per minggu
+    // Hitung overtime berdasarkan total efektif per minggu (termasuk sesi aktif)
     const weekMap = {};
-    // Jam absensi fisik per minggu
     recs.forEach(d => {
       const wk = weekKey(d.date);
       if (!weekMap[wk]) weekMap[wk] = 0;
-      const work = (new Date(d.jamKeluar)-new Date(d.jamMasuk))/3600000;
-      let bt = 0; d.breaks.forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
-      weekMap[wk] += Math.max(0, work-bt);
+      // Pakai jamPerHari yang sudah dihitung di atas (sudah benar termasuk aktif)
+      // Hindari double-count: tambahkan per-record menggunakan perhitungan ulang
+      const masukMs2  = new Date(d.jamMasuk).getTime();
+      if (isNaN(masukMs2)) return;
+      const keluarMs2 = d.jamKeluar ? new Date(d.jamKeluar).getTime() : nowMs;
+      const work2 = (keluarMs2 - masukMs2) / 3600000;
+      let bt2 = 0;
+      d.breaks.forEach(b => {
+        const bs = new Date(b.start).getTime();
+        if (isNaN(bs)) return;
+        const be = b.end ? new Date(b.end).getTime() : (d.jamKeluar ? keluarMs2 : nowMs);
+        bt2 += (be - bs) / 3600000;
+      });
+      weekMap[wk] += Math.max(0, work2 - bt2);
     });
     // Tambahkan jam cuti per minggu
     userPengajuan.forEach(p => {

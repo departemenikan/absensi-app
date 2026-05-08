@@ -1867,12 +1867,7 @@ async function getLoc() {
 }
 
 function fmt(iso) {
-  if (!iso) return "--:--";
-  // HH:MM plain → langsung kembalikan
-  if (/^\d{2}:\d{2}$/.test(iso)) return iso;
-  const d = new Date(iso);
-  if (isNaN(d)) return "--:--";
-  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false});
 }
 
 // ============================================================
@@ -1892,6 +1887,18 @@ function rFmtJam(jam) {
   const h = Math.floor(jam);
   const m = Math.round((jam - h) * 60);
   return m > 0 ? `${h}j${m}m` : `${h}j`;
+}
+
+// Auto-refresh rekap setiap 60 detik jika bulan sekarang sedang ditampilkan
+let _rekapRefreshTimer = null;
+function startRekapAutoRefresh() {
+  if (_rekapRefreshTimer) clearInterval(_rekapRefreshTimer);
+  _rekapRefreshTimer = setInterval(() => {
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    if (_rekapMonth === nowMonth && userLevel <= 2) {
+      loadRekap();
+    }
+  }, 60000); // refresh tiap 60 detik
 }
 
 async function loadRekap() {
@@ -1928,6 +1935,10 @@ async function loadRekap() {
     }
 
     rekapRender();
+    // Mulai auto-refresh jika bulan ini
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    if (_rekapMonth === nowMonth) startRekapAutoRefresh();
+    else if (_rekapRefreshTimer) { clearInterval(_rekapRefreshTimer); _rekapRefreshTimer = null; }
   } catch(e) {
     el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat rekap</p>`;
   }
@@ -5015,14 +5026,8 @@ function fmtJamRealtime(jam) {
 
 function fmtTime(isoStr) {
   if (!isoStr) return "--:--";
-  // HH:MM plain → langsung kembalikan
-  if (/^\d{2}:\d{2}$/.test(isoStr)) return isoStr;
-  // ISO string (dengan atau tanpa timezone) → parse lalu format lokal
-  if (isoStr.includes("T")) {
-    const d = new Date(isoStr);
-    if (isNaN(d)) return "--:--";
-    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
-  }
+  // bisa berupa "HH:MM" atau ISO full
+  if (isoStr.includes("T")) return isoStr.slice(11, 16);
   return isoStr.slice(0, 5);
 }
 
@@ -5689,11 +5694,6 @@ async function tsSimpanEditRow() {
       closeTsErForm();
       await _tsDrawerLoadDay(_drDate);
       await loadTimesheet();
-      // Sinkronisasi beranda jika tanggal yang diedit = hari ini
-      const today = todayLocalStr();
-      if (_drDate === today) {
-        await loadTodayDetail();
-      }
       startTsTicker();
     } else { showToast("❌ " + (d.msg || "Gagal"), "error"); }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
@@ -5749,7 +5749,6 @@ async function tsSimpanHapusRow() {
         closeTsHapusForm();
         await _tsDrawerLoadDay(_drDate);
         await loadTimesheet();
-        if (_drDate === todayLocalStr()) await loadTodayDetail();
       } else { showToast("❌ " + (d.message||"Gagal hapus"), "error"); }
     } catch { showToast("❌ Gagal hapus", "error"); }
     return;
@@ -5777,7 +5776,6 @@ async function tsSimpanHapusRow() {
         closeTsHapusForm();
         await _tsDrawerLoadDay(_drDate);
         await loadTimesheet();
-        if (_drDate === todayLocalStr()) await loadTodayDetail();
       } else { showToast("❌ " + (d.msg||"Gagal"), "error"); }
     } catch { showToast("❌ Gagal hapus", "error"); }
   }
@@ -5991,11 +5989,6 @@ async function tsSimpanTambahEntri() {
       closeTsTambahForm();
       await _tsDrawerLoadDay(_drDate);
       await loadTimesheet();
-      // Sinkronisasi beranda jika tanggal = hari ini
-      const today = todayLocalStr();
-      if (_drDate === today) {
-        await loadTodayDetail();
-      }
       startTsTicker();
     } else { showToast("❌ " + (d.msg||"Gagal menyimpan"), "error"); }
   } catch { showToast("❌ Gagal menyimpan", "error"); }
