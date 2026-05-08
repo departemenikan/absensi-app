@@ -1867,7 +1867,11 @@ async function getLoc() {
 }
 
 function fmt(iso) {
-  return new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false});
+  if (!iso) return "--:--";
+  if (/^\d{2}:\d{2}$/.test(iso)) return iso;
+  const d = new Date(iso);
+  if (isNaN(d)) return "--:--";
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 // ============================================================
@@ -5026,8 +5030,14 @@ function fmtJamRealtime(jam) {
 
 function fmtTime(isoStr) {
   if (!isoStr) return "--:--";
-  // bisa berupa "HH:MM" atau ISO full
-  if (isoStr.includes("T")) return isoStr.slice(11, 16);
+  // HH:MM plain → langsung kembalikan
+  if (/^\d{2}:\d{2}$/.test(isoStr)) return isoStr;
+  // ISO string → parse lalu format ke waktu lokal (handle UTC offset otomatis)
+  if (isoStr.includes("T")) {
+    const d = new Date(isoStr);
+    if (isNaN(d)) return "--:--";
+    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
   return isoStr.slice(0, 5);
 }
 
