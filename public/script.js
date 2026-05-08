@@ -5599,128 +5599,179 @@ function _tsDrawerRenderBody() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TIME PICKER — scroll drum jam & menit (24 jam, tanpa AM/PM)
+// TIME PICKER — dropdown overlay jam & menit (24 jam, tanpa AM/PM)
 // Dipakai di: ts-er (edit row) dan ts-tambah (tambah entri)
+// Default: collapsed (baris jam saja). Klik → dropdown overlay muncul.
 // ═══════════════════════════════════════════════════════════════
 
-// Buat HTML drum picker untuk diinsert ke container
-// Default: collapsed (hanya tampil baris jam). Klik baris jam → expand drum scroll.
+// Isi konten drum ke dalam elemen drum-wrap
+function _tsPickerFillDrum(idPrefix, h, m) {
+  const drum = document.getElementById(`${idPrefix}-drum-wrap`);
+  if (!drum) return;
+  drum.innerHTML = `
+    <div style="position:relative;">
+      <!-- highlight baris aktif -->
+      <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+                  height:38px;background:rgba(245,124,0,.09);pointer-events:none;z-index:1;
+                  border-top:1.5px solid rgba(245,124,0,.35);
+                  border-bottom:1.5px solid rgba(245,124,0,.35);"></div>
+      <div style="display:flex;height:152px;overflow:hidden;">
+        <!-- Kolom Jam -->
+        <div id="${idPrefix}-col-h" class="ts-dr-col"
+             style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;
+                    border-right:1px solid #f0f2f5;"
+             onscroll="_tsPickerScrollH('${idPrefix}',this)">
+          <div style="height:57px;"></div>
+          ${Array.from({length:24},(_,n)=>`
+            <div data-v="${n}"
+              style="height:38px;display:flex;align-items:center;justify-content:center;
+                     font-size:15px;font-weight:${n===h?"700":"400"};
+                     scroll-snap-align:center;cursor:pointer;
+                     color:${n===h?"#e65100":"var(--text)"};"
+              class="ts-pk-h ${n===h?"ts-picker-selected":""}"
+              onclick="_tsPickerClickH('${idPrefix}',${n})">
+              ${String(n).padStart(2,"0")}
+            </div>`).join("")}
+          <div style="height:57px;"></div>
+        </div>
+        <!-- Kolom Menit -->
+        <div id="${idPrefix}-col-m" class="ts-dr-col"
+             style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
+             onscroll="_tsPickerScrollM('${idPrefix}',this)">
+          <div style="height:57px;"></div>
+          ${Array.from({length:60},(_,n)=>`
+            <div data-v="${n}"
+              style="height:38px;display:flex;align-items:center;justify-content:center;
+                     font-size:15px;font-weight:${n===m?"700":"400"};
+                     scroll-snap-align:center;cursor:pointer;
+                     color:${n===m?"#e65100":"var(--text)"};"
+              class="ts-pk-m ${n===m?"ts-picker-selected":""}"
+              onclick="_tsPickerClickM('${idPrefix}',${n})">
+              ${String(n).padStart(2,"0")}
+            </div>`).join("")}
+          <div style="height:57px;"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Buat HTML collapsed row untuk picker (hanya row jam, tanpa drum)
+// Drum diisi terpisah oleh _tsPickerFillDrum
 function _tsPickerHTML(idPrefix, initJam, initMenit) {
+  // Tidak dipakai lagi untuk ts-er karena HTML-nya sudah ada di index.html
+  // Fungsi ini tetap ada untuk kompatibilitas dengan ts-tambah
   const h = initJam   !== undefined ? initJam   : new Date().getHours();
   const m = initMenit !== undefined ? initMenit : new Date().getMinutes();
   return `
-    <!-- Baris jam (collapsed state) — klik untuk expand -->
     <div id="${idPrefix}-collapsed-row"
          onclick="_tsPickerToggle('${idPrefix}')"
-         style="padding:12px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;
-                user-select:none;">
+         style="padding:12px 14px;display:flex;align-items:center;gap:8px;
+                cursor:pointer;user-select:none;background:white;">
       <span id="${idPrefix}-display"
-        style="font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;
-               letter-spacing:.5px;flex:1;">
+        style="font-size:15px;font-weight:600;color:var(--text);
+               font-variant-numeric:tabular-nums;flex:1;">
         ${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}
       </span>
       <span style="font-size:10px;color:var(--muted);background:#f5f5f5;border-radius:4px;
                    padding:2px 7px;white-space:nowrap;">GMT+8</span>
       <svg id="${idPrefix}-clock-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16"
            viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
+           stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
       </svg>
     </div>
-    <!-- Drum scroll — tersembunyi by default -->
     <div id="${idPrefix}-drum-wrap"
-         style="display:none;border-top:1px solid #f0f2f5;">
-      <!-- Garis highlight tengah -->
-      <div style="position:relative;">
-        <div style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
-                    height:40px;background:rgba(245,124,0,.08);pointer-events:none;z-index:1;
-                    border-top:1.5px solid rgba(245,124,0,.3);border-bottom:1.5px solid rgba(245,124,0,.3);"></div>
-        <div style="display:flex;height:160px;overflow:hidden;">
-          <!-- Kolom Jam -->
-          <div id="${idPrefix}-col-h" class="ts-dr-col"
-               style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;border-right:1px solid #f0f2f5;"
-               onscroll="_tsPickerScrollH('${idPrefix}',this)">
-            <div style="height:60px;"></div>
-            ${Array.from({length:24},(_,n)=>`
-              <div data-v="${n}"
-                style="height:40px;display:flex;align-items:center;justify-content:center;
-                       font-size:16px;font-weight:${n===h?"700":"400"};scroll-snap-align:center;cursor:pointer;
-                       color:${n===h?"#e65100":"var(--text)"};"
-                class="ts-pk-h ${n===h?"ts-picker-selected":""}"
-                onclick="_tsPickerClickH('${idPrefix}',${n})">
-                ${String(n).padStart(2,"0")}
-              </div>`).join("")}
-            <div style="height:60px;"></div>
-          </div>
-          <!-- Kolom Menit -->
-          <div id="${idPrefix}-col-m" class="ts-dr-col"
-               style="flex:1;overflow-y:auto;scroll-snap-type:y mandatory;"
-               onscroll="_tsPickerScrollM('${idPrefix}',this)">
-            <div style="height:60px;"></div>
-            ${Array.from({length:60},(_,n)=>`
-              <div data-v="${n}"
-                style="height:40px;display:flex;align-items:center;justify-content:center;
-                       font-size:16px;font-weight:${n===m?"700":"400"};scroll-snap-align:center;cursor:pointer;
-                       color:${n===m?"#e65100":"var(--text)"};"
-                class="ts-pk-m ${n===m?"ts-picker-selected":""}"
-                onclick="_tsPickerClickM('${idPrefix}',${n})">
-                ${String(n).padStart(2,"0")}
-              </div>`).join("")}
-            <div style="height:60px;"></div>
-          </div>
-        </div>
-      </div>
+         style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
+                background:white;border:1.5px solid #e65100;border-radius:12px;
+                overflow:hidden;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.12);">
     </div>`;
 }
 
-// Toggle expand/collapse drum picker
+// Toggle dropdown drum picker
 function _tsPickerToggle(prefix) {
   const drum    = document.getElementById(`${prefix}-drum-wrap`);
   const icon    = document.getElementById(`${prefix}-clock-icon`);
   const row     = document.getElementById(`${prefix}-collapsed-row`);
   const display = document.getElementById(`${prefix}-display`);
-  // Cari wrapper (parent dari collapsed-row)
-  const wrap = row ? row.closest('[id$="-picker-wrap"], [style*="border"]') || row.parentElement : null;
-  if (!drum) return;
+  if (!drum || !row) return;
+
   const isOpen = drum.style.display !== "none";
   if (isOpen) {
-    drum.style.display    = "none";
+    // Tutup
+    drum.style.display  = "none";
+    row.style.background = "white";
+    row.style.borderColor = "";
     if (icon)    icon.setAttribute("stroke", "#bbb");
-    if (row)     row.style.background = "";
-    if (display) display.style.color  = "var(--text)";
-    if (wrap)    wrap.style.borderColor = "#e8ecf0";
+    if (display) display.style.color = "var(--text)";
   } else {
-    drum.style.display    = "block";
+    // Isi drum jika belum ada konten
+    if (!drum.querySelector(".ts-dr-col")) {
+      const disp = document.getElementById(`${prefix}-display`);
+      const parts = (disp?.textContent || "00:00").trim().split(":");
+      _tsPickerFillDrum(prefix, parseInt(parts[0])||0, parseInt(parts[1])||0);
+    }
+
+    // Posisikan drum tepat di bawah collapsed-row (fixed)
+    const rect = row.getBoundingClientRect();
+    drum.style.top   = (rect.bottom + 4) + "px";
+    drum.style.left  = rect.left + "px";
+    drum.style.width = rect.width + "px";
+    drum.style.display = "block";
+
+    row.style.background  = "#fff8f2";
+    row.style.borderColor = "#e65100";
     if (icon)    icon.setAttribute("stroke", "#e65100");
-    if (row)     row.style.background = "#fff8f2";
-    if (display) display.style.color  = "#e65100";
-    if (wrap)    wrap.style.borderColor = "#e65100";
-    // Scroll ke posisi yang benar setelah visible
+    if (display) display.style.color = "#e65100";
+
+    // Scroll ke nilai yang benar setelah visible
     setTimeout(() => {
       const colH = document.getElementById(`${prefix}-col-h`);
       const colM = document.getElementById(`${prefix}-col-m`);
       if (colH) {
-        const selH = colH.querySelector(".ts-picker-selected");
-        colH.scrollTop = selH ? parseInt(selH.dataset.v) * 40 : 0;
+        const sel = colH.querySelector(".ts-picker-selected");
+        colH.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
       }
       if (colM) {
-        const selM = colM.querySelector(".ts-picker-selected");
-        colM.scrollTop = selM ? parseInt(selM.dataset.v) * 40 : 0;
+        const sel = colM.querySelector(".ts-picker-selected");
+        colM.scrollTop = sel ? parseInt(sel.dataset.v) * 38 : 0;
       }
     }, 10);
   }
 }
 
+// Tutup semua picker terbuka (klik di luar)
+function _tsPickerCloseAll() {
+  document.querySelectorAll('[id$="-drum-wrap"]').forEach(drum => {
+    if (drum.style.display !== "none") {
+      const prefix = drum.id.replace("-drum-wrap", "");
+      drum.style.display = "none";
+      const icon = document.getElementById(`${prefix}-clock-icon`);
+      if (icon) icon.setAttribute("stroke", "#bbb");
+      const row = document.getElementById(`${prefix}-collapsed-row`);
+      if (row) { row.style.background = "white"; row.style.borderColor = ""; }
+      const display = document.getElementById(`${prefix}-display`);
+      if (display) display.style.color = "var(--text)";
+    }
+  });
+}
+// Klik di luar picker → tutup
+document.addEventListener("click", function(e) {
+  if (!e.target.closest('[id$="-picker-wrap"]') &&
+      !e.target.closest('[id$="-collapsed-row"]') &&
+      !e.target.closest('[id$="-drum-wrap"]')) {
+    _tsPickerCloseAll();
+  }
+}, true);
+
 // Scroll ke posisi nilai tertentu
 function _tsPickerScrollTo(colEl, val) {
   if (!colEl) return;
-  // Tiap item tingginya 40px, spacer atas 60px
-  colEl.scrollTop = val * 40;
+  colEl.scrollTop = val * 38;
 }
 
 // Ambil nilai jam aktif berdasarkan posisi scroll
 function _tsPickerGetValFromScroll(colEl) {
-  return Math.round(colEl.scrollTop / 40);
+  return Math.round(colEl.scrollTop / 38);
 }
 
 // Update display + hidden value
@@ -5749,14 +5800,6 @@ function _tsPickerUpdate(prefix) {
     el.style.fontWeight = isActive ? "700" : "400";
   });
 
-  // Update warna display saat drum terbuka
-  const disp2 = document.getElementById(`${prefix}-display`);
-  const drum  = document.getElementById(`${prefix}-drum-wrap`);
-  if (disp2 && drum) {
-    const isOpen = drum.style.display !== "none";
-    disp2.style.color = isOpen ? "#e65100" : "var(--text)";
-  }
-
   // Tulis ke hidden input / state
   const hiddenInput = document.getElementById(`${prefix}-val`);
   if (hiddenInput) hiddenInput.value = str;
@@ -5774,51 +5817,59 @@ let _tsPickerScrollTimer = {};
 function _tsPickerScrollH(prefix, el) {
   clearTimeout(_tsPickerScrollTimer[prefix+"h"]);
   _tsPickerScrollTimer[prefix+"h"] = setTimeout(() => {
-    const v = Math.round(el.scrollTop / 40);
-    el.scrollTop = v * 40; // snap
+    const v = Math.round(el.scrollTop / 38);
+    el.scrollTop = v * 38;
     _tsPickerUpdate(prefix);
   }, 60);
 }
 function _tsPickerScrollM(prefix, el) {
   clearTimeout(_tsPickerScrollTimer[prefix+"m"]);
   _tsPickerScrollTimer[prefix+"m"] = setTimeout(() => {
-    const v = Math.round(el.scrollTop / 40);
-    el.scrollTop = v * 40;
+    const v = Math.round(el.scrollTop / 38);
+    el.scrollTop = v * 38;
     _tsPickerUpdate(prefix);
   }, 60);
 }
 function _tsPickerClickH(prefix, val) {
   const col = document.getElementById(`${prefix}-col-h`);
-  if (col) { col.scrollTop = val * 40; }
+  if (col) { col.scrollTop = val * 38; }
   setTimeout(() => _tsPickerUpdate(prefix), 50);
 }
 function _tsPickerClickM(prefix, val) {
   const col = document.getElementById(`${prefix}-col-m`);
-  if (col) { col.scrollTop = val * 40; }
+  if (col) { col.scrollTop = val * 38; }
   setTimeout(() => _tsPickerUpdate(prefix), 50);
 }
 
-// Inisialisasi picker: scroll ke nilai awal
+// Inisialisasi picker: set nilai awal di display dan scroll drum jika sudah ada
 function _tsPickerInit(prefix, jamStr) {
   const parts = (jamStr||"").split(":");
   const h = parseInt(parts[0]||"0")||0;
   const m = parseInt(parts[1]||"0")||0;
-  requestAnimationFrame(() => {
-    const colH = document.getElementById(`${prefix}-col-h`);
-    const colM = document.getElementById(`${prefix}-col-m`);
-    if (colH) { colH.scrollTop = h * 40; }
-    if (colM) { colM.scrollTop = m * 40; }
-    _tsPickerUpdate(prefix);
-  });
+
+  // Update display text
+  const disp = document.getElementById(`${prefix}-display`);
+  if (disp) disp.textContent = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+
+  // Update hidden jam
+  const hiddenJam = document.getElementById(`${prefix}-jam`) || document.getElementById("ts-er-jam");
+  if (hiddenJam) hiddenJam.value = jamStr || "00:00";
+
+  // Isi drum (lazy — akan otomatis terisi saat toggle, tapi isi sekarang supaya nilai benar)
+  _tsPickerFillDrum(prefix, h, m);
 }
 
 // Ambil nilai dari picker (string "HH:MM")
 function _tsPickerGetVal(prefix) {
   const colH = document.getElementById(`${prefix}-col-h`);
   const colM = document.getElementById(`${prefix}-col-m`);
-  if (!colH || !colM) return "";
-  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 40)));
-  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 40)));
+  if (!colH || !colM) {
+    // Fallback: ambil dari display
+    const disp = document.getElementById(`${prefix}-display`);
+    return disp ? disp.textContent.trim() : "";
+  }
+  const h = Math.min(23, Math.max(0, Math.round(colH.scrollTop / 38)));
+  const m = Math.min(59, Math.max(0, Math.round(colM.scrollTop / 38)));
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
@@ -5862,17 +5913,27 @@ function tsDrawerEditRow(sIdx, type, breakIdx) {
   document.getElementById("ts-er-sub").textContent   = `${_drUser.nama || _drUser.username} · ${_drDate}`;
   document.getElementById("ts-er-date").value        = _drDate;
 
-  // Rebuild picker di container-nya (karena bisa re-render)
-  const pickerWrap = document.getElementById("ts-er-picker-wrap");
-  if (pickerWrap) {
-    const parts = (jamVal||"00:00").split(":");
-    const h = parseInt(parts[0])||0, m = parseInt(parts[1])||0;
-    pickerWrap.innerHTML = _tsPickerHTML("ts-er", h, m);
-    setTimeout(() => _tsPickerInit("ts-er", jamVal||"00:00"), 30);
-  } else {
-    // Fallback: scroll existing picker
-    _tsPickerInit("ts-er", jamVal || new Date().toTimeString().slice(0,5));
+  // Set nilai display dan drum picker (tanpa inject HTML baru)
+  const jamStr = jamVal || "00:00";
+  const parts  = jamStr.split(":");
+  const h = parseInt(parts[0])||0, m = parseInt(parts[1])||0;
+
+  // Reset collapsed row
+  const display = document.getElementById("ts-er-display");
+  if (display) {
+    display.textContent = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    display.style.color = "var(--text)";
   }
+  // Reset border & state
+  const collRow = document.getElementById("ts-er-collapsed-row");
+  if (collRow) collRow.style.background = "white";
+  const clockIcon = document.getElementById("ts-er-clock-icon");
+  if (clockIcon) clockIcon.setAttribute("stroke", "#bbb");
+  // Tutup dropdown jika terbuka
+  const drum = document.getElementById("ts-er-drum-wrap");
+  if (drum) { drum.style.display = "none"; drum.innerHTML = ""; }
+  // Isi drum dengan nilai baru (siap saat diklik)
+  _tsPickerFillDrum("ts-er", h, m);
 
   // Hidden value
   const hiddenJam = document.getElementById("ts-er-jam");
