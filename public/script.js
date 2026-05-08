@@ -3367,51 +3367,62 @@ async function loadRules() {
     return;
   }
 
-  // ── Lebar kolom tetap — HARUS SAMA antara header dan setiap baris ──
+  // ── Lebar kolom tetap — identik antara header dan baris ──────
+  // Peran: Owner 70px + Admin 70px = 140px wrapper
+  // Status Kerja: 130px (cukup untuk "Tugas Luar" + ruang napas)
+  // Tempat Tinggal: 120px (cukup untuk teks panjang + centered)
   const COL = {
-    owner:  "width:56px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    admin:  "width:56px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    tl:     "width:104px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-    mess:   "width:72px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+    owner: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+    admin: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+    tl:    "width:130px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+    mess:  "width:120px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
   };
 
   // ── Header kolom ──────────────────────────────────────────────
   const colHeaderHTML = `
-  <div style="display:flex;align-items:stretch;padding:10px 0 12px;
-              border-bottom:2px solid #e8ecf4;margin-bottom:2px;">
+  <div style="display:flex;align-items:stretch;padding:12px 0 14px;
+              border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
     <div style="flex:1;"></div>
 
-    <!-- Header grup: Peran -->
+    <!-- Header: Peran -->
     <div style="display:flex;flex-direction:column;align-items:center;
-                background:#f0f0ff;border-radius:10px;border:1px solid #d0d0f0;
-                padding:7px 0 6px;margin-right:10px;width:112px;flex-shrink:0;">
+                background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
+                padding:8px 0 7px;margin-right:12px;width:140px;flex-shrink:0;">
       <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
-                   letter-spacing:.6px;margin-bottom:7px;white-space:nowrap;">🎖️ Peran</span>
+                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🎖️ Peran</span>
       <div style="display:flex;width:100%;">
-        <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#6a1b9a;white-space:nowrap;">Owner</span></div>
-        <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1565c0;white-space:nowrap;">Admin</span></div>
+        <div style="${COL.owner}">
+          <span style="font-size:11px;font-weight:700;color:#6a1b9a;white-space:nowrap;">Owner</span>
+        </div>
+        <div style="${COL.admin}">
+          <span style="font-size:11px;font-weight:700;color:#1565c0;white-space:nowrap;">Admin</span>
+        </div>
       </div>
     </div>
 
     <!-- Header: Status Kerja -->
     <div style="display:flex;flex-direction:column;align-items:center;
-                background:#fff4ee;border-radius:10px;border:1px solid #f0d0c0;
-                padding:7px 0 6px;margin-right:10px;width:104px;flex-shrink:0;">
+                background:#fff4ee;border-radius:12px;border:1px solid #f0d0c0;
+                padding:8px 0 7px;margin-right:12px;width:130px;flex-shrink:0;">
       <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
-                   letter-spacing:.6px;margin-bottom:7px;white-space:nowrap;">🚗 Status Kerja</span>
+                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🚗 Status Kerja</span>
       <div style="display:flex;width:100%;">
-        <div style="${COL.tl}"><span style="font-size:11px;font-weight:700;color:#e65100;white-space:nowrap;">Tugas Luar</span></div>
+        <div style="${COL.tl}">
+          <span style="font-size:11px;font-weight:700;color:#e65100;white-space:nowrap;">Tugas Luar</span>
+        </div>
       </div>
     </div>
 
     <!-- Header: Tempat Tinggal -->
     <div style="display:flex;flex-direction:column;align-items:center;
-                background:#fff8e1;border-radius:10px;border:1px solid #f0e0a0;
-                padding:7px 0 6px;width:72px;flex-shrink:0;">
+                background:#fff8e1;border-radius:12px;border:1px solid #f0e0a0;
+                padding:8px 0 7px;width:120px;flex-shrink:0;">
       <span style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;
-                   letter-spacing:.6px;margin-bottom:7px;white-space:nowrap;">🏠 Mess</span>
+                   letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🏠 Tempat Tinggal</span>
       <div style="display:flex;width:100%;">
-        <div style="${COL.mess}"><span style="font-size:11px;font-weight:700;color:#e67e22;white-space:nowrap;">Mess</span></div>
+        <div style="${COL.mess}">
+          <span style="font-size:11px;font-weight:700;color:#e67e22;white-space:nowrap;">Mess</span>
+        </div>
       </div>
     </div>
 
@@ -3434,6 +3445,7 @@ async function loadRules() {
 
       return `
       <div style="display:flex;align-items:center;padding:13px 0;border-bottom:1px solid #f0f2f5;">
+
         <!-- Info anggota -->
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
           ${avatar}
@@ -3450,8 +3462,8 @@ async function loadRules() {
           </div>
         </div>
 
-        <!-- Checkbox grup: Peran — lebar sama dengan header -->
-        <div style="display:flex;width:112px;flex-shrink:0;margin-right:10px;">
+        <!-- Checkbox: Peran — 140px, sama dengan header -->
+        <div style="display:flex;width:140px;flex-shrink:0;margin-right:12px;">
           <div style="${COL.owner}">
             <input type="checkbox" id="owner-cb-${u.username}"
               ${isOwner ? "checked" : ""}
@@ -3466,8 +3478,8 @@ async function loadRules() {
           </div>
         </div>
 
-        <!-- Checkbox: Status Kerja — lebar sama dengan header -->
-        <div style="display:flex;width:104px;flex-shrink:0;margin-right:10px;">
+        <!-- Checkbox: Status Kerja — 130px, sama dengan header -->
+        <div style="display:flex;width:130px;flex-shrink:0;margin-right:12px;">
           <div style="${COL.tl}">
             <input type="checkbox" id="tl-cb-${u.username}"
               ${isTL ? "checked" : ""}
@@ -3476,8 +3488,8 @@ async function loadRules() {
           </div>
         </div>
 
-        <!-- Checkbox: Tempat Tinggal — lebar sama dengan header -->
-        <div style="display:flex;width:72px;flex-shrink:0;">
+        <!-- Checkbox: Tempat Tinggal — 120px, sama dengan header -->
+        <div style="display:flex;width:120px;flex-shrink:0;">
           <div style="${COL.mess}">
             <input type="checkbox" id="mess-cb-${u.username}"
               ${isMess ? "checked" : ""}
