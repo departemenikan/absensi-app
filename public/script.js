@@ -3373,8 +3373,8 @@ async function loadRules() {
   if (isMobile) {
     // ── MOBILE: Spreadsheet / frozen-pane layout seperti Timesheet ──────────
     // Kolom kiri (nama) sticky, kolom kanan (checkbox) scroll horizontal
-    // Lebar kolom checkbox: masing-masing 64px
-    const COL_W = 64; // px per kolom checkbox
+    // Lebar kolom checkbox: masing-masing 52px
+    const COL_W = 52; // px per kolom checkbox
 
     const headerRow = `
       <div style="display:flex;background:#f8f9ff;border-bottom:2px solid #e0e4f0;
@@ -3441,7 +3441,7 @@ async function loadRules() {
             <input type="checkbox" id="owner-cb-${u.username}"
               ${isOwner ? "checked" : ""}
               onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
-              style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#6a1b9a;cursor:pointer;">
           </div>
           <!-- Admin -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
@@ -3449,7 +3449,7 @@ async function loadRules() {
             <input type="checkbox" id="admin-cb-${u.username}"
               ${isAdmin ? "checked" : ""}
               onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
-              style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#1565c0;cursor:pointer;">
           </div>
           <!-- Tugas Luar -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
@@ -3457,7 +3457,7 @@ async function loadRules() {
             <input type="checkbox" id="tl-cb-${u.username}"
               ${isTL ? "checked" : ""}
               onchange="onTugasLuarToggle('${u.username}', this.checked)"
-              style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#e65100;cursor:pointer;">
           </div>
           <!-- Mess -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
@@ -3465,7 +3465,7 @@ async function loadRules() {
             <input type="checkbox" id="mess-cb-${u.username}"
               ${isMess ? "checked" : ""}
               onchange="onMessToggle('${u.username}', this.checked)"
-              style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#e67e22;cursor:pointer;">
           </div>
         </div>
       </div>`;
