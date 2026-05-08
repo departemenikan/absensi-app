@@ -2518,9 +2518,6 @@ async function openDetailAnggota(username) {
   if (userLevel <= 2) {
     editSec.style.display = "block";
 
-    // Checkbox Tugas Luar
-    document.getElementById("da-chk-tugasluar").checked = m.statusKerja === "Tugas Luar";
-
     // Dropdown Peran — hanya Owner dan Admin (level 1 & 2)
     const selGroup = document.getElementById("da-select-group");
     const peranGroups = _anggotaGroups.filter(g => g.id === "owner" || g.id === "admin");
@@ -2561,17 +2558,10 @@ function closeDetailAnggota() {
   _detailUsername = null;
 }
 
-// Live preview badge Tugas Luar saat checkbox berubah
-function onToggleTugasLuar(cb) {
-  document.getElementById("da-status-badge").style.display = cb.checked ? "inline-block" : "none";
-}
-
 async function saveDetailAnggota() {
   if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   if (!_detailUsername) return;
   const groupId   = document.getElementById("da-select-group").value;
-  const tugasLuar = document.getElementById("da-chk-tugasluar").checked;
-  const statusKerja = tugasLuar ? "Tugas Luar" : "";
 
   // Ambil semua divisi yang dipilih (multi-select)
   const selDiv    = document.getElementById("da-select-divisi");
@@ -2588,10 +2578,6 @@ async function saveDetailAnggota() {
       authFetch(`/anggota/${_detailUsername}/divisi`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set", divisiList })
-      }),
-      authFetch(`/anggota/${_detailUsername}/status`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statusKerja })
       }),
     ]);
     showToast("✅ Data anggota berhasil diperbarui");
@@ -3348,7 +3334,8 @@ function switchAksesTab(tab) {
 }
 
 // ─── RULES ───────────────────────────────────────────────────
-let _rulesMessList = []; // cache server state
+let _rulesMessList    = []; // cache server state
+let _rulesTugasLuarList = []; // cache tugas luar state
 
 async function loadRules() {
   const el = document.getElementById("rules-mess-list");
@@ -3374,6 +3361,11 @@ async function loadRules() {
     _rulesMessList = [];
   }
 
+  // Fetch tugas luar dari data anggota masing-masing
+  _rulesTugasLuarList = anggota
+    .filter(u => u.statusKerja === "Tugas Luar")
+    .map(u => u.username);
+
   if (!anggota.length) {
     el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Belum ada anggota</p>';
     return;
@@ -3381,10 +3373,11 @@ async function loadRules() {
 
   el.innerHTML = anggota
     .map(u => {
-      const isMess   = _rulesMessList.includes(u.username);
-      const nama     = u.namaLengkap || u.username;
-      const initials = nama.charAt(0).toUpperCase();
-      const avatar   = u.photo
+      const isMess     = _rulesMessList.includes(u.username);
+      const isTL       = _rulesTugasLuarList.includes(u.username);
+      const nama       = u.namaLengkap || u.username;
+      const initials   = nama.charAt(0).toUpperCase();
+      const avatar     = u.photo
         ? `<img src="${u.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
         : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
              display:flex;align-items:center;justify-content:center;color:white;
@@ -3406,13 +3399,22 @@ async function loadRules() {
             </div>
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
-          <input type="checkbox" id="mess-cb-${u.username}"
-            ${isMess ? "checked" : ""}
-            onchange="onMessToggle('${u.username}', this.checked)"
-            style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
-          <span style="font-size:12px;color:var(--muted);">Mess</span>
-        </label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+            <input type="checkbox" id="tl-cb-${u.username}"
+              ${isTL ? "checked" : ""}
+              onchange="onTugasLuarToggle('${u.username}', this.checked)"
+              style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
+            <span style="font-size:11px;color:var(--muted);">Tugas Luar</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-direction:column;">
+            <input type="checkbox" id="mess-cb-${u.username}"
+              ${isMess ? "checked" : ""}
+              onchange="onMessToggle('${u.username}', this.checked)"
+              style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;">
+            <span style="font-size:12px;color:var(--muted);">Mess</span>
+          </label>
+        </div>
       </div>`;
     }).join("");
 }
@@ -3431,20 +3433,46 @@ function onMessToggle(username, checked) {
   }
 }
 
+function onTugasLuarToggle(username, checked) {
+  if (checked) {
+    if (!_rulesTugasLuarList.includes(username)) _rulesTugasLuarList.push(username);
+  } else {
+    _rulesTugasLuarList = _rulesTugasLuarList.filter(u => u !== username);
+  }
+}
+
 async function saveRulesMess() {
   try {
+    // Simpan Mess list
     const r = await authFetch("/rules/mess", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messList: _rulesMessList })
     });
     const d = await r.json();
-    if (d.status === "OK") {
-      showToast("✅ Aturan absensi berhasil disimpan!");
-      loadRules(); // refresh tampilan
-    } else {
+    if (d.status !== "OK") {
       showToast("❌ Gagal menyimpan", "error");
+      return;
     }
+
+    // Simpan status Tugas Luar untuk setiap anggota yang berubah
+    // Fetch daftar anggota untuk mengetahui state saat ini
+    const ra = await authFetch("/anggota");
+    const anggota = await ra.json();
+
+    await Promise.all(anggota.map(u => {
+      const shouldBeTL  = _rulesTugasLuarList.includes(u.username);
+      const currentlyTL = u.statusKerja === "Tugas Luar";
+      if (shouldBeTL === currentlyTL) return Promise.resolve(); // tidak perlu update
+      return authFetch(`/anggota/${u.username}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statusKerja: shouldBeTL ? "Tugas Luar" : "" })
+      });
+    }));
+
+    showToast("✅ Aturan absensi berhasil disimpan!");
+    loadRules(); // refresh tampilan
   } catch {
     showToast("❌ Gagal menyimpan", "error");
   }
