@@ -1698,18 +1698,36 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
       let jamKerja = 0;
       recs.forEach(rec => {
         if (!rec.jamMasuk) return;
-        const masukMs  = new Date(rec.jamMasuk).getTime();
-        if (isNaN(masukMs)) return;
-        const keluarMs = rec.jamKeluar ? new Date(rec.jamKeluar).getTime() : nowMs;
-        const work = (keluarMs - masukMs) / 3600000;
-        let bt = 0;
-        (rec.breaks || []).forEach(b => {
-          const bs = new Date(b.start).getTime();
-          if (isNaN(bs)) return;
-          const be = b.end ? new Date(b.end).getTime() : (rec.jamKeluar ? keluarMs : nowMs);
-          bt += Math.max(0, (be - bs) / 3600000);
-        });
-        jamKerja += Math.max(0, work - bt);
+        if (rec.jamKeluar) {
+          // Sudah clock out — pakai jamKerja tersimpan jika ada, fallback hitung raw
+          if (rec.jamKerja) {
+            jamKerja += rec.jamKerja;
+          } else {
+            const masukMs  = new Date(rec.jamMasuk).getTime();
+            if (isNaN(masukMs)) return;
+            const keluarMs = new Date(rec.jamKeluar).getTime();
+            const work = (keluarMs - masukMs) / 3600000;
+            let bt = 0;
+            (rec.breaks || []).forEach(b => {
+              const bs = new Date(b.start).getTime();
+              if (isNaN(bs)) return;
+              bt += Math.max(0, (b.end ? new Date(b.end).getTime() : keluarMs) - bs) / 3600000;
+            });
+            jamKerja += Math.max(0, work - bt);
+          }
+        } else {
+          // Masih aktif — hitung sampai sekarang (realtime untuk bulan berjalan)
+          const masukMs  = new Date(rec.jamMasuk).getTime();
+          if (isNaN(masukMs)) return;
+          const work = (nowMs - masukMs) / 3600000;
+          let bt = 0;
+          (rec.breaks || []).forEach(b => {
+            const bs = new Date(b.start).getTime();
+            if (isNaN(bs)) return;
+            bt += Math.max(0, (b.end ? new Date(b.end).getTime() : nowMs) - bs) / 3600000;
+          });
+          jamKerja += Math.max(0, work - bt);
+        }
       });
       const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
       const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
@@ -2005,8 +2023,10 @@ app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
 const JAM_WAJIB_MINGGU = 40;
 
 // Helper: hitung jam kerja bersih dari satu record absensi
+// Pakai rec.jamKerja tersimpan jika ada (disimpan saat clock out), fallback ke hitung raw
 function hitungJamKerja(rec) {
   if (!rec.jamMasuk || !rec.jamKeluar) return 0;
+  if (rec.jamKerja) return rec.jamKerja; // sudah tersimpan saat clock out
   const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
   let bt = 0;
   (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
