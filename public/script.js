@@ -8103,21 +8103,22 @@ function renderSaldoCuti(k, user) {
 
   const tahunanSisa  = k.tahunan.total - k.tahunan.terpakai;
   const tahunanPct   = k.tahunan.total > 0 ? Math.round((k.tahunan.terpakai / k.tahunan.total) * 100) : 0;
-  // Overtime (kelebihan jam mingguan)
+  // Overtime — satuan JAM (bukan hari)
   const saldoOTCard  = k.overtime._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
-  const otHariSetara = saldoOTCard.hari;
-  const otJamSisa    = saldoOTCard.sisaJam;
-  const otTotalMasuk = (k.overtime.jamTL_reguler || 0) + (k.overtime.jamCarryOver || 0);
-  const otTerpakai   = k.overtime.jamTerpakai || 0;
-  const otPct        = otTotalMasuk > 0 ? Math.min(100, Math.round((otTerpakai / otTotalMasuk) * 100)) : 0;
+  const otTotalJam   = parseFloat(((k.overtime.jamTL_reguler || 0) + (k.overtime.jamCarryOver || 0)).toFixed(2));
+  const otTerpakai   = parseFloat((k.overtime.jamTerpakai || 0).toFixed(2));
+  const otSisaJam    = parseFloat((saldoOTCard.totalJam || 0).toFixed(2));  // dari server, sudah akurat
+  const otPct        = otTotalJam > 0 ? Math.min(100, Math.round((otTerpakai / otTotalJam) * 100)) : 0;
 
-  // Tukar Libur (kerja di hari libur nasional/agama)
+  // Tukar Libur — satuan HARI (konversi 5 jam = 1 hari, dari server)
   const tl           = k.tukarLibur || {};
   const saldoTLCard  = tl._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
-  const tlHariSetara = saldoTLCard.hari;
-  const tlJamSisa    = saldoTLCard.sisaJam;
-  const tlTotalMasuk = (tl.jamAkumulasi || 0) + (tl.jamCarryOver || 0);
-  const tlTerpakai   = tl.jamTerpakai || 0;
+  const tlTotalMasuk = parseFloat(((tl.jamAkumulasi || 0) + (tl.jamCarryOver || 0)).toFixed(2));
+  const tlTotalHari  = Math.floor(tlTotalMasuk / 5);   // 5 jam = 1 hari
+  const tlDiambil    = tl.hariDiambil || 0;
+  const tlSisaHari   = saldoTLCard.hari;               // dari server, sudah akurat
+  const tlSisaJam    = saldoTLCard.sisaJam;            // sisa jam belum cukup 1 hari
+  const tlTerpakai   = parseFloat((tl.jamTerpakai || 0).toFixed(2));
   const tlPct        = tlTotalMasuk > 0 ? Math.min(100, Math.round((tlTerpakai / tlTotalMasuk) * 100)) : 0;
 
   el.innerHTML = `
@@ -8159,7 +8160,7 @@ function renderSaldoCuti(k, user) {
         <div style="font-size:11px;color:#388e3c;margin-top:5px;text-align:right;">${tahunanPct}% terpakai</div>
       </div>
 
-      <!-- Cuti Overtime (kelebihan jam mingguan) -->
+      <!-- Cuti Overtime — satuan JAM -->
       <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:14px;padding:16px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-weight:800;font-size:14px;color:#1565c0;">⏱️ Cuti Overtime</span>
@@ -8167,19 +8168,18 @@ function renderSaldoCuti(k, user) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:26px;font-weight:900;color:#1565c0;">${otHariSetara + (k.overtime.hariDiambil||0)}</div>
-            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Total</div>
+            <div style="font-size:22px;font-weight:900;color:#1565c0;">${otTotalJam.toFixed(1)}</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Total (jam)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:26px;font-weight:900;color:#e57373;">${k.overtime.hariDiambil||0}</div>
-            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+            <div style="font-size:22px;font-weight:900;color:#e57373;">${otTerpakai.toFixed(1)}</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Diambil (jam)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;box-shadow:0 2px 8px rgba(21,101,192,.15);">
-            <div style="font-size:26px;font-weight:900;color:#1565c0;">${otHariSetara}</div>
-            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa</div>
+            <div style="font-size:22px;font-weight:900;color:#1565c0;">${otSisaJam.toFixed(1)}</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa (jam)</div>
           </div>
         </div>
-        ${otJamSisa > 0 ? `<div style="font-size:11px;color:#1976d2;margin-bottom:8px;text-align:center;">+ ${otJamSisa} jam (belum cukup 1 hari)</div>` : ""}
         <div style="background:#bbdefb;border-radius:50px;height:8px;overflow:hidden;">
           <div style="height:100%;background:linear-gradient(90deg,#1565c0,#42a5f5);border-radius:50px;width:${otPct}%;transition:width .5s;"></div>
         </div>
@@ -8192,33 +8192,33 @@ function renderSaldoCuti(k, user) {
             const prefix = r.jam < 0 ? "" : "+";
             return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #e3f2fd;">
               <div><div style="font-weight:600;">${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
-              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)}j</div>
+              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)} jam</div>
             </div>`;
           }).join("")}
         </div>` : ""}
       </div>
 
-      <!-- Tukar Libur (kerja di hari libur nasional/agama) -->
+      <!-- Tukar Libur — satuan HARI (5 jam = 1 hari) -->
       <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-weight:800;font-size:14px;color:#e65100;">🔄 Tukar Libur</span>
-          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tukar hari libur Nasional dan Keagamaan</span>
+          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tidak hangus tahunan</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlHariSetara + (tl.hariDiambil||0)}</div>
-            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Total</div>
+            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlTotalHari}</div>
+            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Total (hari)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:26px;font-weight:900;color:#e57373;">${tl.hariDiambil||0}</div>
-            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+            <div style="font-size:26px;font-weight:900;color:#e57373;">${tlDiambil}</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Diambil (hari)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;box-shadow:0 2px 8px rgba(230,81,0,.15);">
-            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlHariSetara}</div>
-            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Sisa</div>
+            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlSisaHari}</div>
+            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Sisa (hari)</div>
           </div>
         </div>
-        ${tlJamSisa > 0 ? `<div style="font-size:11px;color:#f57f17;margin-bottom:8px;text-align:center;">+ ${tlJamSisa} jam (belum cukup 1 hari)</div>` : ""}
+        ${tlSisaJam > 0 ? `<div style="font-size:11px;color:#f57f17;margin-bottom:8px;text-align:center;">+ ${tlSisaJam} jam (belum cukup 1 hari, terakumulasi)</div>` : ""}
         <div style="background:#ffe0b2;border-radius:50px;height:8px;overflow:hidden;">
           <div style="height:100%;background:linear-gradient(90deg,#e65100,#ffa726);border-radius:50px;width:${tlPct}%;transition:width .5s;"></div>
         </div>
@@ -8232,7 +8232,7 @@ function renderSaldoCuti(k, user) {
             const prefix = r.jam < 0 ? "" : "+";
             return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #fff3e0;">
               <div><div style="font-weight:600;">${icon} ${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
-              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)}j</div>
+              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)} jam</div>
             </div>`;
           }).join("")}
         </div>` : ""}
@@ -8376,7 +8376,7 @@ function onTcKebijakanChange() {
     document.getElementById("tc-wrap-jam").style.display        = "";
     // Tampilkan saldo dalam JAM saja (bukan hari)
     if (_kuotaSaya) {
-      const jam = (_kuotaSaya.tukarLibur?._saldo || {}).totalJam || 0;
+      const jam = (_kuotaSaya.overtime?._saldo || {}).totalJam || 0;
       infoEl.innerHTML = `⏱ Saldo tersedia: <b>${jam.toFixed(1)} jam</b> akumulasi overtime`;
       infoEl.style.display = "";
     }
