@@ -9734,6 +9734,10 @@ async function wpPopulateUserSelect() {
 async function loadWorkPhotoList(silent = false) {
   const el = document.getElementById("wp-user-list");
   if (!el) return;
+  // Reset state aktif saat list di-refresh
+  wpActiveUser = null;
+  const wrap = document.getElementById("wp-grid-wrap");
+  if (wrap) wrap.style.display = "none";
   if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>';
   try {
     const r = await authFetch("/work-photos/today");
@@ -9748,10 +9752,10 @@ async function loadWorkPhotoList(silent = false) {
         ? new Date(u.lastPhoto).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
         : "--:--";
       return `
-        <div onclick="wpSelectUser('${u.username}')"
+        <div id="wp-row-${u.username}" onclick="wpSelectUser('${u.username}')"
           style="display:flex;align-items:center;gap:12px;padding:10px 12px;
-                 border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .15s;"
-          onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='white'">
+                 border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .15s;border-radius:10px;"
+          onmouseover="this.style.background='#f9f9f9'" onmouseout="this.id===('wp-row-'+wpActiveUser)?this.style.background='#f3e5f5':this.style.background='white'">
           <div style="width:38px;height:38px;border-radius:50%;background:#8e44ad;color:white;
                       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">
             ${(u.namaLengkap || u.username).charAt(0).toUpperCase()}
@@ -9767,6 +9771,7 @@ async function loadWorkPhotoList(silent = false) {
             </div>
             <div style="font-size:11px;color:var(--muted);margin-top:3px;">terakhir ${lastFmt}</div>
           </div>
+          <div id="wp-chevron-${u.username}" style="font-size:16px;color:#ccc;margin-left:4px;transition:transform .2s;">›</div>
         </div>`;
     }).join("");
     await wpPopulateUserSelect();
@@ -9775,7 +9780,38 @@ async function loadWorkPhotoList(silent = false) {
   }
 }
 
+let wpActiveUser = null; // track username yang sedang terbuka
+
 function wpSelectUser(username) {
+  const wrap = document.getElementById("wp-grid-wrap");
+
+  // Jika klik user yang sama dan grid sedang tampil → tutup (toggle off)
+  if (wpActiveUser === username && wrap && wrap.style.display !== "none") {
+    wrap.style.display = "none";
+    // Reset highlight & chevron
+    const prevRow  = document.getElementById(`wp-row-${username}`);
+    const prevChev = document.getElementById(`wp-chevron-${username}`);
+    if (prevRow)  { prevRow.style.background = "white"; prevRow.onmouseout = function(){ this.style.background="white"; }; }
+    if (prevChev) { prevChev.style.transform = "rotate(0deg)"; prevChev.style.color = "#ccc"; }
+    wpActiveUser = null;
+    return;
+  }
+
+  // Tutup highlight user sebelumnya jika ada
+  if (wpActiveUser && wpActiveUser !== username) {
+    const oldRow  = document.getElementById(`wp-row-${wpActiveUser}`);
+    const oldChev = document.getElementById(`wp-chevron-${wpActiveUser}`);
+    if (oldRow)  { oldRow.style.background = "white"; oldRow.onmouseout = function(){ this.style.background="white"; }; }
+    if (oldChev) { oldChev.style.transform = "rotate(0deg)"; oldChev.style.color = "#ccc"; }
+  }
+
+  // Set highlight & chevron user baru
+  const newRow  = document.getElementById(`wp-row-${username}`);
+  const newChev = document.getElementById(`wp-chevron-${username}`);
+  if (newRow)  { newRow.style.background = "#f3e5f5"; newRow.onmouseout = function(){}; }
+  if (newChev) { newChev.style.transform = "rotate(90deg)"; newChev.style.color = "#8e44ad"; }
+
+  wpActiveUser = username;
   const sel = document.getElementById("wp-pilih-user");
   if (sel) sel.value = username;
   loadWorkPhotos();
