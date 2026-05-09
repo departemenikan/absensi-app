@@ -198,10 +198,10 @@
     .group-level{font-size:11px;color:rgba(255,255,255,.75);margin-top:1px;}
     .group-body{background:#f8f9ff;padding:0;display:none;}
     .group-body.open{display:flex;flex-direction:column;max-height:420px;overflow:hidden;}
-    .group-body.open > div[id$="-list"]{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
-    .group-body.open > div[id$="-list"]::-webkit-scrollbar{width:3px;}
-    .group-body.open > div[id$="-list"]::-webkit-scrollbar-track{background:transparent;}
-    .group-body.open > div[id$="-list"]::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
+    .group-scroll-area{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .group-scroll-area::-webkit-scrollbar{width:3px;}
+    .group-scroll-area::-webkit-scrollbar-track{background:transparent;}
+    .group-scroll-area::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
     .group-save-bar{position:sticky;bottom:0;z-index:2;padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;text-align:center;flex-shrink:0;box-shadow:0 -2px 8px rgba(79,142,247,.10);}
     .akses-section{padding:0;}
     .akses-section-title{font-size:10px;font-weight:800;text-transform:uppercase;
@@ -932,7 +932,7 @@
           </div>
           <div class="group-body" id="gbody-rules-absensi">
             <div id="rules-mess-header" style="flex-shrink:0;"></div>
-            <div id="rules-mess-list" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;">
+            <div id="rules-mess-list" class="group-scroll-area">
               <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
             </div>
             <div class="group-save-bar">

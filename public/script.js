@@ -4282,11 +4282,13 @@ async function loadGroups() {
           </div>
         </div>
         <div class="group-body" id="gbody-${g.id}">
+          <div class="group-scroll-area">
           ${isOwner
             ? '<div style="font-size:12px;color:var(--muted);padding:10px 4px;text-align:center;">👑 Owner selalu memiliki akses penuh ke semua menu & submenu.</div>'
             : ''
           }
           ${sectionHTML}
+          </div>
           ${!isOwner ? `
           <div class="group-save-bar">
             <button id="save-btn-${g.id}"
