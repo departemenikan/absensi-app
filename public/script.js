@@ -2851,9 +2851,25 @@ async function openDetailAnggota(username) {
   document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
 
-  // Badge peran — tampilkan jabatan (jika ada), fallback ke groupName
+  // Badge peran — aturan tampilan:
+  // owner (level 1)       → selalu "Owner"
+  // admin (level 2) + jabatan kosong → "Admin"
+  // admin (level 2) + jabatan isi   → jabatan
+  // anggota + jabatan isi            → jabatan
+  // anggota + jabatan kosong         → "Anggota"
   const badge = document.getElementById("da-peran-badge");
-  badge.textContent      = m.jabatan || m.groupName;
+  const peranLevel = m.level || m.groupLevel || 99;
+  const isOwner = peranLevel <= 1 || m.group === "owner" || (m.groupName||"").toLowerCase() === "owner";
+  const isAdmin = !isOwner && (peranLevel <= 2 || m.group === "admin" || (m.groupName||"").toLowerCase() === "admin");
+  let badgeLabel;
+  if (isOwner) {
+    badgeLabel = "Owner";
+  } else if (isAdmin) {
+    badgeLabel = m.jabatan || "Admin";
+  } else {
+    badgeLabel = m.jabatan || "Anggota";
+  }
+  badge.textContent      = badgeLabel;
   badge.style.background = (m.groupColor || "#7f8c8d") + "22";
   badge.style.color      = m.groupColor || "#7f8c8d";
 
