@@ -528,6 +528,125 @@ setInterval(() => {
 
 }, 60000); // cek setiap 1 menit
 
+// ========================
+// AUTO TUTUP KEKURANGAN JAM DARI SALDO OVERTIME
+// Berjalan setiap menit, eksekusi hanya tanggal 1 jam 06:00
+// ========================
+
+// Fungsi utama: evaluasi kekurangan jam bulan lalu per user, tutup dari saldo overtime
+function autoTutupKekuranganOvertime() {
+  const settings = load(F.appSettings, {});
+  if (!settings.autoTutupOvertimeEnabled) return; // toggle off → skip
+
+  const now        = new Date();
+  // Hitung bulan lalu
+  const thnLalu    = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const blnLalu    = now.getMonth() === 0 ? 12 : now.getMonth(); // 1-based
+  const blnStr     = `${thnLalu}-${String(blnLalu).padStart(2, "0")}`;
+
+  const data       = load(F.data, []);
+  const kuota      = load(F.kuotaCuti, {});
+  const usersData  = load(F.users, {});
+  const groups     = load(F.groups, []);
+
+  console.log(`[AUTO-TUTUP-OT] Memproses kekurangan jam bulan ${blnStr}...`);
+
+  let kuotaChanged = false;
+
+  Object.keys(usersData).forEach(username => {
+    const tahun = String(thnLalu);
+    const k = kuota[username] ? kuota[username][tahun] : null;
+    if (!k || !k.overtime) return;
+
+    // Kumpulkan semua sesi bulan lalu milik user ini yang sudah clock out
+    const recsB = data.filter(d =>
+      d.user === username &&
+      d.date &&
+      d.date.startsWith(blnStr) &&
+      d.jamKeluar
+    );
+    if (!recsB.length) return;
+
+    // Grup per minggu, hitung total jam per minggu
+    const weekMap = {};
+    recsB.forEach(d => {
+      const wk = weekKey(d.date);
+      if (!weekMap[wk]) weekMap[wk] = 0;
+      weekMap[wk] += hitungJamKerja(d);
+    });
+
+    // Cari minggu-minggu yang kurang dari 40 jam
+    const mingguKurang = [];
+    Object.entries(weekMap).forEach(([wk, jam]) => {
+      if (jam < JAM_WAJIB_MINGGU) {
+        mingguKurang.push({ wk, jam, kurang: parseFloat((JAM_WAJIB_MINGGU - jam).toFixed(2)) });
+      }
+    });
+    if (!mingguKurang.length) return;
+
+    const totalKurang = parseFloat(mingguKurang.reduce((s, m) => s + m.kurang, 0).toFixed(2));
+
+    // Hitung saldo overtime yang tersedia
+    const saldoTersedia = parseFloat(((k.overtime.jamTL_reguler || 0) + (k.overtime.jamCarryOver || 0) - (k.overtime.jamTerpakai || 0)).toFixed(2));
+    if (saldoTersedia <= 0) return; // tidak ada saldo → skip (tetap jadi potongan gaji)
+
+    // Ambil sebesar kurang atau sebesar saldo jika tidak cukup
+    const jamDiambil   = parseFloat(Math.min(totalKurang, saldoTersedia).toFixed(2));
+    const sisaPotongan = parseFloat((totalKurang - jamDiambil).toFixed(2));
+
+    // Catat ke riwayat overtime sebagai pengurangan
+    k.overtime.jamTerpakai = parseFloat(((k.overtime.jamTerpakai || 0) + jamDiambil).toFixed(2));
+    k.overtime.riwayat = k.overtime.riwayat || [];
+    k.overtime.riwayat.push({
+      tanggal:     new Date().toLocaleDateString("sv-SE"),
+      jam:         jamDiambil,
+      sumber:      "auto-tutup",
+      keterangan:  `Penutup kekurangan jam bulan ${blnStr} (${mingguKurang.map(m => m.wk).join(", ")}) — diambil ${jamDiambil} jam dari saldo overtime`,
+      detail: {
+        bulan:         blnStr,
+        totalKurang,
+        jamDiambil,
+        sisaPotonganGaji: sisaPotongan,
+        mingguKurang:  mingguKurang.map(m => ({ minggu: m.wk, jamKerja: m.jam, kurang: m.kurang }))
+      }
+    });
+
+    kuotaChanged = true;
+
+    // Notifikasi ke user
+    const user    = usersData[username] || {};
+    const namaUser = user.namaLengkap || user.nama || username;
+    const msgUser = `📋 Info Rekap Bulan ${blnStr}\nKekurangan jam kerja: ${totalKurang} jam\nDitutupi dari saldo Overtime: ${jamDiambil} jam${sisaPotongan > 0 ? `\nSisa kekurangan (potongan gaji): ${sisaPotongan} jam` : "\nSeluruh kekurangan telah tertutup ✅"}`;
+    sendPushToUser(username, "Rekap Kekurangan Jam", msgUser).catch(() => {});
+    if (user.noHp) sendFonnte(user.noHp,
+      `🔔 *Rekap Kekurangan Jam — ${blnStr}*\nHai *${namaUser}*,\n${msgUser}`
+    );
+
+    // Notifikasi ke admin & owner
+    const msgAdmin = `👤 ${namaUser} — kekurangan jam bulan ${blnStr}: ${totalKurang} jam, ditutupi OT: ${jamDiambil} jam${sisaPotongan > 0 ? `, sisa potongan gaji: ${sisaPotongan} jam` : " (lunas ✅)"}`;
+    Object.keys(usersData).forEach(adm => {
+      const grpId  = usersData[adm].group || "anggota";
+      const grp    = groups.find(g => g.id === grpId);
+      const level  = grp ? (grp.level || 99) : 99;
+      if (level <= 2) { // owner (1) dan admin (2)
+        sendPushToUser(adm, "Auto Tutup Kekurangan Jam", msgAdmin).catch(() => {});
+      }
+    });
+
+    console.log(`[AUTO-TUTUP-OT] ${username}: kurang ${totalKurang}j, diambil ${jamDiambil}j dari OT, sisa potongan gaji: ${sisaPotongan}j`);
+  });
+
+  if (kuotaChanged) save(F.kuotaCuti, kuota);
+  console.log(`[AUTO-TUTUP-OT] Selesai proses bulan ${blnStr}.`);
+}
+
+// Scheduler: tanggal 1 jam 06:00
+setInterval(() => {
+  const now = new Date();
+  if (now.getDate() !== 1 || now.getHours() !== 6 || now.getMinutes() !== 0) return;
+  autoTutupKekuranganOvertime();
+}, 60000);
+
 // ── CLEANUP MALAM — hapus screenshot & foto kegiatan > 7 hari ────────────────
 // Berjalan setiap menit, eksekusi cleanup hanya jam 00:05
 setInterval(() => {
@@ -3691,6 +3810,18 @@ app.post("/app-settings/screenshot-toggle", requireLevel(1), (req, res) => {
   save(F.appSettings, updated);
   console.log(`[SETTING] Fitur screenshot ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
   res.json({ status: "OK", screenshotEnabled: enabled });
+});
+
+// Toggle auto tutup kekurangan jam dari saldo overtime — hanya Owner (level 1)
+// Lokasi tampil: Aksesibilitas → Kontrol Akses → Pengaturan Sistem
+app.post("/app-settings/auto-tutup-overtime-toggle", requireLevel(1), (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
+  const current = load(F.appSettings, { timezone: "Asia/Makassar" });
+  const updated  = { ...current, autoTutupOvertimeEnabled: enabled };
+  save(F.appSettings, updated);
+  console.log(`[SETTING] Auto Tutup Kekurangan Jam dari Overtime ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
+  res.json({ status: "OK", autoTutupOvertimeEnabled: enabled });
 });
 
 // ========================
