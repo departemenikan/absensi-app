@@ -4286,12 +4286,13 @@ async function loadGroups() {
           }
           ${sectionHTML}
           ${!isOwner ? `
-          <div style="padding:14px 16px;background:#f8f9ff;border-top:1px solid #eef0f8;">
+          <div style="padding:14px 16px;background:#f8f9ff;border-top:1px solid #eef0f8;text-align:center;">
             <button id="save-btn-${g.id}"
               onclick="saveGroupMenus('${g.id}')"
-              style="width:100%;padding:11px;border:none;border-radius:10px;
+              style="display:inline-flex;align-items:center;gap:6px;
+                     padding:11px 28px;border:none;border-radius:10px;
                      background:var(--primary);color:white;font-weight:700;
-                     font-size:14px;cursor:pointer;transition:opacity .15s;"
+                     font-size:14px;cursor:pointer;transition:opacity .15s;white-space:nowrap;"
               onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
               💾 Simpan Pengaturan ${g.name}
             </button>
