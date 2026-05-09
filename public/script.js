@@ -8141,16 +8141,16 @@ function renderSaldoCuti(k, user) {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
             <div style="font-size:26px;font-weight:900;color:#2e7d32;">${k.tahunan.total}</div>
-            <div style="font-size:10px;color:#81c784;font-weight:700;margin-top:2px;">Total</div>
+            <div style="font-size:10px;color:#81c784;font-weight:700;margin-top:2px;">Total (hari)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
             <div style="font-size:26px;font-weight:900;color:#e57373;">${k.tahunan.terpakai}</div>
-            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai (hari)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;
             box-shadow:0 2px 8px rgba(46,125,50,.15);">
             <div style="font-size:26px;font-weight:900;color:#1565c0;">${tahunanSisa}</div>
-            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa (hari)</div>
           </div>
         </div>
         <div style="background:#c8e6c9;border-radius:50px;height:8px;overflow:hidden;">
