@@ -1464,7 +1464,7 @@ async function _doAutoOvertime() {
         : `🔄 TL minggu ini: +${sisaJ}j → saldo Tukar Libur!`);
       const _jam = jam;
       if (jam > 0) {
-        showToast(`⏱️ Overtime minggu ini: ${jam.toFixed(1)} jam → masuk kuota cuti overtime!`);
+        showToast(`⏱️ Overtime minggu ini: ${fmtJamOT(jam)} → masuk kuota cuti overtime!`);
       }
     }
   } catch (e) {
@@ -5887,7 +5887,15 @@ function fmtJam(jam) {
   if (!jam || jam <= 0) return "-";
   const h = Math.floor(jam);
   const m = Math.round((jam - h) * 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return m > 0 ? `${h}j ${m}m` : `${h}j`;
+}
+
+// Format jam desimal → "Xj Ym" untuk overtime/TL (0 tetap tampil sebagai "0j")
+function fmtJamOT(jam) {
+  if (!jam || jam <= 0) return "0j";
+  const h = Math.floor(jam);
+  const m = Math.round((jam - h) * 60);
+  return m > 0 ? `${h}j ${m}m` : `${h}j`;
 }
 
 // Format jam realtime HH:MM — tanpa detik, untuk sel aktif timesheet
@@ -8206,8 +8214,8 @@ function renderKuotaList() {
       <div style="text-align:center;flex:0 0 auto;">
         <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">⏱️ Overtime</div>
         <div style="display:inline-flex;align-items:baseline;gap:2px;">
-          <span style="font-size:18px;font-weight:900;color:#1565c0;">${((saldoOT.totalJam != null ? saldoOT.totalJam : (saldoOT.hari * 5 + saldoOT.sisaJam)) || 0).toFixed(1)}</span>
-          <span style="font-size:10px;color:var(--muted);font-weight:400;">jam</span>
+          <span style="font-size:18px;font-weight:900;color:#1565c0;">${fmtJamOT((saldoOT.totalJam != null ? saldoOT.totalJam : (saldoOT.hari * 5 + saldoOT.sisaJam)) || 0)}</span>
+          <span style="font-size:10px;color:var(--muted);font-weight:400;"></span>
         </div>
       </div>
       <!-- Tukar Libur chip -->
@@ -8247,7 +8255,7 @@ function openKuotaDetailModal(username) {
   const saldoTLModal = d.overtime._saldo || { hari: 0, sisaJam: 0, totalJam: 0 };
   const mkdJamEl  = document.getElementById("mkd-ot-jam");
   const mkdHariEl = document.getElementById("mkd-ot-hari");
-  if (mkdJamEl)  mkdJamEl.textContent  = saldoTLModal.sisaJam.toFixed(1) + " jam sisa";
+  if (mkdJamEl)  mkdJamEl.textContent  = fmtJamOT(saldoTLModal.sisaJam) + " sisa";
   if (mkdHariEl) mkdHariEl.textContent = saldoTLModal.hari;
   document.getElementById("mkd-ot-diambil").textContent = d.overtime.hariDiambil || 0;
 
@@ -8578,15 +8586,15 @@ function renderSaldoCuti(k, user) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:22px;font-weight:900;color:#1565c0;">${otTotalJam.toFixed(1)}</div>
+            <div style="font-size:22px;font-weight:900;color:#1565c0;">${fmtJamOT(otTotalJam)}</div>
             <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Total (jam)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
-            <div style="font-size:22px;font-weight:900;color:#e57373;">${otTerpakai.toFixed(1)}</div>
+            <div style="font-size:22px;font-weight:900;color:#e57373;">${fmtJamOT(otTerpakai)}</div>
             <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Diambil (jam)</div>
           </div>
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;box-shadow:0 2px 8px rgba(21,101,192,.15);">
-            <div style="font-size:22px;font-weight:900;color:#1565c0;">${otSisaJam.toFixed(1)}</div>
+            <div style="font-size:22px;font-weight:900;color:#1565c0;">${fmtJamOT(otSisaJam)}</div>
             <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa (jam)</div>
           </div>
         </div>
@@ -8599,10 +8607,10 @@ function renderSaldoCuti(k, user) {
           <div style="font-size:11px;font-weight:700;color:#1565c0;margin-bottom:6px;">📜 Riwayat</div>
           ${(k.overtime.riwayat||[]).slice().reverse().slice(0,3).map(r => {
             const warna = r.jam < 0 ? "#e53935" : "#2e7d32";
-            const prefix = r.jam < 0 ? "" : "+";
+            const prefix = r.jam < 0 ? "-" : "+";
             return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #e3f2fd;">
               <div><div style="font-weight:600;">${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
-              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)} jam</div>
+              <div style="font-weight:800;color:${warna};">${prefix}${fmtJamOT(Math.abs(r.jam))}</div>
             </div>`;
           }).join("")}
         </div>` : ""}
@@ -8639,10 +8647,10 @@ function renderSaldoCuti(k, user) {
           ${(tl.riwayat||[]).slice().reverse().slice(0,3).map(r => {
             const icon = r.sumber==="libur" ? "🏖️" : r.sumber==="carry-over" ? "↩️" : r.sumber==="ambil" ? "✅" : "📌";
             const warna = r.jam < 0 ? "#e53935" : "#2e7d32";
-            const prefix = r.jam < 0 ? "" : "+";
+            const prefix = r.jam < 0 ? "-" : "+";
             return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid #fff3e0;">
               <div><div style="font-weight:600;">${icon} ${r.keterangan}</div><div style="color:var(--muted);font-size:10px;">${r.tanggal}</div></div>
-              <div style="font-weight:800;color:${warna};">${prefix}${Math.abs(r.jam).toFixed(1)} jam</div>
+              <div style="font-weight:800;color:${warna};">${prefix}${fmtJamOT(Math.abs(r.jam))}</div>
             </div>`;
           }).join("")}
         </div>` : ""}
@@ -8787,7 +8795,7 @@ function onTcKebijakanChange() {
     // Tampilkan saldo dalam JAM saja (bukan hari)
     if (_kuotaSaya) {
       const jam = (_kuotaSaya.overtime?._saldo || {}).totalJam || 0;
-      infoEl.innerHTML = `⏱ Saldo tersedia: <b>${jam.toFixed(1)} jam</b> akumulasi overtime`;
+      infoEl.innerHTML = `⏱ Saldo tersedia: <b>${fmtJamOT(jam)}</b> akumulasi overtime`;
       infoEl.style.display = "";
     }
 
