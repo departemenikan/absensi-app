@@ -379,8 +379,26 @@ setInterval(() => {
       }
     } else {
       // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
+      // ATAU tidak ada data GPS sama sekali (dianggap di luar area / GPS dimatikan)
       const todayPoints = (tracking[today] || {})[username] || [];
-      if (!todayPoints.length) return; // Tidak ada data GPS → skip (aman)
+
+      if (!todayPoints.length) {
+        // Tidak ada data GPS → dianggap di luar area, clock out otomatis
+        rec.jamKeluar = clockOutTime;
+        rec.autoClockOut = true;
+        rec.autoClockOutReason = "no-gps-after-17:00";
+        logAktivitas(username, "AUTO_OUT_NO_GPS", clockOutTime);
+        changed = true;
+
+        sendPushToUser(username,
+          "Clock Out Otomatis 🔴",
+          `Kamu otomatis di-Clock Out pukul ${jamFmt} karena data lokasi tidak tersedia setelah jam 17:00`
+        ).catch(() => {});
+        if (user.noHp) sendFonnte(user.noHp,
+          `🔴 *Clock Out Otomatis*\nHai *${user.namaLengkap || user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* karena data lokasi tidak tersedia setelah jam 17:00. Pastikan layanan lokasi aktif saat bekerja.`
+        );
+        return;
+      }
 
       const lastPoint = todayPoints[todayPoints.length - 1];
       const { lat, lng } = lastPoint;
