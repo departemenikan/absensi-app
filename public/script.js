@@ -4360,8 +4360,17 @@ function toggleGroupBody(id) {
   const el   = document.getElementById(id);
   const chev = document.getElementById("chev-" + id.replace("gbody-", ""));
   if (!el) return;
-  const isOpen = el.classList.toggle("open");
-  if (chev) chev.style.transform = isOpen ? "rotate(90deg)" : "";
+  const willOpen = !el.classList.contains("open");
+  // Tutup semua accordion lain dulu
+  document.querySelectorAll(".group-body.open").forEach(other => {
+    if (other.id !== id) {
+      other.classList.remove("open");
+      const otherChev = document.getElementById("chev-" + other.id.replace("gbody-", ""));
+      if (otherChev) otherChev.style.transform = "";
+    }
+  });
+  el.classList.toggle("open", willOpen);
+  if (chev) chev.style.transform = willOpen ? "rotate(90deg)" : "";
 }
 
 // ============================================================
