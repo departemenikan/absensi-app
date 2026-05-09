@@ -599,7 +599,7 @@ function autoTutupKekuranganOvertime() {
     k.overtime.riwayat = k.overtime.riwayat || [];
     k.overtime.riwayat.push({
       tanggal:     new Date().toLocaleDateString("sv-SE"),
-      jam:         jamDiambil,
+      jam:         -jamDiambil,
       sumber:      "auto-tutup",
       keterangan:  `Penutup kekurangan jam bulan ${blnStr} (${mingguKurang.map(m => m.wk).join(", ")}) — diambil ${jamDiambil} jam dari saldo overtime`,
       detail: {
