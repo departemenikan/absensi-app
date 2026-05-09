@@ -497,6 +497,32 @@ setInterval(() => {
     }
   }
 
+  // ── AUTO OVERTIME SERVER-SIDE — Minggu jam 23:59 ─────────────────────────
+  // Berjalan di server sehingga tidak perlu browser terbuka
+  if (hour === 23 && min === 59 && dow === 0) {
+    const usersOT = load(F.users, {});
+    console.log("[AUTO-OT-SERVER] Memproses overtime semua user (Minggu 23:59)...");
+    Object.keys(usersOT).forEach(username => {
+      try { hitungOvertimeBackground(username); } catch(e) {
+        console.error(`[AUTO-OT-SERVER] Gagal proses ${username}:`, e.message);
+      }
+    });
+    console.log("[AUTO-OT-SERVER] Selesai.");
+  }
+
+  // ── AUTO RESET CUTI TAHUNAN — 1 Januari jam 00:01 ────────────────────────
+  if (hour === 0 && min === 1 && now.getDate() === 1 && now.getMonth() === 0) {
+    const tahunBaru = now.getFullYear();
+    const usersReset = load(F.users, {});
+    const kuotaReset = load(F.kuotaCuti, {});
+    console.log(`[AUTO-RESET] Reset cuti tahunan untuk tahun ${tahunBaru}...`);
+    Object.keys(usersReset).forEach(username => {
+      initKuotaUser(kuotaReset, username, tahunBaru);
+    });
+    save(F.kuotaCuti, kuotaReset);
+    console.log("[AUTO-RESET] Selesai reset cuti tahunan.");
+  }
+
 }, 60000); // cek setiap 1 menit
 
 // ── CLEANUP MALAM — hapus screenshot & foto kegiatan > 7 hari ────────────────
@@ -3052,12 +3078,19 @@ app.post("/pengajuan-cuti/:id/cancel", requireLevel(99), (req, res) => {
   if (p.kuotaKey === "tahunan") {
     // durasi tersimpan dalam HARI, kembalikan langsung
     k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
-  } else if (p.kuotaKey === "overtime") {
-    const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
-    k.overtime.jamTerpakai = parseFloat(Math.max(0, (k.overtime.jamTerpakai || 0) - jamKembali).toFixed(2));
-    k.overtime.riwayat = k.overtime.riwayat || [];
-    k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Cuti TL dibatalkan/ditolak" });
-    if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
+  } else if (p.kuotaKey === "overtime" || p.kuotaKey === "tukarLibur") {
+    const jamKembali = p.satuanDurasi === "jam" ? parseFloat(p.durasi) : parseFloat(p.durasi) * 5;
+    if (p.kuotaKey === "tukarLibur") {
+      k.tukarLibur = k.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
+      k.tukarLibur.jamTerpakai = parseFloat(Math.max(0, (k.tukarLibur.jamTerpakai || 0) - jamKembali).toFixed(2));
+      k.tukarLibur.riwayat = k.tukarLibur.riwayat || [];
+      k.tukarLibur.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Tukar Libur dibatalkan" });
+    } else {
+      k.overtime.jamTerpakai = parseFloat(Math.max(0, (k.overtime.jamTerpakai || 0) - jamKembali).toFixed(2));
+      k.overtime.riwayat = k.overtime.riwayat || [];
+      k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Cuti Overtime dibatalkan" });
+      if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, (k.overtime.hariDiambil || 0) - parseFloat(p.durasi));
+    }
   } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
     // Kembalikan saldo custom kuota
     const ck = k.customKuota[p.kebijakanId];
