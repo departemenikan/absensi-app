@@ -394,9 +394,7 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} karena data lokasi tidak tersedia setelah jam 17:00`
         ).catch(() => {});
-        if (user.noHp) sendFonnte(user.noHp,
-          `🔴 *Clock Out Otomatis*\nHai *${user.namaLengkap || user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* karena data lokasi tidak tersedia setelah jam 17:00. Pastikan layanan lokasi aktif saat bekerja.`
-        );
+        // WA Fonnte untuk no-GPS dihapus — sudah pakai Web Push
         return;
       }
 
