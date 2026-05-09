@@ -903,7 +903,7 @@
           style="flex:1;padding:10px 6px;border:none;border-radius:10px;font-size:13px;
                  font-weight:700;cursor:pointer;transition:all .2s;
                  background:transparent;color:var(--muted);">
-          📋 Rules
+          🌐 Pengaturan Sistem
         </button>
       </div>
 
@@ -915,8 +915,38 @@
           <p style="color:var(--muted);text-align:center;padding:24px;">Memuat data jabatan...</p>
         </div>
 
-        <!-- Akordion: Pengaturan Sistem (Timezone) -->
-        <div class="group-item" id="akordion-sistem" style="display:none;">
+        <!-- Akordion: Pengaturan Karyawan (pindahan dari Tab Rules) -->
+        <div class="group-item" id="akordion-pengaturan-karyawan" style="display:none;">
+          <div class="group-header" style="background:linear-gradient(135deg,#1a237e,#4f8ef7);"
+               onclick="toggleGroupBody('gbody-rules-absensi')">
+            <div style="flex:1;">
+              <div class="group-title">👥 Pengaturan Karyawan</div>
+            </div>
+            <span class="akses-chevron" id="chev-rules-absensi"
+                  style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
+          </div>
+          <div class="group-body" id="gbody-rules-absensi">
+            <div id="rules-mess-list">
+              <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
+            </div>
+            <div style="padding:14px 0 4px;">
+              <button onclick="saveRulesMess()"
+                style="width:100%;padding:11px;border:none;border-radius:10px;
+                       background:var(--primary);color:white;font-weight:700;
+                       font-size:14px;cursor:pointer;">
+                💾 Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Panel: Pengaturan Sistem (menggantikan Rules) -->
+      <div id="panel-akses-rules" style="display:none;">
+
+        <!-- Akordion: Pengaturan Sistem (pindahan dari Tab Kontrol Akses) -->
+        <div class="group-item" id="akordion-sistem">
           <div class="group-header" style="background:linear-gradient(135deg,#1b5e20,#43a047);"
                onclick="toggleGroupBody('gbody-sistem')">
             <div style="flex:1;">
@@ -976,7 +1006,6 @@
                     <div style="font-size:13px;font-weight:700;" id="ss-toggle-label">Memuat...</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="ss-toggle-sub"></div>
                   </div>
-                  <!-- Toggle switch -->
                   <div onclick="toggleScreenshotFeature()"
                     id="ss-toggle-switch"
                     style="width:52px;height:28px;border-radius:14px;background:#ccc;
@@ -1007,7 +1036,6 @@
                     <div style="font-size:13px;font-weight:700;" id="wp-toggle-label">Memuat...</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="wp-toggle-sub"></div>
                   </div>
-                  <!-- Toggle switch -->
                   <div onclick="toggleWorkPhotoFeature()"
                     id="wp-toggle-switch"
                     style="width:52px;height:28px;border-radius:14px;background:#ccc;
@@ -1038,7 +1066,6 @@
                     <div style="font-size:13px;font-weight:700;" id="ato-toggle-label">Memuat...</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="ato-toggle-sub"></div>
                   </div>
-                  <!-- Toggle switch -->
                   <div onclick="toggleAutoTutupOvertime()"
                     id="ato-toggle-switch"
                     style="width:52px;height:28px;border-radius:14px;background:#ccc;
@@ -1053,41 +1080,6 @@
 
             </div>
           </div>
-        </div>
-
-      </div>
-
-      <!-- Panel: Rules -->
-      <div id="panel-akses-rules" style="display:none;">
-
-        <!-- Section: Data Karyawan Mess -->
-        <div class="group-item">
-          <div class="group-header" style="background:linear-gradient(135deg,#1a237e,#4f8ef7);"
-               onclick="toggleGroupBody('gbody-rules-absensi')">
-            <div style="flex:1;">
-              <div class="group-title">👥 Data Karyawan</div>
-            </div>
-            <span class="akses-chevron" id="chev-rules-absensi"
-                  style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
-          </div>
-          <div class="group-body" id="gbody-rules-absensi">
-            <div id="rules-mess-list">
-              <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
-            </div>
-            <div style="padding:14px 0 4px;">
-              <button onclick="saveRulesMess()"
-                style="width:100%;padding:11px;border:none;border-radius:10px;
-                       background:var(--primary);color:white;font-weight:700;
-                       font-size:14px;cursor:pointer;">
-                💾 Simpan
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Placeholder section tambahan di masa depan -->
-        <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;">
-          Rule baru dapat ditambahkan di sini
         </div>
 
       </div>
