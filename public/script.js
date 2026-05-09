@@ -7416,10 +7416,16 @@ const _statusLabel = { IN: "Bekerja", BREAK: "Istirahat", DONE: "Selesai", OUT: 
 function renderLiveList(list) {
   const el = document.getElementById("trk-live-list");
   if (!list.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
-  list = [...list].sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
-  el.innerHTML = list.map(a => {
-    const color = _statusColor[a.status] || "#bdc3c7";
-    const label = _statusLabel[a.status] || a.status;
+
+  const sortNama = (a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id');
+
+  // Pisah: aktif (IN/BREAK) dan tidak aktif (DONE/OUT)
+  const aktif    = [...list].filter(a => a.status === "IN" || a.status === "BREAK").sort(sortNama);
+  const tidakAktif = [...list].filter(a => a.status !== "IN" && a.status !== "BREAK").sort(sortNama);
+
+  const renderItem = a => {
+    const color    = _statusColor[a.status] || "#bdc3c7";
+    const label    = _statusLabel[a.status] || a.status;
     const lastTime = a.last ? new Date(a.last.time).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—";
     const hasLoc   = a.last && a.last.lat;
     return `
@@ -7439,7 +7445,23 @@ function renderLiveList(list) {
           <div style="font-size:11px;color:var(--muted);">${hasLoc ? '📍 ' + lastTime : 'Tidak ada lokasi'}</div>
         </div>
       </div>`;
-  }).join('');
+  };
+
+  const renderSection = (title, items, badgeColor) => {
+    if (!items.length) return '';
+    return `
+      <div style="padding:8px 16px 4px;background:#f8f9ff;border-bottom:1px solid #e8ecf0;
+        display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:1;">
+        <span style="font-size:11px;font-weight:800;color:${badgeColor};text-transform:uppercase;letter-spacing:.5px;">${title}</span>
+        <span style="font-size:11px;background:${badgeColor};color:white;border-radius:50px;
+          padding:1px 8px;font-weight:700;">${items.length}</span>
+      </div>
+      ${items.map(renderItem).join('')}`;
+  };
+
+  el.innerHTML =
+    renderSection("🟢 Sedang Bekerja", aktif, "#27ae60") +
+    renderSection("⚪ Tidak Aktif", tidakAktif, "#95a5a6");
 }
 
 function renderLiveMap(list) {
