@@ -922,7 +922,9 @@ app.get("/anggota", requireLevel(99), (req, res) => {
     return {
       username:    u,
       namaLengkap: usr.namaLengkap  || "",
-      jabatan:     usr.jabatan      || "Anggota",
+      jabatan:     (usr.jabatan && usr.jabatan !== "Anggota")
+        ? usr.jabatan
+        : (usr.group === "owner" ? "Owner" : usr.group === "admin" ? "Admin" : "Anggota"),
       photo:       usr.photo        || "",
       group:       usr.group        || "anggota",
       groupName:   g?.name          || "Anggota",
@@ -948,7 +950,18 @@ app.put("/anggota/:username/group", requireLevel(2), (req, res) => {
   } else {
     users[req.params.username].peran = "Anggota";
   }
-  // Jabatan tidak diubah di sini — jabatan diatur via posisi divisi
+  // Update jabatan berdasarkan group baru — hanya jika user tidak punya divisi
+  // (jika ada divisi, jabatan diatur dari posisi di divisi)
+  const divisiListGrp = load(F.divisi, []);
+  const userDivisi = Array.isArray(users[req.params.username].divisi)
+    ? users[req.params.username].divisi
+    : (users[req.params.username].divisi ? [users[req.params.username].divisi] : []);
+  const punyaDivisi = userDivisi.some(dNama => divisiListGrp.find(d => d.nama === dNama));
+  if (!punyaDivisi) {
+    users[req.params.username].jabatan =
+      newGroup === "owner" ? "Owner" :
+      newGroup === "admin" ? "Admin" : "Anggota";
+  }
   save(F.users, users);
   res.send({ status: "OK" });
 });
@@ -1098,7 +1111,7 @@ app.put("/anggota/:username/divisi", requireLevel(2), (req, res) => {
   const divisiList = load(F.divisi, []);
   if (!users[u].divisi.length) {
     const grp = users[u].group;
-    users[u].jabatan = grp === "owner" ? "Owner" : "Anggota";
+    users[u].jabatan = grp === "owner" ? "Owner" : grp === "admin" ? "Admin" : "Anggota";
   } else {
     // Cek posisi di masing-masing divisi, ambil jabatan tertinggi
     const priority = { "Owner": 1, "Manager": 2, "Koordinator": 3, "Anggota": 4 };
