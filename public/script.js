@@ -3862,11 +3862,17 @@ async function loadRules() {
       </div>`;
     }).join("");
 
-    // Wrapper: overflow-x scroll untuk area kolom kanan, nama tetap di kiri
-    el.innerHTML = `
-      <div style="border-radius:12px;overflow:hidden;border:1px solid #e0e4f0;
-                  background:white;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    // Pisah: header ke rules-mess-header (tidak ikut scroll vertikal)
+    const hdrEl = document.getElementById("rules-mess-header");
+    if (hdrEl) hdrEl.innerHTML = `
+      <div style="border-radius:12px 12px 0 0;overflow:hidden;border:1px solid #e0e4f0;
+                  border-bottom:none;background:white;overflow-x:auto;-webkit-overflow-scrolling:touch;">
         ${headerRow}
+      </div>`;
+
+    el.innerHTML = `
+      <div style="border-radius:0 0 12px 12px;overflow:hidden;border:1px solid #e0e4f0;
+                  border-top:none;background:white;overflow-x:auto;-webkit-overflow-scrolling:touch;">
         ${dataRows}
         <!-- Hint scroll jika konten melebihi layar -->
         <div id="mess-label-hint" style="display:none;text-align:right;padding:4px 10px 6px;
@@ -3996,7 +4002,9 @@ async function loadRules() {
       </div>`;
     }).join("");
 
-    el.innerHTML = colHeaderHTML + rowsHTML;
+    const hdrElD = document.getElementById("rules-mess-header");
+    if (hdrElD) hdrElD.innerHTML = colHeaderHTML;
+    el.innerHTML = rowsHTML;
   }
 }
 
