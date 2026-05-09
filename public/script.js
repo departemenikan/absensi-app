@@ -3657,17 +3657,21 @@ function switchAksesTab(tab) {
     btnRules.style.background = "transparent";
     btnRules.style.color      = "var(--muted)";
     btnRules.style.boxShadow  = "none";
-    // Tampilkan akordion Sistem hanya untuk Owner/Admin
-    const akordionSistem = document.getElementById("akordion-sistem");
-    if (akordionSistem) {
+    // Tampilkan akordion Pengaturan Karyawan hanya untuk Owner/Admin
+    const akordionKaryawan = document.getElementById("akordion-pengaturan-karyawan");
+    if (akordionKaryawan) {
       if (userLevel <= 2) {
-        akordionSistem.style.display = "";
-        loadSistemSettings();
-        loadScreenshotToggle();
-        loadWorkPhotoToggle();
-        loadAutoTutupOvertimeToggle();
+        akordionKaryawan.style.display = "";
+        // Buka otomatis dan muat data
+        const gbody = document.getElementById("gbody-rules-absensi");
+        const chev  = document.getElementById("chev-rules-absensi");
+        if (gbody && !gbody.classList.contains("open")) {
+          gbody.classList.add("open");
+          if (chev) chev.style.transform = "rotate(90deg)";
+        }
+        loadRules();
       } else {
-        akordionSistem.style.display = "none";
+        akordionKaryawan.style.display = "none";
       }
     }
   } else {
@@ -3677,14 +3681,26 @@ function switchAksesTab(tab) {
     btnAkses.style.background = "transparent";
     btnAkses.style.color      = "var(--muted)";
     btnAkses.style.boxShadow  = "none";
-    // Buka section Rules otomatis
-    const gbody = document.getElementById("gbody-rules-absensi");
-    const chev  = document.getElementById("chev-rules-absensi");
-    if (gbody && !gbody.classList.contains("open")) {
-      gbody.classList.add("open");
-      if (chev) chev.style.transform = "rotate(90deg)";
+    // Tampilkan akordion Pengaturan Sistem hanya untuk Owner/Admin
+    const akordionSistem = document.getElementById("akordion-sistem");
+    if (akordionSistem) {
+      if (userLevel <= 2) {
+        akordionSistem.style.display = "";
+        // Buka otomatis
+        const gbody = document.getElementById("gbody-sistem");
+        const chev  = document.getElementById("chev-sistem");
+        if (gbody && !gbody.classList.contains("open")) {
+          gbody.classList.add("open");
+          if (chev) chev.style.transform = "rotate(90deg)";
+        }
+        loadSistemSettings();
+        loadScreenshotToggle();
+        loadWorkPhotoToggle();
+        loadAutoTutupOvertimeToggle();
+      } else {
+        akordionSistem.style.display = "none";
+      }
     }
-    loadRules();
   }
 }
 
