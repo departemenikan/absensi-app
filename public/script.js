@@ -5703,7 +5703,7 @@ function tsRender() {
           data-empty="${!hasKerja ? '1' : '0'}"
           onclick="event.stopPropagation();openTsModal('${u.username}','${day.date}')"
           style="margin-top:3px;font-size:9px;color:var(--primary);cursor:pointer;font-weight:700;
-                 opacity:${!hasKerja ? '0.4' : '0'};transition:opacity .15s;${hasKerja ? 'pointer-events:none;' : ''}">✏️</div>` : "";
+                 opacity:0;pointer-events:none;transition:opacity .15s;">✏️</div>` : "";
 
       const sundayBg     = isWeekend   && hasKerja  ? "#fff8e1" : "";
       const liburBg      = isHariLibur && !hasKerja ? "#f1f8e9" : "";
@@ -5780,20 +5780,49 @@ function tsRender() {
   setTimeout(startTsTicker, 300);
 
   // Hover listener: tampilkan/sembunyikan ikon pensil hanya untuk baris canEdit
+  const isMobileTsView = window.innerWidth <= 600;
+
   el.querySelectorAll("tr.ts-row[data-canedit='1']").forEach(row => {
-    row.addEventListener("mouseenter", () => {
-      row.querySelectorAll(".ts-edit-btn").forEach(btn => {
-        btn.style.opacity       = "1";
-        btn.style.pointerEvents = "auto";
+    if (!isMobileTsView) {
+      // ── DESKTOP: hover mouse ──
+      row.addEventListener("mouseenter", () => {
+        row.querySelectorAll(".ts-edit-btn").forEach(btn => {
+          btn.style.opacity       = "1";
+          btn.style.pointerEvents = "auto";
+        });
       });
-    });
-    row.addEventListener("mouseleave", () => {
-      row.querySelectorAll(".ts-edit-btn").forEach(btn => {
-        const isEmpty = btn.getAttribute("data-empty") === "1";
-        btn.style.opacity       = isEmpty ? "0.4"  : "0";
-        btn.style.pointerEvents = isEmpty ? "auto" : "none";
+      row.addEventListener("mouseleave", () => {
+        row.querySelectorAll(".ts-edit-btn").forEach(btn => {
+          btn.style.opacity       = "0";
+          btn.style.pointerEvents = "none";
+        });
       });
-    });
+    } else {
+      // ── MOBILE: tap baris untuk tampilkan pensil, satu baris aktif saja ──
+      row.addEventListener("touchstart", (e) => {
+        if (e.target.closest(".ts-edit-btn")) return;
+
+        const isActive = row.getAttribute("data-ts-active") === "1";
+
+        // Sembunyikan semua baris dulu
+        el.querySelectorAll("tr.ts-row[data-canedit='1']").forEach(r => {
+          r.setAttribute("data-ts-active", "0");
+          r.querySelectorAll(".ts-edit-btn").forEach(btn => {
+            btn.style.opacity       = "0";
+            btn.style.pointerEvents = "none";
+          });
+        });
+
+        // Jika baris ini belum aktif → tampilkan pensilnya
+        if (!isActive) {
+          row.setAttribute("data-ts-active", "1");
+          row.querySelectorAll(".ts-edit-btn").forEach(btn => {
+            btn.style.opacity       = "1";
+            btn.style.pointerEvents = "auto";
+          });
+        }
+      }, { passive: true });
+    }
   });
 }
 
