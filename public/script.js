@@ -4414,27 +4414,25 @@ function openGroupOverlay(id) {
 
   if (GROUP_MOVE_IDS.has(id)) {
     // ── PINDAH elemen (agar ID unik tidak duplikat) ──
-    // Buat placeholder pengganti di posisi asli
     const ph = document.createElement("div");
     ph.id = "grp-ph-" + id;
     ph.style.display = "none";
     body.parentNode.insertBefore(ph, body);
     _groupOverlayPlaceholder = ph;
 
-    obody.innerHTML = "";
-    const scrollArea = body.querySelector(".group-scroll-area");
-    if (scrollArea) {
-      obody.appendChild(scrollArea);
-    } else {
-      obody.appendChild(body);
-    }
-    // Footer: tombol simpan (jika ada)
+    // Pisah save-bar dulu ke footer
     const saveBar = body.querySelector(".group-save-bar");
     if (saveBar && ofooter) {
       ofooter.appendChild(saveBar);
       ofooter.style.display = "block";
     } else if (ofooter) {
       ofooter.style.display = "none";
+    }
+
+    // Pindah SEMUA sisa children ke obody (header + scroll-area)
+    obody.innerHTML = "";
+    while (body.firstChild) {
+      obody.appendChild(body.firstChild);
     }
   } else {
     // ── COPY innerHTML (accordion biasa tanpa ID unik) ──
@@ -4472,18 +4470,18 @@ function _restoreGroupBody() {
   const ofooter = document.getElementById("group-overlay-footer");
 
   if (GROUP_MOVE_IDS.has(id) && body) {
-    // Kembalikan elemen ke posisi aslinya
-    const ph = document.getElementById("grp-ph-" + id);
-    const scrollArea = obody.querySelector(".group-scroll-area");
-    const saveBar    = ofooter ? ofooter.querySelector(".group-save-bar") : null;
+    const ph      = document.getElementById("grp-ph-" + id);
+    const saveBar = ofooter ? ofooter.querySelector(".group-save-bar") : null;
 
-    if (scrollArea && body) {
-      body.appendChild(scrollArea);
+    // Kembalikan save-bar ke body dulu
+    if (saveBar) body.appendChild(saveBar);
+
+    // Kembalikan semua children obody ke body (header + scroll-area)
+    while (obody && obody.firstChild) {
+      body.appendChild(obody.firstChild);
     }
-    if (saveBar && body) {
-      body.appendChild(saveBar);
-    }
-    if (ph) { ph.parentNode.removeChild(ph); }
+
+    if (ph) ph.parentNode.removeChild(ph);
   }
 
   if (obody)   obody.innerHTML = "";
