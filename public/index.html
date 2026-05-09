@@ -196,15 +196,64 @@
       padding:14px 16px;cursor:pointer;user-select:none;}
     .group-title{font-size:15px;font-weight:800;color:white;}
     .group-level{font-size:11px;color:rgba(255,255,255,.75);margin-top:1px;}
-    .group-body{background:#f8f9ff;padding:0;display:none;}
-    .group-body.open{display:flex;flex-direction:column;max-height:70vh;overflow:hidden;}
-    .group-scroll-area{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
-    #gbody-sistem{max-height:none;overflow:visible;}
-    #gbody-sistem .group-scroll-area{overflow-y:visible;}
+
+    /* group-body sekarang pakai overlay modal, bukan expand di tempat */
+    .group-body{display:none;}
+
+    /* OVERLAY MODAL untuk accordion */
+    #group-overlay{
+      position:fixed;inset:0;z-index:900;
+      background:rgba(0,0,0,.55);
+      display:none;align-items:flex-end;justify-content:center;
+    }
+    #group-overlay.open{display:flex;}
+    #group-overlay-sheet{
+      background:white;
+      width:100%;max-width:640px;
+      border-radius:22px 22px 0 0;
+      max-height:88vh;
+      display:flex;flex-direction:column;
+      animation:slideUp .28s ease;
+    }
+    #group-overlay-handle{
+      width:40px;height:4px;border-radius:4px;
+      background:#ddd;margin:12px auto 0;flex-shrink:0;
+    }
+    #group-overlay-titlebar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 18px 10px;flex-shrink:0;
+      border-bottom:1px solid #eee;
+    }
+    #group-overlay-title{
+      font-size:16px;font-weight:800;color:#2c3e50;
+    }
+    #group-overlay-close{
+      width:30px;height:30px;border-radius:50%;
+      border:none;background:#f0f2f5;
+      font-size:16px;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;color:#555;
+    }
+    #group-overlay-body{
+      flex:1;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      overscroll-behavior:contain;
+    }
+    #group-overlay-body::-webkit-scrollbar{width:3px;}
+    #group-overlay-body::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
+    #group-overlay-footer{
+      flex-shrink:0;
+      padding:12px 18px 20px;
+      background:#f0f2fa;
+      border-top:1px solid #dde2f0;
+      text-align:center;
+      box-shadow:0 -2px 8px rgba(79,142,247,.10);
+    }
+
+    .group-scroll-area{padding:0;}
     .group-scroll-area::-webkit-scrollbar{width:3px;}
     .group-scroll-area::-webkit-scrollbar-track{background:transparent;}
     .group-scroll-area::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
-    .group-save-bar{position:sticky;bottom:0;z-index:2;padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;text-align:center;flex-shrink:0;box-shadow:0 -2px 8px rgba(79,142,247,.10);}
+    .group-save-bar{padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;text-align:center;box-shadow:0 -2px 8px rgba(79,142,247,.10);}
     .akses-section{padding:0;}
     .akses-section-title{font-size:10px;font-weight:800;text-transform:uppercase;
       letter-spacing:.6px;color:var(--muted);padding:10px 16px 5px;
@@ -3078,6 +3127,26 @@
 
   </div>
 </div>
+<!-- ============ OVERLAY MODAL ACCORDION GRUP ============ -->
+<div id="group-overlay" onclick="_groupOverlayBgClick(event)">
+  <div id="group-overlay-sheet">
+    <div id="group-overlay-handle"></div>
+    <div id="group-overlay-titlebar">
+      <div>
+        <div id="group-overlay-title">—</div>
+        <div id="group-overlay-subtitle" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+      <button id="group-overlay-close" onclick="closeGroupOverlay()">✕</button>
+    </div>
+    <div id="group-overlay-body">
+      <!-- konten group-body disalin ke sini saat dibuka -->
+    </div>
+    <div id="group-overlay-footer" style="display:none;">
+      <!-- tombol simpan disalin ke sini -->
+    </div>
+  </div>
+</div>
+
 </body>
 
 <script>
