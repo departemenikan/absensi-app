@@ -3407,13 +3407,11 @@ async function loadRules() {
           ${avatar}
           <div style="min-width:0;position:relative;">
             <div onclick="showNamaTooltip(this, '${nama.replace(/'/g,"&#39;")}')"
-                 style="font-size:12px;font-weight:700;color:#2c3e50;
+                 style="font-size:12px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
                         max-width:88px;cursor:pointer;user-select:none;">${nama}</div>
             <div id="mess-label-${u.username}" style="font-size:9px;margin-top:2px;display:flex;gap:3px;flex-wrap:wrap;align-items:center;">
-              <span id="peran-badge-${u.username}" style="font-size:9px;font-weight:700;padding:1px 6px;
-                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
-                display:${(isOwner||isAdmin)?"inline-block":"none"};">${u.groupName||u.group}</span>
+              <span id="peran-badge-${u.username}" style="display:none;"></span>
               ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
               <span style="color:${isMess?"#e67e22":"var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>
             </div>
@@ -3554,12 +3552,10 @@ async function loadRules() {
           ${avatar}
           <div style="min-width:0;">
             <div>
-              <span style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</span>
+              <span style="font-size:14px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};">${nama}</span>
             </div>
             <div id="mess-label-${u.username}" style="font-size:11px;margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
-              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;
-                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
-                display:${(isOwner||isAdmin)?"inline-block":"none"};">${u.groupName||u.group}</span>
+              <span id="peran-badge-${u.username}" style="display:none;"></span>
               ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
               <span style="color:${isMess?"#e67e22":"var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>
             </div>
@@ -3614,10 +3610,13 @@ function _rebuildStatusLabel(username) {
   if (peranNow === "owner")  { badgeText = "Owner"; badgeBg = "#6a1b9a"; }
   else if (peranNow === "admin") { badgeText = "Admin"; badgeBg = "#1565c0"; }
   // Rebuild innerHTML — tetap sertakan id peran-badge agar onPeranToggle masih bisa cari elemen
-  const showBadge = peranNow === "owner" || peranNow === "admin";
+  // Update warna nama sesuai peran baru
+  const nameEl = label.closest('[style*="min-width:0"]')?.querySelector('span[style*="font-weight:700"][style*="color"]');
+  if (nameEl) {
+    nameEl.style.color = peranNow === "owner" ? "#6a1b9a" : peranNow === "admin" ? "#1565c0" : "#2c3e50";
+  }
   label.innerHTML =
-    `<span id="peran-badge-${username}" style="font-size:inherit;font-weight:700;padding:1px 6px;` +
-    `border-radius:50px;color:white;background:${badgeBg};display:${showBadge ? "inline-block" : "none"};">${badgeText}</span>` +
+    `<span id="peran-badge-${username}" style="display:none;"></span>` +
     (isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : "") +
     `<span style="color:${isMess ? "#e67e22" : "var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>`;
 }
