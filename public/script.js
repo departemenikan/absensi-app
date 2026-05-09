@@ -3068,7 +3068,7 @@ async function openBuatGrup() {
   _bgSelectedAnggota = [];
   document.getElementById("bg-nama").value = "";
   document.getElementById("bg-anggota-search").value = "";
-  document.getElementById("bg-anggota-overlay").style.display = "none";
+  document.getElementById("bg-anggota-panel").style.display = "none";
   _renderAnggotaDropdownItems([..._anggotaAll].filter(a => a.group !== "owner").sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id')));
   _renderAnggotaTags();
 
@@ -3092,24 +3092,30 @@ async function openBuatGrup() {
 }
 
 function _bgOutsideClick(e) {
-  // overlay sekarang punya handler sendiri (bgCloseOverlay), tidak perlu logika ini
+  const wrap = document.getElementById("bg-anggota-wrap");
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById("bg-anggota-panel").style.display = "none";
+    document.removeEventListener("click", _bgOutsideClick);
+  }
 }
 
 function toggleAnggotaDropdown() {
-  // Buka overlay pilih anggota
-  const overlay = document.getElementById("bg-anggota-overlay");
-  overlay.style.display = "flex";
+  const panel   = document.getElementById("bg-anggota-panel");
+  const trigger = document.getElementById("bg-anggota-trigger");
+  const isOpen  = panel.style.display !== "none";
+  if (isOpen) {
+    panel.style.display = "none";
+    return;
+  }
+  // Hitung posisi trigger untuk tempatkan panel fixed tepat di bawahnya
+  const rect = trigger.getBoundingClientRect();
+  panel.style.top   = (rect.bottom + 4) + "px";
+  panel.style.left  = rect.left + "px";
+  panel.style.width = rect.width + "px";
+  panel.style.display = "block";
   document.getElementById("bg-anggota-search").value = "";
   filterAnggotaDropdown();
-  setTimeout(() => document.getElementById("bg-anggota-search").focus(), 100);
-}
-
-function bgCloseAnggotaOverlay() {
-  document.getElementById("bg-anggota-overlay").style.display = "none";
-}
-
-function bgCloseOverlay(e) {
-  if (e.target === document.getElementById("bg-anggota-overlay")) bgCloseAnggotaOverlay();
+  setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
 }
 
 function _renderAnggotaDropdownItems(list) {
@@ -3187,7 +3193,7 @@ function _renderAnggotaTags() {
 
 function closeBuatGrup() {
   document.getElementById("modal-buat-grup").style.display = "none";
-  document.getElementById("bg-anggota-overlay").style.display = "none";
+  document.getElementById("bg-anggota-panel").style.display = "none";
   document.removeEventListener("click", _bgOutsideClick);
   _bgSelectedAnggota = [];
 }
@@ -8200,9 +8206,8 @@ function renderKuotaList() {
       <div style="text-align:center;flex:0 0 auto;">
         <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px;">⏱️ Overtime</div>
         <div style="display:inline-flex;align-items:baseline;gap:2px;">
-          <span style="font-size:18px;font-weight:900;color:#1565c0;">${otHari}</span>
-          <span style="font-size:10px;color:var(--muted);font-weight:400;">hari</span>
-          ${otSisaJam > 0 ? `<span style="font-size:11px;color:#64b5f6;font-weight:700;margin-left:2px;">+${otSisaJam}j</span>` : ""}
+          <span style="font-size:18px;font-weight:900;color:#1565c0;">${((saldoOT.totalJam != null ? saldoOT.totalJam : (saldoOT.hari * 5 + saldoOT.sisaJam)) || 0).toFixed(1)}</span>
+          <span style="font-size:10px;color:var(--muted);font-weight:400;">jam</span>
         </div>
       </div>
       <!-- Tukar Libur chip -->
