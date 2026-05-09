@@ -3410,9 +3410,13 @@ async function loadRules() {
                  style="font-size:12px;font-weight:700;color:#2c3e50;
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
                         max-width:88px;cursor:pointer;user-select:none;">${nama}</div>
-            <span id="peran-badge-${u.username}" style="font-size:9px;font-weight:700;padding:1px 6px;
-              border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
-              display:inline-block;margin-top:2px;">${u.groupName||u.group}</span>
+            <div id="mess-label-${u.username}" style="font-size:9px;margin-top:2px;display:flex;gap:3px;flex-wrap:wrap;align-items:center;">
+              <span id="peran-badge-${u.username}" style="font-size:9px;font-weight:700;padding:1px 6px;
+                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
+                display:${(isOwner||isAdmin)?"inline-block":"none"};">${u.groupName||u.group}</span>
+              ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
+              <span style="color:${isMess?"#e67e22":"var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>
+            </div>
           </div>
         </div>
         <!-- Kolom checkbox -->
@@ -3549,14 +3553,15 @@ async function loadRules() {
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
           ${avatar}
           <div style="min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div>
               <span style="font-size:14px;font-weight:700;color:#2c3e50;">${nama}</span>
-              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;
-                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};">${u.groupName||u.group}</span>
             </div>
-            <div id="mess-label-${u.username}" style="font-size:11px;margin-top:2px;
-              color:${isMess?"#e67e22":"var(--muted)"};">
-              ${isMess ? "🏠 Mess" : "🚗 Luar Mess"}
+            <div id="mess-label-${u.username}" style="font-size:11px;margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+              <span id="peran-badge-${u.username}" style="font-size:10px;font-weight:700;padding:2px 7px;
+                border-radius:50px;color:white;background:${u.groupColor||"#7f8c8d"};
+                display:${(isOwner||isAdmin)?"inline-block":"none"};">${u.groupName||u.group}</span>
+              ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
+              <span style="color:${isMess?"#e67e22":"var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>
             </div>
           </div>
         </div>
@@ -3597,6 +3602,26 @@ async function loadRules() {
   }
 }
 
+// Helper: rebuild baris status (badge peran + Tugas Luar + Mess) dari state cache
+function _rebuildStatusLabel(username) {
+  const label = document.getElementById(`mess-label-${username}`);
+  if (!label) return;
+  const isMess  = _rulesMessList.includes(username);
+  const isTL    = _rulesTugasLuarList.includes(username);
+  const peranNow = _rulesAdminList[username];
+  // Tentukan teks & warna badge dari state
+  let badgeText = "Anggota", badgeBg = "#7f8c8d";
+  if (peranNow === "owner")  { badgeText = "Owner"; badgeBg = "#6a1b9a"; }
+  else if (peranNow === "admin") { badgeText = "Admin"; badgeBg = "#1565c0"; }
+  // Rebuild innerHTML — tetap sertakan id peran-badge agar onPeranToggle masih bisa cari elemen
+  const showBadge = peranNow === "owner" || peranNow === "admin";
+  label.innerHTML =
+    `<span id="peran-badge-${username}" style="font-size:inherit;font-weight:700;padding:1px 6px;` +
+    `border-radius:50px;color:white;background:${badgeBg};display:${showBadge ? "inline-block" : "none"};">${badgeText}</span>` +
+    (isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : "") +
+    `<span style="color:${isMess ? "#e67e22" : "var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>`;
+}
+
 function onMessToggle(username, checked) {
   if (checked) {
     if (!_rulesMessList.includes(username)) _rulesMessList.push(username);
@@ -3604,11 +3629,7 @@ function onMessToggle(username, checked) {
     _rulesMessList = _rulesMessList.filter(u => u !== username);
   }
   // Update label teks (desktop / card layout)
-  const label = document.getElementById(`mess-label-${username}`);
-  if (label) {
-    label.style.color = checked ? "#e67e22" : "var(--muted)";
-    label.textContent = checked ? "🏠 Karyawan Mess" : "🚗 Karyawan Luar Mess";
-  }
+  _rebuildStatusLabel(username);
   // Update warna sel di spreadsheet layout (mobile)
   const cb = document.getElementById(`mess-cb-${username}`);
   if (cb && cb.parentElement) {
@@ -3622,6 +3643,8 @@ function onTugasLuarToggle(username, checked) {
   } else {
     _rulesTugasLuarList = _rulesTugasLuarList.filter(u => u !== username);
   }
+  // Update status label di bawah nama
+  _rebuildStatusLabel(username);
 }
 
 // Checkbox Owner/Admin — hanya satu yang aktif per anggota, yang lain otomatis uncheck
@@ -3637,17 +3660,8 @@ function onPeranToggle(username, peran, checked) {
     // Unchecked → kembalikan ke group anggota biasa (akan ditentukan saat simpan)
     _rulesAdminList[username] = "__remove__";
   }
-  // Update badge peran tampilan
-  const badge = document.getElementById(`peran-badge-${username}`);
-  if (badge) {
-    if (checked) {
-      badge.textContent  = peran === "owner" ? "Owner" : "Admin";
-      badge.style.background = peran === "owner" ? "#6a1b9a" : "#1565c0";
-    } else {
-      badge.textContent  = "Anggota";
-      badge.style.background = "#7f8c8d";
-    }
-  }
+  // Update tampilan label status di bawah nama
+  _rebuildStatusLabel(username);
 }
 
 // Helper: update tampilan border label checkbox di mobile card setelah toggle
