@@ -2851,9 +2851,9 @@ async function openDetailAnggota(username) {
   document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
 
-  // Badge peran
+  // Badge peran — tampilkan jabatan (jika ada), fallback ke groupName
   const badge = document.getElementById("da-peran-badge");
-  badge.textContent   = m.groupName;
+  badge.textContent      = m.jabatan || m.groupName;
   badge.style.background = (m.groupColor || "#7f8c8d") + "22";
   badge.style.color      = m.groupColor || "#7f8c8d";
 
@@ -2868,16 +2868,14 @@ async function openDetailAnggota(username) {
   if (userLevel <= 2) {
     editSec.style.display = "block";
 
-    // Dropdown Divisi — multi-select dengan checkbox
+    // Populate hidden select (tetap dibutuhkan untuk saveDetailAnggota)
     const selDiv = document.getElementById("da-select-divisi");
     const divisiArrM = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
     selDiv.innerHTML = '<option value="">— Tanpa Divisi —</option>' +
       _anggotaDivisi.map(d =>
         `<option value="${d.nama}" ${divisiArrM.includes(d.nama) ? "selected" : ""}>${d.nama}</option>`
       ).join('');
-    // Aktifkan multiple select
     selDiv.setAttribute("multiple", "true");
-    selDiv.style.height = Math.min(_anggotaDivisi.length * 34 + 34, 150) + "px";
 
     // Tombol hapus — sembunyikan jika diri sendiri
     document.getElementById("da-btn-hapus").style.display = isSelf ? "none" : "inline-block";
