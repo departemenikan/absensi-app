@@ -2426,20 +2426,7 @@
           <span id="bg-anggota-label" style="color:#aaa;">— Pilih Anggota —</span>
           <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:12px;">▼</span>
         </div>
-        <!-- Panel dropdown — fixed posisi agar tidak terpotong scroll modal -->
-        <div id="bg-anggota-panel" style="display:none;position:fixed;
-          background:white;border:1px solid #e0e0e0;border-radius:8px;z-index:10500;
-          box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden;width:calc(92% - 48px);max-width:372px;">
-          <!-- Search dalam dropdown -->
-          <div style="padding:8px 10px;border-bottom:1px solid #f0f2f5;">
-            <input id="bg-anggota-search" type="text" placeholder="🔍 Cari nama..." oninput="filterAnggotaDropdown()"
-              style="width:100%;padding:7px 10px;border:1px solid #e8ecf0;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box;">
-          </div>
-          <!-- List item checkbox -->
-          <div id="bg-anggota-list" style="max-height:180px;overflow-y:auto;padding:4px 0;">
-            <p style="color:#aaa;font-size:13px;text-align:center;padding:12px;">Memuat anggota...</p>
-          </div>
-        </div>
+        <!-- panel lama dihapus, diganti overlay di bawah -->
       </div>
       <!-- Tag anggota terpilih -->
       <div id="bg-anggota-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
@@ -2447,6 +2434,48 @@
     <div style="display:flex;gap:10px;margin-top:6px;">
       <button onclick="closeBuatGrup()" style="flex:1;padding:11px;border:1px solid #e0e0e0;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;">Batal</button>
       <button onclick="saveBuatGrup()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- OVERLAY: PILIH ANGGOTA (untuk Buat Divisi)                   -->
+<!-- ============================================================ -->
+<div id="bg-anggota-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+  z-index:10500;align-items:flex-end;justify-content:center;" onclick="bgCloseOverlay(event)">
+  <div style="background:white;border-radius:20px 20px 0 0;width:100%;max-width:480px;
+    max-height:75vh;display:flex;flex-direction:column;box-shadow:0 -4px 32px rgba(0,0,0,.2);
+    animation:slideUp .22s ease;" onclick="event.stopPropagation()">
+    <!-- Handle -->
+    <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+      <div style="width:36px;height:4px;border-radius:4px;background:#ddd;"></div>
+    </div>
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 18px 12px;">
+      <span style="font-size:15px;font-weight:700;color:#222;">Pilih Anggota</span>
+      <button onclick="bgCloseAnggotaOverlay()"
+        style="border:none;background:#f5f5f5;width:28px;height:28px;border-radius:50%;
+               font-size:16px;cursor:pointer;color:#888;display:flex;align-items:center;justify-content:center;">×</button>
+    </div>
+    <!-- Search -->
+    <div style="padding:0 16px 10px;">
+      <div style="display:flex;align-items:center;gap:8px;background:#f5f7fb;border-radius:10px;padding:8px 12px;">
+        <span style="color:#aaa;font-size:14px;">🔍</span>
+        <input id="bg-anggota-search" type="text" placeholder="Cari nama..." oninput="filterAnggotaDropdown()"
+          style="border:none;background:none;outline:none;font-size:14px;flex:1;color:#222;">
+      </div>
+    </div>
+    <!-- List scrollable -->
+    <div id="bg-anggota-list" style="flex:1;overflow-y:auto;padding:4px 8px 16px;">
+      <p style="color:#aaa;font-size:13px;text-align:center;padding:20px;">Memuat anggota...</p>
+    </div>
+    <!-- Footer: tombol selesai -->
+    <div style="padding:12px 16px 20px;border-top:1px solid #f0f2f5;">
+      <button onclick="bgCloseAnggotaOverlay()"
+        style="width:100%;padding:13px;border:none;border-radius:12px;background:var(--primary);
+               color:white;font-weight:700;font-size:14px;cursor:pointer;">
+        ✓ Selesai Pilih Anggota
+      </button>
     </div>
   </div>
 </div>
@@ -2498,66 +2527,71 @@
 <!-- MODAL: DETAIL PROFIL ANGGOTA                                 -->
 <!-- ============================================================ -->
 <div id="modal-detail-anggota"
-  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9200;align-items:center;justify-content:center;">
-  <div style="background:white;border-radius:20px;width:92%;max-width:420px;
-    overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.22);animation:slideUp .22s ease;">
-
-    <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;">
-      <span style="font-size:14px;font-weight:700;color:#888;letter-spacing:.3px;">Profil Anggota</span>
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9200;align-items:flex-end;justify-content:center;">
+  <div style="background:white;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;
+    padding:0 0 24px;box-shadow:0 -4px 32px rgba(0,0,0,.18);animation:slideUp .22s ease;">
+    <!-- Handle bar -->
+    <div style="display:flex;justify-content:center;padding:10px 0 0;">
+      <div style="width:36px;height:4px;border-radius:4px;background:#ddd;"></div>
+    </div>
+    <!-- Header tutup -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 18px 0;">
+      <span style="font-size:15px;font-weight:700;color:#222;">Profil Anggota</span>
       <button onclick="closeDetailAnggota()"
-        style="border:none;background:#f5f5f5;width:28px;height:28px;border-radius:50%;
-               font-size:16px;cursor:pointer;color:#888;line-height:1;display:flex;align-items:center;justify-content:center;">×</button>
+        style="border:none;background:none;font-size:22px;cursor:pointer;color:#aaa;line-height:1;">×</button>
     </div>
 
-    <!-- Avatar + Nama + Jabatan (satu badge saja) -->
-    <div style="display:flex;align-items:center;gap:14px;padding:0 18px 16px;">
+    <!-- Avatar + Nama -->
+    <div style="display:flex;align-items:center;gap:14px;padding:16px 18px 10px;">
       <div id="da-avatar"
-        style="width:56px;height:56px;border-radius:16px;background:#7f8c8d;color:white;
-               display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;
-               flex-shrink:0;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.12);"></div>
+        style="width:58px;height:58px;border-radius:50%;background:#7f8c8d;color:white;
+               display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;
+               flex-shrink:0;overflow:hidden;"></div>
       <div style="flex:1;min-width:0;">
-        <div id="da-nama" style="font-size:17px;font-weight:800;color:#111;line-height:1.2;"></div>
-        <!-- Jabatan tampil sebagai subtitle, peran-badge disembunyikan (duplikat) -->
+        <div id="da-nama" style="font-size:17px;font-weight:800;color:#111;"></div>
+        <div id="da-jabatan" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap;">
           <span id="da-peran-badge"
             style="font-size:11px;padding:3px 10px;border-radius:50px;font-weight:700;"></span>
           <span id="da-status-badge" style="display:none;font-size:11px;padding:3px 10px;border-radius:50px;
             background:#fff3e0;color:#e65100;font-weight:700;">🚗 Tugas Luar</span>
         </div>
-        <!-- da-jabatan tetap ada untuk JS, disembunyikan secara visual (sudah tampil via badge) -->
-        <div id="da-jabatan" style="display:none;"></div>
       </div>
     </div>
 
-    <!-- Info grid: Divisi + Terakhir Aktif -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 18px 18px;">
-      <div style="background:#f8f9fb;border-radius:12px;padding:10px 14px;">
-        <div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:4px;">Divisi</div>
-        <div id="da-divisi" style="font-size:13px;font-weight:700;color:#222;line-height:1.3;">—</div>
+    <!-- Info grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px 18px 14px;">
+      <div style="background:#f8f9fb;border-radius:10px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Divisi / Grup</div>
+        <div id="da-divisi" style="font-size:13px;font-weight:700;color:#222;">—</div>
       </div>
-      <div style="background:#f8f9fb;border-radius:12px;padding:10px 14px;">
-        <div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:4px;">Terakhir Aktif</div>
+      <div style="background:#f8f9fb;border-radius:10px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Terakhir Aktif</div>
         <div id="da-lastseen" style="font-size:13px;font-weight:700;color:#222;">—</div>
       </div>
     </div>
 
-    <!-- SECTION EDIT: Owner & Admin only (tanpa dropdown divisi) -->
-    <div id="da-edit-section" style="display:none;border-top:1px solid #f0f2f5;padding:14px 18px 20px;">
-      <!-- select tetap ada di DOM untuk JS saveDetailAnggota(), tapi disembunyikan -->
-      <select id="da-select-divisi" style="display:none;" multiple></select>
+    <!-- SECTION EDIT: Owner & Admin only -->
+    <div id="da-edit-section" style="display:none;border-top:1px solid #f0f2f5;padding:14px 18px 0;">
+
+      <!-- Divisi -->
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Divisi</label>
+        <select id="da-select-divisi"
+          style="width:100%;padding:11px 12px;border:1px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;background:white;">
+        </select>
+      </div>
 
       <!-- Tombol aksi -->
       <div style="display:flex;gap:10px;">
         <button id="da-btn-hapus" onclick="deleteAnggotaFromModal()"
-          style="flex:1;padding:12px;border:none;border-radius:12px;background:#fce4ec;color:#c62828;
-                 font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.2px;">🗑 Hapus</button>
+          style="flex:1;padding:12px;border:none;border-radius:10px;background:#fce4ec;color:#c62828;
+                 font-weight:700;font-size:13px;cursor:pointer;">🗑 Hapus</button>
         <button onclick="saveDetailAnggota()"
-          style="flex:2;padding:12px;border:none;border-radius:12px;background:var(--primary);color:white;
-                 font-weight:700;font-size:14px;cursor:pointer;letter-spacing:.2px;">💾 Simpan</button>
+          style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--primary);color:white;
+                 font-weight:700;font-size:14px;cursor:pointer;">💾 Simpan</button>
       </div>
     </div>
-
   </div>
 </div>
 
