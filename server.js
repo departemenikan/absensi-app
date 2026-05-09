@@ -589,9 +589,7 @@ initGroups();
 // Inisialisasi kebijakan cuti default jika belum ada
 function initKebijakanCutiDefault() {
   const data = load(F.kebijakanCuti, []);
-  const hasDefault = data.some(d => d._default === true);
-  if (!hasDefault) {
-    const defaults = [
+  const defaults = [
       {
         id:         "default-tahunan",
         nama:       "Cuti Tahunan",
@@ -623,7 +621,7 @@ function initKebijakanCutiDefault() {
         kuotaKey:   "tukarLibur",
         periode:    "akumulasi",
         berlaku:    "semua",
-        keterangan: "Kompensasi kerja di hari libur nasional/agama. Tidak hangus tahunan. 1 hari = 5 jam.",
+        keterangan: "Tukar kerja di hari libur nasional/keagamaan.",
         _default:   true,
         _locked:    true,
         createdAt:  new Date().toISOString()
@@ -631,7 +629,6 @@ function initKebijakanCutiDefault() {
     ];
     // Gabungkan: default di depan, kebijakan custom di belakang
     save(F.kebijakanCuti, [...defaults, ...data.filter(d => !d._default)]);
-  }
 }
 initKebijakanCutiDefault();
 
