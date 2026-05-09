@@ -824,6 +824,11 @@ app.get("/admin/today", requireLevel(3), (req, res) => {
     else if (rec && rec.jamKeluar) status = "DONE";
     return { user: username, jamMasuk: rec?.jamMasuk||null, jamKeluar: rec?.jamKeluar||null, status };
   });
+  records.sort((a, b) => {
+    const na = (users[a.user]?.namaLengkap || a.user || '');
+    const nb = (users[b.user]?.namaLengkap || b.user || '');
+    return na.localeCompare(nb, 'id');
+  });
   res.send({ totalUsers: Object.keys(users).length, records });
 });
 
@@ -936,6 +941,7 @@ app.get("/anggota", requireLevel(99), (req, res) => {
       lastSeen,
     };
   });
+  list.sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
   res.send(list);
 });
 
@@ -1651,6 +1657,7 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     };
   });
 
+  result.sort((a, b) => (a.nama || a.username || '').localeCompare(b.nama || b.username || '', 'id'));
   res.send({ weekDates: dates, users: result });
 });
 
@@ -1796,6 +1803,7 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
     };
   });
 
+  result.sort((a, b) => (a.nama || a.username || '').localeCompare(b.nama || b.username || '', 'id'));
   res.send({ month, weeks, allDates, users: result });
 });
 
@@ -2323,7 +2331,9 @@ app.get("/kuota-cuti", requireLevel(2), (req, res) => {
   // Kebijakan custom jenis kuota
   const customKebijakan = kebijakan.filter(k => !k._default && k.jenis === "kuota");
 
-  const result = Object.keys(users).map(username => {
+  const result = Object.keys(users).sort((a, b) => {
+    return (users[a]?.namaLengkap || a).localeCompare(users[b]?.namaLengkap || b, 'id');
+  }).map(username => {
     const k = initKuotaUser(kuota, username, tahun);
     const u = users[username];
     // Hitung saldo untuk ditampilkan di UI
@@ -3098,6 +3108,7 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
       }
       return false;
     })
+    .sort((a, b) => (users[a]?.namaLengkap || a).localeCompare(users[b]?.namaLengkap || b, 'id'))
     .map(username => {
       const points  = todayData[username] || [];
       const last    = points.length ? points[points.length - 1] : null;

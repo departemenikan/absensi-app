@@ -2238,7 +2238,9 @@ async function loadAdmin() {
     const d = await r.json();
     document.getElementById("adm-total").innerText = d.totalUsers;
     document.getElementById("adm-hadir").innerText = d.records.filter(x=>x.status!=="OUT").length;
-    const filtered = d.records.filter(x=>x.user.toLowerCase().includes(search));
+    const filtered = d.records
+      .filter(x=>x.user.toLowerCase().includes(search))
+      .sort((a, b) => (a.namaLengkap || a.user || '').localeCompare(b.namaLengkap || b.user || '', 'id'));
     const list = document.getElementById("admin-list");
     if (!filtered.length) { list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada data</p>'; return; }
     const sc = {IN:"in",BREAK:"break",OUT:"out",DONE:"out"};
@@ -2315,6 +2317,9 @@ function renderAnggotaTable(list) {
   const el      = document.getElementById("member-list");
   const countEl = document.getElementById("anggota-count");
   if (countEl) countEl.textContent = list.length + " anggota";
+
+  // Sort A-Z berdasarkan nama
+  list = [...list].sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
 
   if (!list.length) {
     el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px;">Tidak ada anggota</p>';
@@ -2669,7 +2674,7 @@ async function openBuatGrup() {
   document.getElementById("bg-nama").value = "";
   document.getElementById("bg-anggota-search").value = "";
   document.getElementById("bg-anggota-panel").style.display = "none";
-  _renderAnggotaDropdownItems(_anggotaAll.filter(a => a.group !== "owner"));
+  _renderAnggotaDropdownItems([..._anggotaAll].filter(a => a.group !== "owner").sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id')));
   _renderAnggotaTags();
 
   // Dropdown Owner: semua user group "owner"
@@ -7388,8 +7393,9 @@ async function loadTracking() {
       const r = await authFetch("/anggota"); _anggotaAll = await r.json();
     }
     const sel = document.getElementById("trk-pilih-user");
+    const sortedAnggota = [..._anggotaAll].sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
     sel.innerHTML = '<option value="">— Pilih Anggota —</option>' +
-      _anggotaAll.map(a => `<option value="${a.username}">${a.namaLengkap || a.username}</option>`).join('');
+      sortedAnggota.map(a => `<option value="${a.username}">${a.namaLengkap || a.username}</option>`).join('');
   } catch {}
   refreshLiveTracking();
 }
@@ -7410,6 +7416,7 @@ const _statusLabel = { IN: "Bekerja", BREAK: "Istirahat", DONE: "Selesai", OUT: 
 function renderLiveList(list) {
   const el = document.getElementById("trk-live-list");
   if (!list.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Tidak ada anggota</p>'; return; }
+  list = [...list].sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
   el.innerHTML = list.map(a => {
     const color = _statusColor[a.status] || "#bdc3c7";
     const label = _statusLabel[a.status] || a.status;
@@ -7731,9 +7738,9 @@ function renderKuotaList() {
   if (!listEl) return;
 
   const q = (document.getElementById("kuota-search")?.value || "").toLowerCase();
-  const filtered = _kuotaData.filter(d =>
-    (d.nama || d.username).toLowerCase().includes(q) || d.username.toLowerCase().includes(q)
-  );
+  const filtered = _kuotaData
+    .filter(d => (d.nama || d.username).toLowerCase().includes(q) || d.username.toLowerCase().includes(q))
+    .sort((a, b) => (a.nama || a.username || '').localeCompare(b.nama || b.username || '', 'id'));
 
   if (!filtered.length) {
     listEl.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada data anggota</p>`;
