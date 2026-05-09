@@ -139,6 +139,9 @@ function openView(viewId) {
     if (!_tsWeekStart) _tsWeekStart = tsGetMonday();
     loadTimesheet();
   }
+  if (viewId === "view-screenshot") {
+    if (typeof loadScreenshotPage === "function") loadScreenshotPage();
+  }
 }
 
 function navTo(page) {
@@ -486,6 +489,7 @@ function applyMenuAccess() {
     "menu-aksesibilitas": "aksesibilitas",
     "menu-tracking":      "tracking",
     "menu-admin":         "admin",
+    "menu-screenshot":    "screenshot",
   };
   Object.entries(settingMap).forEach(([elId, menuKey]) => {
     const el = document.getElementById(elId);
@@ -757,6 +761,116 @@ async function verifyFace(label) {
 }
 
 // ============================================================
+// SCREENSHOT BUKTI KERJA
+// ============================================================
+let _ssStream      = null;  // MediaStream dari getDisplayMedia
+let _ssInterval    = null;  // interval auto-screenshot
+let _ssCanvas      = null;  // canvas reusable untuk capture
+const SS_INTERVAL_MS = 15 * 60 * 1000; // 15 menit
+
+// Minta izin share screen — return true jika berhasil
+async function ssRequestScreen() {
+  try {
+    // Hentikan stream lama jika ada
+    if (_ssStream) { _ssStream.getTracks().forEach(t => t.stop()); _ssStream = null; }
+
+    showToast("🖥️ Izinkan berbagi layar untuk melanjutkan Clock In...", "info", 5000);
+    _ssStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: "always", displaySurface: "monitor" },
+      audio: false,
+    });
+
+    // Jika user menutup share screen sendiri → stop otomatis
+    _ssStream.getVideoTracks()[0].addEventListener("ended", () => {
+      console.log("[SS] Share screen dihentikan user");
+      ssStop();
+    });
+
+    return true;
+  } catch (e) {
+    console.warn("[SS] Izin share screen ditolak:", e.message);
+    return false;
+  }
+}
+
+// Ambil satu screenshot dan kirim ke server
+async function ssTakeAndSend() {
+  if (!_ssStream || !_ssStream.active) return;
+  try {
+    const track    = _ssStream.getVideoTracks()[0];
+    if (!track || track.readyState !== "live") return;
+
+    // Buat ImageCapture atau fallback ke video element
+    let blob;
+    if (typeof ImageCapture !== "undefined") {
+      try {
+        const ic = new ImageCapture(track);
+        blob     = await ic.takePhoto({ imageWidth: 1280 });
+      } catch { blob = null; }
+    }
+
+    let base64;
+    if (blob) {
+      base64 = await new Promise(r => {
+        const rd = new FileReader();
+        rd.onload = () => r(rd.result);
+        rd.readAsDataURL(blob);
+      });
+    } else {
+      // Fallback: gambar via video element + canvas
+      const video = document.createElement("video");
+      video.srcObject = new MediaStream([track]);
+      video.muted     = true;
+      await new Promise(r => { video.onloadedmetadata = r; video.play(); });
+      await new Promise(r => setTimeout(r, 200)); // tunggu frame
+
+      if (!_ssCanvas) _ssCanvas = document.createElement("canvas");
+      const scale = Math.min(1, 1280 / video.videoWidth);
+      _ssCanvas.width  = Math.round(video.videoWidth  * scale);
+      _ssCanvas.height = Math.round(video.videoHeight * scale);
+      _ssCanvas.getContext("2d").drawImage(video, 0, 0, _ssCanvas.width, _ssCanvas.height);
+      base64 = _ssCanvas.toDataURL("image/jpeg", 0.7);
+      video.srcObject = null;
+    }
+
+    if (!base64 || base64.length < 1000) return;
+
+    // Kirim ke server
+    const r = await authFetch("/screenshot", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ image: base64 }),
+    });
+    if (r.ok) console.log("[SS] Screenshot terkirim @", new Date().toLocaleTimeString("id-ID"));
+    else      console.warn("[SS] Gagal kirim screenshot:", await r.text());
+  } catch (e) {
+    console.warn("[SS] Error saat capture:", e.message);
+  }
+}
+
+// Mulai interval screenshot — dipanggil setelah Clock In berhasil
+function ssStart() {
+  ssStop(); // clear interval lama
+  if (!_ssStream || !_ssStream.active) return;
+  // Ambil screenshot pertama langsung, lalu setiap 15 menit
+  setTimeout(() => ssTakeAndSend(), 3000);
+  _ssInterval = setInterval(() => ssTakeAndSend(), SS_INTERVAL_MS);
+  console.log("[SS] Auto-screenshot dimulai (interval 15 menit)");
+}
+
+// Hentikan screenshot — dipanggil saat Clock Out
+function ssStop() {
+  if (_ssInterval) { clearInterval(_ssInterval); _ssInterval = null; }
+  if (_ssStream)   { _ssStream.getTracks().forEach(t => t.stop()); _ssStream = null; }
+  console.log("[SS] Auto-screenshot dihentikan");
+}
+
+// Cek apakah browser support getDisplayMedia
+function ssIsSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+}
+
+// ============================================================
 // ABSENSI
 // ============================================================
 async function sendAbsen(type, label) {
@@ -818,6 +932,24 @@ async function sendAbsen(type, label) {
     if (!ok) return;
     const photo = takePhoto();
 
+    // ── Screen share: wajib untuk Clock In di desktop ──────────────────
+    if (type === "IN" && ssIsSupported()) {
+      const ssOk = await ssRequestScreen();
+      if (!ssOk) {
+        showToast("❌ Clock In dibatalkan. Izin berbagi layar diperlukan untuk memantau aktivitas kerja.", "error", 6000);
+        [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+        // Tampilkan ulang permission dialog agar user bisa coba lagi
+        setTimeout(async () => {
+          const retry = await ssRequestScreen();
+          if (!retry) showToast("⚠️ Aktifkan berbagi layar, lalu coba Clock In kembali.", "warning", 5000);
+        }, 1000);
+        return;
+      }
+    }
+
+    // Hentikan screenshot saat Clock Out
+    if (type === "OUT") ssStop();
+
     // Ambil nilai aktivitas
     const selAktFinal = document.getElementById("home-aktivitas-select");
     const aktivitas = selAktFinal ? selAktFinal.value.trim() : "";
@@ -846,6 +978,8 @@ async function sendAbsen(type, label) {
       if (type === "OUT") loadWeeklyInfo();
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
+      // Mulai auto-screenshot setelah Clock In berhasil
+      if (type === "IN") ssStart();
     } else if (d.status === "OUT_OF_AREA") {
       const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ ${_actionLabel} gagal! Anda berada ${d.distance}m dari ${d.area||"kantor"}. Harus berada dalam radius area. Jika sedang Tugas Luar, minta admin ubah status kerja Anda.`, "error", 7000);
@@ -9121,3 +9255,214 @@ async function sendChat() {
   const box = document.getElementById("chat-messages");
   box.scrollTop = box.scrollHeight;
 }
+
+// ============================================================
+// MONITOR LAYAR — Halaman view-screenshot
+// ============================================================
+
+// Hook ke openView agar load data saat masuk halaman screenshot
+const _origOpenView_ss = openView;
+openView = window.openView = function(viewId) {
+  _origOpenView_ss(viewId);
+  if (viewId === "view-screenshot") loadScreenshotPage();
+};
+
+async function loadScreenshotPage() {
+  await ssPopulateUserSelect();
+  await loadScreenshotActiveList();
+}
+
+// Isi dropdown pilih karyawan
+async function ssPopulateUserSelect() {
+  const sel = document.getElementById("ss-pilih-user");
+  if (!sel) return;
+  try {
+    const r = await authFetch("/screenshots/today");
+    if (!r.ok) return;
+    const list = await r.json();
+    // Simpan opsi lama yg dipilih
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    list.forEach(u => {
+      const o = document.createElement("option");
+      o.value = u.username;
+      o.textContent = `${u.namaLengkap} (${u.totalScreenshots} foto)`;
+      sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+  } catch {}
+}
+
+// Load daftar karyawan aktif hari ini + jumlah screenshot
+async function loadScreenshotActiveList(silent = false) {
+  const el = document.getElementById("ss-active-list");
+  if (!el) return;
+  if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>';
+  try {
+    const r = await authFetch("/screenshots/today");
+    if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>'; return; }
+    const list = await r.json();
+    if (!list.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Tidak ada karyawan aktif hari ini</p>'; return; }
+
+    const statusColor = { IN: "#27ae60", BREAK: "#f39c12", DONE: "#95a5a6" };
+    const statusLabel = { IN: "Sedang Bekerja", BREAK: "Istirahat", DONE: "Selesai" };
+
+    el.innerHTML = list.map(u => {
+      const lastFmt = u.lastScreenshot
+        ? new Date(u.lastScreenshot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+        : "--:--";
+      const hasSS = u.totalScreenshots > 0;
+      return `
+        <div onclick="ssSelectUser('${u.username}')"
+          style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .15s;"
+          onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='white'">
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">
+            ${(u.namaLengkap||u.username).charAt(0).toUpperCase()}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}</div>
+            <div style="font-size:11px;color:var(--muted);">${u.jabatan||""}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;background:${statusColor[u.status]}22;color:${statusColor[u.status]};">
+              ${statusLabel[u.status]||u.status}
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+              ${hasSS ? `🖥️ ${u.totalScreenshots} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+
+    // Update dropdown juga
+    await ssPopulateUserSelect();
+  } catch(e) {
+    el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>';
+  }
+}
+
+// Pilih user dari active list atau dropdown lalu load screenshot
+function ssSelectUser(username) {
+  const sel = document.getElementById("ss-pilih-user");
+  if (sel) sel.value = username;
+  loadScreenshots();
+}
+
+// Load grid screenshot untuk user yang dipilih
+async function loadScreenshots(silent = false) {
+  const sel = document.getElementById("ss-pilih-user");
+  const username = sel ? sel.value : "";
+  if (!username) { showToast("⚠️ Pilih karyawan terlebih dahulu", "warning"); return; }
+
+  const wrap  = document.getElementById("ss-grid-wrap");
+  const grid  = document.getElementById("ss-grid");
+  const empty = document.getElementById("ss-grid-empty");
+  const title = document.getElementById("ss-grid-title");
+  const count = document.getElementById("ss-grid-count");
+  if (!wrap || !grid) return;
+
+  wrap.style.display = "block";
+  if (!silent) grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;grid-column:1/-1;">Memuat...</p>';
+  if (empty) empty.style.display = "none";
+
+  try {
+    // Ambil metadata daftar screenshot
+    const r = await authFetch(`/screenshots/${username}`);
+    if (!r.ok) { grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Gagal memuat</p>'; return; }
+    const shots = await r.json();
+
+    // Update title
+    const users = {};
+    try {
+      const ur = await authFetch("/anggota");
+      if (ur.ok) { const ul = await ur.json(); ul.forEach(u => users[u.username] = u.namaLengkap || u.username); }
+    } catch {}
+    if (title) title.textContent = `Screenshot — ${users[username] || username}`;
+
+    if (!shots.length) {
+      grid.innerHTML = "";
+      if (empty) empty.style.display = "block";
+      if (count) count.textContent = "0 foto";
+      return;
+    }
+
+    if (count) count.textContent = `${shots.length} foto`;
+
+    // Render thumbnail lazy (load image satu per satu)
+    grid.innerHTML = shots.map((s, i) => {
+      const waktu = new Date(s.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+      return `
+        <div id="ss-thumb-${i}" onclick="ssOpenModal(${i}, '${username}')"
+          style="border-radius:10px;overflow:hidden;background:#f0f2f5;cursor:pointer;position:relative;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.08);"
+          onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.6));padding:4px 6px;color:white;font-size:10px;font-weight:700;">
+            ${waktu}
+          </div>
+          <span style="font-size:28px;color:#bbb;" id="ss-loading-${i}">⏳</span>
+        </div>`;
+    }).join("");
+
+    // Lazy load image satu per satu
+    for (const s of shots) {
+      ssLoadThumb(s.index, username);
+    }
+
+  } catch(e) {
+    grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Terjadi kesalahan</p>';
+  }
+}
+
+// Load satu thumbnail
+async function ssLoadThumb(index, username) {
+  try {
+    const r = await authFetch(`/screenshots/${username}/${index}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const thumb = document.getElementById(`ss-thumb-${index}`);
+    const loading = document.getElementById(`ss-loading-${index}`);
+    if (!thumb || !d.image) return;
+    if (loading) loading.remove();
+    const img = document.createElement("img");
+    img.src = d.image;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+    thumb.insertBefore(img, thumb.firstChild);
+  } catch {}
+}
+
+// Buka modal fullscreen
+async function ssOpenModal(index, username) {
+  const modal = document.getElementById("ss-modal");
+  const img   = document.getElementById("ss-modal-img");
+  const info  = document.getElementById("ss-modal-info");
+  if (!modal || !img) return;
+
+  modal.style.display = "flex";
+  img.src = "";
+  if (info) info.textContent = "Memuat...";
+
+  try {
+    const r = await authFetch(`/screenshots/${username}/${index}`);
+    if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar", "error"); return; }
+    const d = await r.json();
+    img.src = d.image;
+    const waktu = new Date(d.ts).toLocaleString("id-ID", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+    if (info) info.textContent = `${username} · ${waktu}`;
+  } catch {
+    modal.style.display = "none";
+    showToast("❌ Gagal memuat gambar", "error");
+  }
+}
+
+// Tutup modal saat tekan Escape
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    const m = document.getElementById("ss-modal");
+    if (m && m.style.display !== "none") m.style.display = "none";
+  }
+});
+
+// Expose ke global
+window.loadScreenshots       = loadScreenshots;
+window.ssSelectUser          = ssSelectUser;
+window.ssOpenModal           = ssOpenModal;
+window.loadScreenshotActiveList = loadScreenshotActiveList;

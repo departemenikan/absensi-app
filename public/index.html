@@ -780,6 +780,12 @@
             <div><div class="menu-title">Tracking</div><div class="menu-sub">Pantau lokasi & rute anggota</div></div>
           </div><span class="menu-arrow">›</span>
         </div>
+        <div class="menu-item" id="menu-screenshot" onclick="openView('view-screenshot')">
+          <div class="menu-left">
+            <div class="menu-icon" style="background:#fce4ec;">🖥️</div>
+            <div><div class="menu-title">Monitor Layar</div><div class="menu-sub">Bukti kerja screenshot karyawan</div></div>
+          </div><span class="menu-arrow">›</span>
+        </div>
         <div class="menu-item" onclick="openView('view-profil')">
           <div class="menu-left">
             <div class="menu-icon" style="background:#e8eaf6;">👤</div>
@@ -2644,6 +2650,76 @@
     <div id="trkd-body" style="font-size:13px;color:#444;line-height:1.7;"></div>
     <button onclick="viewRouteFromModal()" style="margin-top:14px;width:100%;padding:11px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-size:14px;cursor:pointer;">📅 Lihat Rute Hari Ini</button>
   </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW: MONITOR LAYAR (Screenshot Bukti Kerja) -->
+<!-- ============================================================ -->
+<div id="view-screenshot" class="view">
+  <div class="page-wrap">
+    <div class="sub-header">
+      <button class="back-btn" onclick="openView('view-setting')">‹</button>
+      <h3>🖥️ Monitor Layar</h3>
+    </div>
+    <div style="margin-top:36px;">
+
+      <!-- Filter -->
+      <div class="card" style="margin-top:0;padding:14px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select id="ss-pilih-user"
+            style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
+            <option value="">— Pilih Karyawan —</option>
+          </select>
+          <button onclick="loadScreenshots()"
+            style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
+            🔍 Lihat
+          </button>
+          <button onclick="loadScreenshots(true)"
+            style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
+            🔄
+          </button>
+        </div>
+        <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
+          Screenshot diambil otomatis setiap 15 menit saat karyawan sedang bekerja di desktop. Disimpan selama 1 hari.
+        </p>
+      </div>
+
+      <!-- Status karyawan aktif -->
+      <div class="card" style="margin-top:12px;padding:14px;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:10px;">👥 Karyawan Aktif Hari Ini</div>
+        <div id="ss-active-list">
+          <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
+        </div>
+      </div>
+
+      <!-- Grid screenshot -->
+      <div id="ss-grid-wrap" style="display:none;">
+        <div class="card" style="margin-top:12px;padding:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:14px;font-weight:700;" id="ss-grid-title">Screenshot</div>
+            <span id="ss-grid-count" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+          <div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
+          </div>
+          <p id="ss-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
+            Belum ada screenshot untuk karyawan ini hari ini.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal fullscreen screenshot -->
+<div id="ss-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9900;align-items:center;justify-content:center;flex-direction:column;">
+  <div style="position:relative;max-width:95vw;max-height:90vh;">
+    <img id="ss-modal-img" src="" alt="screenshot"
+      style="max-width:95vw;max-height:85vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.5);">
+    <div id="ss-modal-info" style="text-align:center;color:white;font-size:13px;margin-top:10px;opacity:.85;"></div>
+  </div>
+  <button onclick="document.getElementById('ss-modal').style.display='none'"
+    style="position:fixed;top:18px;right:18px;border:none;background:rgba(255,255,255,.15);color:white;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer;backdrop-filter:blur(4px);">×</button>
 </div>
 
 <!-- ========== CHATBOT FLOATING ========== -->
