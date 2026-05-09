@@ -4373,16 +4373,6 @@ function toggleGroupBody(id) {
 
   el.classList.toggle("open", willOpen);
   if (chev) chev.style.transform = willOpen ? "rotate(90deg)" : "";
-
-  // Scroll ke header accordion yang dibuka
-  if (willOpen) {
-    const header = el.previousElementSibling;
-    if (header) {
-      setTimeout(() => {
-        header.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 50);
-    }
-  }
 }
 
 // ============================================================

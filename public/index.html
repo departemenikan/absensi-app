@@ -197,7 +197,10 @@
     .group-title{font-size:15px;font-weight:800;color:white;}
     .group-level{font-size:11px;color:rgba(255,255,255,.75);margin-top:1px;}
     .group-body{background:#f8f9ff;padding:0;display:none;}
-    .group-body.open{display:block;}
+    .group-body.open{display:block;max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .group-body.open::-webkit-scrollbar{width:3px;}
+    .group-body.open::-webkit-scrollbar-track{background:transparent;}
+    .group-body.open::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
     .akses-section{padding:0;}
     .akses-section-title{font-size:10px;font-weight:800;text-transform:uppercase;
       letter-spacing:.6px;color:var(--muted);padding:10px 16px 5px;
