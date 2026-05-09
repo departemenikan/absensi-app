@@ -95,6 +95,7 @@ const F = {
   pushSubs:        "push_subscriptions",
   appSettings:     "app_settings",
   screenshots:     "screenshots",
+  workPhotos:      "work_photos",
 };
 
 // Path file /tmp untuk keperluan migrasi data lama
@@ -134,6 +135,7 @@ async function loadAll() {
     rules: { messList: [] }, push_subscriptions: {},
     app_settings: { timezone: "Asia/Makassar" },
     screenshots: {},
+    work_photos: {},
   };
 
   await Promise.all(
@@ -689,7 +691,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
   const areas = load(F.areas, []);
   // Identitas user diambil dari header X-User (sudah diverifikasi middleware), bukan dari body
   const user = req._requester;
-  const { type, time, lat, lng, accuracy, photo } = req.body;
+  const { type, time, lat, lng, accuracy, photo, workPhoto } = req.body;
   if (!user) return res.status(401).send({ status: "UNAUTHORIZED" });
   const today = todayLocal(); // lokal WITA, bukan UTC
 
@@ -750,6 +752,15 @@ app.post("/absen", requireLevel(99), (req, res) => {
     record.jamKeluar = timeNorm;
     const lb = record.breaks.at(-1);
     if (lb && !lb.end) lb.end = timeNorm;
+    // Simpan foto kegiatan dari mobile jika ada
+    if (workPhoto && typeof workPhoto === "string" && workPhoto.startsWith("data:image/") && workPhoto.length < 700000) {
+      const wpStore = load(F.workPhotos, {});
+      const today2  = todayLocal();
+      if (!wpStore[today2]) wpStore[today2] = {};
+      if (!wpStore[today2][user]) wpStore[today2][user] = [];
+      wpStore[today2][user].push({ ts: new Date().toISOString(), image: workPhoto });
+      save(F.workPhotos, wpStore);
+    }
   } else if (type === "BREAK_START" && record) {
     record.breaks.push({ start: timeNorm, end: null });
   } else if (type === "BREAK_END" && record) {
@@ -3260,6 +3271,61 @@ app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
   res.json({ ts: shot.ts, image: shot.image });
 });
 
+
+
+
+// ========================
+// FOTO KEGIATAN KERJA (Mobile Clock Out)
+// ========================
+
+// GET /work-photos/today — daftar user yang punya foto kegiatan hari ini
+app.get("/work-photos/today", requireLevel(3), (req, res) => {
+  const today     = todayLocal();
+  const wpStore   = load(F.workPhotos, {});
+  const users     = load(F.users, {});
+  const todayData = wpStore[today] || {};
+
+  const result = Object.keys(todayData).map(username => ({
+    username,
+    namaLengkap: users[username]?.namaLengkap || username,
+    jabatan:     users[username]?.jabatan || "",
+    totalPhotos: todayData[username]?.length || 0,
+    lastPhoto:   todayData[username]?.at(-1)?.ts || null,
+  })).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
+
+  res.json(result);
+});
+
+// GET /work-photos/:user — list metadata foto kegiatan user (tanpa image)
+app.get("/work-photos/:user", requireLevel(3), (req, res) => {
+  const { user } = req.params;
+  const today   = todayLocal();
+  const wpStore = load(F.workPhotos, {});
+  const photos  = (wpStore[today] || {})[user] || [];
+  res.json(photos.map((p, i) => ({ index: i, ts: p.ts })));
+});
+
+// GET /work-photos/:user/:index — foto kegiatan dengan image
+app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
+  const { user, index } = req.params;
+  const today   = todayLocal();
+  const wpStore = load(F.workPhotos, {});
+  const photos  = (wpStore[today] || {})[user] || [];
+  const photo   = photos[parseInt(index)];
+  if (!photo) return res.status(404).json({ status: "NOT_FOUND" });
+  res.json({ ts: photo.ts, image: photo.image });
+});
+
+// Toggle fitur foto kegiatan — hanya Owner (level 1)
+app.post("/app-settings/work-photo-toggle", requireLevel(1), (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
+  const current = load(F.appSettings, { timezone: "Asia/Makassar" });
+  const updated  = { ...current, workPhotoEnabled: enabled };
+  save(F.appSettings, updated);
+  console.log(`[SETTING] Fitur Foto Kegiatan ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
+  res.json({ status: "OK", workPhotoEnabled: enabled });
+});
 
 // ========================
 // CHATBOT (Groq AI)

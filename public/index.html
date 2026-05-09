@@ -989,6 +989,37 @@
                 </div>
               </div>
 
+              <!-- Divider -->
+              <div style="height:1px;background:#eee;margin:18px 0;"></div>
+
+              <!-- Toggle Fitur Foto Kegiatan -->
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
+                  📸 Fitur Foto Kerja (Mobile Clock Out)
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+                  Jika diaktifkan, karyawan mobile akan diminta mengunggah foto kegiatan/hasil kerja sebelum Clock Out. Bersifat opsional — bisa dilewati.
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            background:#f8f9ff;border-radius:12px;padding:12px 14px;
+                            border:1px solid #e8ecf0;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;" id="wp-toggle-label">Memuat...</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="wp-toggle-sub"></div>
+                  </div>
+                  <!-- Toggle switch -->
+                  <div onclick="toggleWorkPhotoFeature()"
+                    id="wp-toggle-switch"
+                    style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                           cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                    <div id="wp-toggle-knob"
+                      style="width:22px;height:22px;border-radius:50%;background:white;
+                             position:absolute;top:3px;left:3px;
+                             transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -2690,52 +2721,117 @@
   <div class="page-wrap">
     <div class="sub-header">
       <button class="back-btn" onclick="openView('view-setting')">‹</button>
-      <h3>🖥️ Monitor Layar</h3>
+      <h3>📊 Monitor Aktivitas</h3>
     </div>
     <div style="margin-top:36px;">
 
-      <!-- Filter -->
-      <div class="card" style="margin-top:0;padding:14px;">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select id="ss-pilih-user"
-            style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
-            <option value="">— Pilih Karyawan —</option>
-          </select>
-          <button onclick="loadScreenshots()"
-            style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
-            🔍 Lihat
-          </button>
-          <button onclick="loadScreenshotActiveList(true);ssPopulateUserSelect()"
-            style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
-            🔄
-          </button>
-        </div>
-        <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
-          Screenshot diambil otomatis setiap 15 menit saat karyawan sedang bekerja di desktop. Disimpan selama 1 hari.
-        </p>
+      <!-- Tab switcher -->
+      <div style="display:flex;gap:0;background:#f0f2f5;border-radius:12px;padding:4px;margin-bottom:14px;">
+        <button id="tab-monitor-layar" onclick="switchMonitorTab('layar')" style="
+          flex:1;padding:10px 8px;border:none;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;
+          background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;transition:.2s;
+        ">🖥️ Monitor Layar</button>
+        <button id="tab-foto-kerja" onclick="switchMonitorTab('foto')" style="
+          flex:1;padding:10px 8px;border:none;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;
+          background:transparent;color:#95a5a6;transition:.2s;
+        ">📸 Foto Kerja</button>
       </div>
 
-      <!-- Status karyawan aktif -->
-      <div class="card" style="margin-top:12px;padding:14px;">
-        <div style="font-size:14px;font-weight:700;margin-bottom:10px;">👥 Karyawan Aktif Hari Ini</div>
-        <div id="ss-active-list">
-          <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
-        </div>
-      </div>
+      <!-- ===== PANEL: Monitor Layar ===== -->
+      <div id="panel-monitor-layar">
 
-      <!-- Grid screenshot -->
-      <div id="ss-grid-wrap" style="display:none;">
-        <div class="card" style="margin-top:12px;padding:14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div style="font-size:14px;font-weight:700;" id="ss-grid-title">Screenshot</div>
-            <span id="ss-grid-count" style="font-size:12px;color:var(--muted);"></span>
+        <!-- Filter -->
+        <div class="card" style="margin-top:0;padding:14px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="ss-pilih-user"
+              style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
+              <option value="">— Pilih Karyawan —</option>
+            </select>
+            <button onclick="loadScreenshots()"
+              style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
+              🔍 Lihat
+            </button>
+            <button onclick="loadScreenshotActiveList(true);ssPopulateUserSelect()"
+              style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
+              🔄
+            </button>
           </div>
-          <div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
-          <p id="ss-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
-            Belum ada screenshot untuk karyawan ini hari ini.
+          <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
+            Screenshot diambil otomatis setiap 15 menit saat karyawan sedang bekerja di desktop. Disimpan selama 1 hari.
           </p>
         </div>
-      </div>
+
+        <!-- Status karyawan aktif -->
+        <div class="card" style="margin-top:12px;padding:14px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">👥 Karyawan Aktif Hari Ini</div>
+          <div id="ss-active-list">
+            <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
+          </div>
+        </div>
+
+        <!-- Grid screenshot -->
+        <div id="ss-grid-wrap" style="display:none;">
+          <div class="card" style="margin-top:12px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="font-size:14px;font-weight:700;" id="ss-grid-title">Screenshot</div>
+              <span id="ss-grid-count" style="font-size:12px;color:var(--muted);"></span>
+            </div>
+            <div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
+            <p id="ss-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
+              Belum ada screenshot untuk karyawan ini hari ini.
+            </p>
+          </div>
+        </div>
+
+      </div><!-- /panel-monitor-layar -->
+
+      <!-- ===== PANEL: Foto Kerja ===== -->
+      <div id="panel-foto-kerja" style="display:none;">
+
+        <!-- Filter -->
+        <div class="card" style="margin-top:0;padding:14px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="wp-pilih-user"
+              style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
+              <option value="">— Pilih Karyawan —</option>
+            </select>
+            <button onclick="loadWorkPhotos()"
+              style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
+              🔍 Lihat
+            </button>
+            <button onclick="loadWorkPhotoList(true);wpPopulateUserSelect()"
+              style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
+              🔄
+            </button>
+          </div>
+          <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
+            Foto kegiatan/hasil kerja yang diunggah karyawan mobile saat Clock Out.
+          </p>
+        </div>
+
+        <!-- Daftar karyawan yang punya foto -->
+        <div class="card" style="margin-top:12px;padding:14px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">📋 Foto Kegiatan Hari Ini</div>
+          <div id="wp-user-list">
+            <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
+          </div>
+        </div>
+
+        <!-- Grid foto kegiatan -->
+        <div id="wp-grid-wrap" style="display:none;">
+          <div class="card" style="margin-top:12px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="font-size:14px;font-weight:700;" id="wp-grid-title">Foto Kegiatan</div>
+              <span id="wp-grid-count" style="font-size:12px;color:var(--muted);"></span>
+            </div>
+            <div id="wp-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
+            <p id="wp-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
+              Belum ada foto kegiatan untuk karyawan ini hari ini.
+            </p>
+          </div>
+        </div>
+
+      </div><!-- /panel-foto-kerja -->
 
     </div>
   </div>

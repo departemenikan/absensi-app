@@ -429,6 +429,10 @@ function enterApp(menus, group, level) {
   loadHomeLibur();
   // Load app settings (timezone dll)
   loadSistemSettings();
+  // Load status fitur foto kegiatan (untuk kontrol pop-up Clock Out)
+  authFetch("/app-settings").then(r => r.json()).then(d => {
+    _wpFeatureEnabled = d.workPhotoEnabled !== false;
+  }).catch(() => {});
   // Jika sudah clock in, mulai tracking ping
   authFetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
@@ -972,7 +976,8 @@ async function sendAbsen(type, label) {
         lng: loc.lng,
         accuracy: loc.accuracy || 0,  // ← kirim accuracy agar server toleran GPS lemah
         photo,
-        aktivitas: type === "IN" ? aktivitas : undefined  // hanya kirim saat Clock In
+        aktivitas: type === "IN" ? aktivitas : undefined,  // hanya kirim saat Clock In
+        workPhoto: type === "OUT" ? (_workPhotoData || undefined) : undefined  // foto kegiatan saat Clock Out (opsional)
       })
     });
     const d = await r.json();
@@ -1004,9 +1009,230 @@ async function sendAbsen(type, label) {
 }
 
 function clockIn()    { sendAbsen("IN",          "Clock In"); }
-function clockOut()   { sendAbsen("OUT",         "Clock Out"); }
+function clockOut() {
+  // Pop-up foto kegiatan: hanya mobile (lebar ≤ 768px) DAN fitur diaktifkan admin
+  const isMobile = window.innerWidth <= 768 || /Mobi|Android/i.test(navigator.userAgent);
+  if (isMobile && _wpFeatureEnabled) {
+    showWorkPhotoPopup();
+  } else {
+    sendAbsen("OUT", "Clock Out");
+  }
+}
 function breakStart() { sendAbsen("BREAK_START", "Istirahat"); }
 function breakEnd()   { sendAbsen("BREAK_END",   "Lanjut Kerja"); }
+
+// ============================================================
+// POPUP FOTO KEGIATAN — muncul sebelum kamera Clock Out
+// ============================================================
+let _workPhotoData = null; // base64 foto kegiatan, bisa null jika dilewati
+
+function showWorkPhotoPopup() {
+  _workPhotoData = null;
+
+  // Buat overlay jika belum ada
+  let overlay = document.getElementById("work-photo-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "work-photo-overlay";
+    overlay.style.cssText = `
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,.72);z-index:850;
+      display:flex;align-items:flex-end;justify-content:center;
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div id="work-photo-sheet" style="
+      background:#fff;border-radius:24px 24px 0 0;
+      width:100%;max-width:480px;padding:24px 20px 32px;
+      animation:slideUp .3s ease;
+    ">
+      <!-- Handle bar -->
+      <div style="width:40px;height:4px;background:#ddd;border-radius:4px;margin:0 auto 20px;"></div>
+
+      <!-- Judul -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#2c3e50;">📸 Foto Kegiatan</div>
+          <div style="font-size:12px;color:#95a5a6;margin-top:2px;">Opsional — bisa dilewati</div>
+        </div>
+        <button onclick="_skipWorkPhoto()" style="
+          width:32px;height:32px;border-radius:50%;border:none;
+          background:#f0f2f5;font-size:18px;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;color:#555;
+        ">✕</button>
+      </div>
+
+      <!-- Preview area (muncul jika foto dipilih) -->
+      <div id="wpp-preview-wrap" style="display:none;margin:14px 0;text-align:center;">
+        <img id="wpp-preview-img" style="
+          max-width:100%;max-height:220px;border-radius:12px;
+          object-fit:cover;border:2px solid #e8ecf0;
+        "/>
+        <div style="margin-top:8px;">
+          <button onclick="_clearWorkPhoto()" style="
+            font-size:12px;color:#e74c3c;background:none;border:none;cursor:pointer;font-weight:600;
+          ">🗑 Hapus foto</button>
+        </div>
+      </div>
+
+      <!-- Input file tersembunyi -->
+      <input type="file" id="wpp-file-input" accept="image/*" style="display:none"
+        onchange="_handleWorkPhotoFile(this)"/>
+
+      <!-- Tombol pilihan -->
+      <div id="wpp-btn-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+        <button onclick="_openWorkPhotoCamera()" style="
+          padding:14px 8px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px;
+          background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;
+          display:flex;flex-direction:column;align-items:center;gap:6px;
+        ">
+          <span style="font-size:22px;">📷</span>
+          <span>Ambil Foto</span>
+        </button>
+        <button onclick="document.getElementById('wpp-file-input').click()" style="
+          padding:14px 8px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px;
+          background:linear-gradient(135deg,#8e44ad,#9b59b6);color:white;
+          display:flex;flex-direction:column;align-items:center;gap:6px;
+        ">
+          <span style="font-size:22px;">🖼️</span>
+          <span>Dari Galeri</span>
+        </button>
+      </div>
+
+      <!-- Kamera inline untuk ambil foto kegiatan -->
+      <div id="wpp-camera-section" style="display:none;margin-top:16px;text-align:center;">
+        <video id="wpp-video" autoplay playsinline muted style="
+          width:100%;max-height:240px;border-radius:12px;object-fit:cover;
+          background:#111;
+        "></video>
+        <div id="wpp-cam-status" style="font-size:12px;color:#888;margin:8px 0;"></div>
+        <div style="display:flex;gap:10px;margin-top:4px;">
+          <button onclick="_captureWorkPhoto()" style="
+            flex:1;padding:12px;border:none;border-radius:10px;cursor:pointer;
+            background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:14px;
+          ">📸 Ambil</button>
+          <button onclick="_closeWorkPhotoCamera()" style="
+            padding:12px 16px;border:none;border-radius:10px;cursor:pointer;
+            background:#f0f2f5;color:#555;font-weight:700;font-size:14px;
+          ">Batal</button>
+        </div>
+      </div>
+
+      <!-- Tombol simpan / lanjut -->
+      <div style="margin-top:18px;display:flex;gap:10px;">
+        <button id="wpp-skip-btn" onclick="_skipWorkPhoto()" style="
+          flex:1;padding:13px;border:1.5px solid #e8ecf0;border-radius:12px;
+          background:#f8f9ff;color:#555;font-weight:700;font-size:14px;cursor:pointer;
+        ">Lewati</button>
+        <button id="wpp-save-btn" onclick="_saveWorkPhotoAndProceed()" style="
+          flex:1;padding:13px;border:none;border-radius:12px;
+          background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:700;font-size:14px;cursor:pointer;
+          display:none;
+        ">Simpan & Clock Out</button>
+      </div>
+    </div>
+  `;
+
+  overlay.style.display = "flex";
+}
+
+function _hideWorkPhotoPopup() {
+  const overlay = document.getElementById("work-photo-overlay");
+  if (overlay) overlay.style.display = "none";
+  _closeWorkPhotoCamera();
+}
+
+function _skipWorkPhoto() {
+  _workPhotoData = null;
+  _hideWorkPhotoPopup();
+  sendAbsen("OUT", "Clock Out");
+}
+
+function _saveWorkPhotoAndProceed() {
+  _hideWorkPhotoPopup();
+  sendAbsen("OUT", "Clock Out");
+}
+
+function _clearWorkPhoto() {
+  _workPhotoData = null;
+  document.getElementById("wpp-preview-wrap").style.display = "none";
+  document.getElementById("wpp-btn-group").style.display = "grid";
+  document.getElementById("wpp-save-btn").style.display = "none";
+}
+
+function _handleWorkPhotoFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _workPhotoData = e.target.result; // data:image/jpeg;base64,...
+    document.getElementById("wpp-preview-img").src = _workPhotoData;
+    document.getElementById("wpp-preview-wrap").style.display = "block";
+    document.getElementById("wpp-btn-group").style.display = "none";
+    document.getElementById("wpp-save-btn").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+  input.value = ""; // reset agar bisa pilih file sama lagi
+}
+
+let _wppStream = null;
+
+async function _openWorkPhotoCamera() {
+  const section = document.getElementById("wpp-camera-section");
+  const video   = document.getElementById("wpp-video");
+  const status  = document.getElementById("wpp-cam-status");
+  section.style.display = "block";
+  document.getElementById("wpp-btn-group").style.display = "none";
+  if (status) status.innerText = "⏳ Membuka kamera...";
+  try {
+    _wppStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = _wppStream;
+    await video.play();
+    if (status) status.innerText = "✅ Kamera siap — arahkan ke kegiatan/hasil kerja";
+  } catch (e) {
+    if (status) status.innerText = "❌ Gagal membuka kamera: " + e.message;
+  }
+}
+
+function _closeWorkPhotoCamera() {
+  const section = document.getElementById("wpp-camera-section");
+  const video   = document.getElementById("wpp-video");
+  if (section) section.style.display = "none";
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+  if (_wppStream) {
+    _wppStream.getTracks().forEach(t => t.stop());
+    _wppStream = null;
+  }
+  // Tampilkan kembali tombol pilihan jika belum ada foto
+  if (!_workPhotoData) {
+    const btnGroup = document.getElementById("wpp-btn-group");
+    if (btnGroup) btnGroup.style.display = "grid";
+  }
+}
+
+function _captureWorkPhoto() {
+  const video = document.getElementById("wpp-video");
+  if (!video || !video.videoWidth) {
+    showToast("⚠️ Kamera belum siap", "warning"); return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  _workPhotoData = canvas.toDataURL("image/jpeg", 0.82);
+  _closeWorkPhotoCamera();
+  document.getElementById("wpp-preview-img").src = _workPhotoData;
+  document.getElementById("wpp-preview-wrap").style.display = "block";
+  document.getElementById("wpp-save-btn").style.display = "block";
+}
 
 async function loadStatus() {
   const user = localStorage.getItem("user");
@@ -3414,6 +3640,7 @@ function switchAksesTab(tab) {
         akordionSistem.style.display = "";
         loadSistemSettings();
         loadScreenshotToggle();
+        loadWorkPhotoToggle();
       } else {
         akordionSistem.style.display = "none";
       }
@@ -9270,7 +9497,7 @@ async function sendChat() {
 const _origOpenView_ss = openView;
 openView = window.openView = function(viewId) {
   _origOpenView_ss(viewId);
-  if (viewId === "view-screenshot") loadScreenshotPage();
+  if (viewId === "view-screenshot") { loadScreenshotPage(); switchMonitorTab("layar"); }
 };
 
 async function loadScreenshotPage() {
@@ -9459,3 +9686,235 @@ window.ssPopulateUserSelect       = ssPopulateUserSelect;
 window.loadScreenshotToggle       = loadScreenshotToggle;
 window.renderScreenshotToggle     = renderScreenshotToggle;
 window.toggleScreenshotFeature    = toggleScreenshotFeature;
+
+// ============================================================
+// MONITOR AKTIVITAS — Tab Switcher
+// ============================================================
+function switchMonitorTab(tab) {
+  const isLayar = tab === "layar";
+  document.getElementById("panel-monitor-layar").style.display = isLayar ? "block" : "none";
+  document.getElementById("panel-foto-kerja").style.display    = isLayar ? "none"  : "block";
+
+  const btnLayar = document.getElementById("tab-monitor-layar");
+  const btnFoto  = document.getElementById("tab-foto-kerja");
+  const activeStyle   = "background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;";
+  const inactiveStyle = "background:transparent;color:#95a5a6;";
+  if (btnLayar) btnLayar.style.cssText += isLayar ? activeStyle : inactiveStyle;
+  if (btnFoto)  btnFoto.style.cssText  += isLayar ? inactiveStyle : activeStyle;
+
+  if (!isLayar) {
+    wpPopulateUserSelect();
+    loadWorkPhotoList();
+  }
+}
+window.switchMonitorTab = switchMonitorTab;
+
+// ============================================================
+// FOTO KERJA — loader & viewer
+// ============================================================
+async function wpPopulateUserSelect() {
+  const sel = document.getElementById("wp-pilih-user");
+  if (!sel) return;
+  try {
+    const r = await authFetch("/work-photos/today");
+    if (!r.ok) return;
+    const list = await r.json();
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    list.forEach(u => {
+      const o = document.createElement("option");
+      o.value = u.username;
+      o.textContent = `${u.namaLengkap} (${u.totalPhotos} foto)`;
+      sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+  } catch {}
+}
+
+async function loadWorkPhotoList(silent = false) {
+  const el = document.getElementById("wp-user-list");
+  if (!el) return;
+  if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>';
+  try {
+    const r = await authFetch("/work-photos/today");
+    if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>'; return; }
+    const list = await r.json();
+    if (!list.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Belum ada foto kegiatan hari ini</p>';
+      return;
+    }
+    el.innerHTML = list.map(u => {
+      const lastFmt = u.lastPhoto
+        ? new Date(u.lastPhoto).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+        : "--:--";
+      return `
+        <div onclick="wpSelectUser('${u.username}')"
+          style="display:flex;align-items:center;gap:12px;padding:10px 12px;
+                 border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .15s;"
+          onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='white'">
+          <div style="width:38px;height:38px;border-radius:50%;background:#8e44ad;color:white;
+                      display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">
+            ${(u.namaLengkap || u.username).charAt(0).toUpperCase()}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}</div>
+            <div style="font-size:11px;color:var(--muted);">${u.jabatan || ""}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;
+                        background:#f3e5f522;color:#8e44ad;">
+              📸 ${u.totalPhotos} foto
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">terakhir ${lastFmt}</div>
+          </div>
+        </div>`;
+    }).join("");
+    await wpPopulateUserSelect();
+  } catch {
+    el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Terjadi kesalahan</p>';
+  }
+}
+
+function wpSelectUser(username) {
+  const sel = document.getElementById("wp-pilih-user");
+  if (sel) sel.value = username;
+  loadWorkPhotos();
+}
+
+async function loadWorkPhotos(silent = false) {
+  const sel      = document.getElementById("wp-pilih-user");
+  const username = sel ? sel.value : "";
+  if (!username) { showToast("⚠️ Pilih karyawan terlebih dahulu", "warning"); return; }
+
+  const wrap  = document.getElementById("wp-grid-wrap");
+  const grid  = document.getElementById("wp-grid");
+  const empty = document.getElementById("wp-grid-empty");
+  const title = document.getElementById("wp-grid-title");
+  const count = document.getElementById("wp-grid-count");
+  if (!wrap || !grid) return;
+
+  wrap.style.display = "block";
+  if (!silent) grid.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;grid-column:1/-1;">Memuat...</p>';
+  if (empty) empty.style.display = "none";
+
+  try {
+    const r = await authFetch(`/work-photos/${username}`);
+    if (!r.ok) { grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Gagal memuat</p>'; return; }
+    const photos = await r.json();
+    if (title) title.textContent = `Foto Kerja — ${username}`;
+    if (!photos.length) {
+      grid.innerHTML = "";
+      if (empty) empty.style.display = "block";
+      if (count) count.textContent = "0 foto";
+      return;
+    }
+    if (count) count.textContent = `${photos.length} foto`;
+    grid.innerHTML = photos.map((p, i) => {
+      const waktu = new Date(p.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+      return `
+        <div id="wp-thumb-${i}" onclick="wpOpenModal(${i},'${username}')"
+          style="border-radius:10px;overflow:hidden;background:#f0f2f5;cursor:pointer;
+                 position:relative;aspect-ratio:4/3;display:flex;align-items:center;
+                 justify-content:center;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.08);"
+          onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.6));
+                      padding:4px 6px;color:white;font-size:10px;font-weight:700;">${waktu}</div>
+          <span style="font-size:28px;color:#bbb;" id="wp-loading-${i}">⏳</span>
+        </div>`;
+    }).join("");
+    for (const p of photos) wpLoadThumb(p.index, username);
+  } catch {
+    grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Terjadi kesalahan</p>';
+  }
+}
+
+async function wpLoadThumb(index, username) {
+  try {
+    const r = await authFetch(`/work-photos/${username}/${index}`);
+    if (!r.ok) return;
+    const d     = await r.json();
+    const thumb = document.getElementById(`wp-thumb-${index}`);
+    const load  = document.getElementById(`wp-loading-${index}`);
+    if (!thumb || !d.image) return;
+    if (load) load.remove();
+    const img = document.createElement("img");
+    img.src = d.image;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+    thumb.insertBefore(img, thumb.firstChild);
+  } catch {}
+}
+
+async function wpOpenModal(index, username) {
+  const modal = document.getElementById("ss-modal"); // reuse modal yang sama
+  const img   = document.getElementById("ss-modal-img");
+  const info  = document.getElementById("ss-modal-info");
+  if (!modal || !img) return;
+  modal.style.display = "flex";
+  img.src = "";
+  if (info) info.textContent = "Memuat...";
+  try {
+    const r = await authFetch(`/work-photos/${username}/${index}`);
+    if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar", "error"); return; }
+    const d = await r.json();
+    img.src = d.image;
+    const waktu = new Date(d.ts).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    if (info) info.textContent = `📸 Foto Kerja — ${username} · ${waktu}`;
+  } catch { modal.style.display = "none"; }
+}
+
+window.switchMonitorTab     = switchMonitorTab;
+window.wpPopulateUserSelect = wpPopulateUserSelect;
+window.loadWorkPhotoList    = loadWorkPhotoList;
+window.wpSelectUser         = wpSelectUser;
+window.loadWorkPhotos       = loadWorkPhotos;
+window.wpOpenModal          = wpOpenModal;
+
+// ============================================================
+// TOGGLE FITUR FOTO KERJA
+// ============================================================
+let _wpFeatureEnabled = true; // default aktif
+
+async function loadWorkPhotoToggle() {
+  try {
+    const r = await authFetch("/app-settings");
+    if (!r.ok) return;
+    const d = await r.json();
+    _wpFeatureEnabled = d.workPhotoEnabled !== false; // default true
+    renderWorkPhotoToggle(_wpFeatureEnabled);
+  } catch {}
+}
+
+function renderWorkPhotoToggle(enabled) {
+  const label  = document.getElementById("wp-toggle-label");
+  const sub    = document.getElementById("wp-toggle-sub");
+  const sw     = document.getElementById("wp-toggle-switch");
+  const knob   = document.getElementById("wp-toggle-knob");
+  if (!label || !sw || !knob) return;
+  label.textContent  = enabled ? "📸 Foto Kerja Aktif" : "📸 Foto Kerja Nonaktif";
+  if (sub) sub.textContent = enabled
+    ? "Pop-up foto muncul saat mobile Clock Out"
+    : "Pop-up foto tidak ditampilkan ke karyawan";
+  sw.style.background  = enabled ? "var(--primary)" : "#ccc";
+  knob.style.left      = enabled ? "27px" : "3px";
+}
+
+async function toggleWorkPhotoFeature() {
+  const newState = !_wpFeatureEnabled;
+  try {
+    const r = await authFetch("/app-settings/work-photo-toggle", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ enabled: newState })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      _wpFeatureEnabled = newState;
+      renderWorkPhotoToggle(newState);
+      showToast(newState ? "✅ Foto Kerja diaktifkan" : "🔕 Foto Kerja dinonaktifkan");
+    }
+  } catch { showToast("❌ Gagal mengubah pengaturan", "error"); }
+}
+
+window.loadWorkPhotoToggle   = loadWorkPhotoToggle;
+window.renderWorkPhotoToggle = renderWorkPhotoToggle;
+window.toggleWorkPhotoFeature = toggleWorkPhotoFeature;
