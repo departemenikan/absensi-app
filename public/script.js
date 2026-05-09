@@ -2299,24 +2299,8 @@ async function loadAnggota() {
     _anggotaDivisi = await divisiRes.json();
     _divisiList    = _anggotaDivisi; // sinkronkan cache _divisiList agar renderAnggotaTable bisa baca
 
-    // Isi filter Peran
-    const selPeran = document.getElementById("anggota-filter-peran");
-    if (selPeran) {
-      selPeran.innerHTML = '<option value="">Peran ▾</option>' +
-        _anggotaGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
-    }
-    // Isi filter Grup/Divisi
-    const selDiv = document.getElementById("anggota-filter-divisi");
-    if (selDiv) {
-      selDiv.innerHTML = '<option value="">Grup ▾</option>' +
-        _anggotaDivisi.map(d => `<option value="${d.nama}">${d.nama}</option>`).join('');
-    }
-    // Filter Peran & Divisi — tampilkan hanya untuk owner/admin
-    const isAdmin = userLevel <= 2;
-    if (selPeran)  selPeran.style.display  = isAdmin ? "inline-block" : "none";
-    if (selDiv)    selDiv.style.display    = isAdmin ? "inline-block" : "none";
-
     // Tombol Tambahkan Anggota — hanya owner/admin
+    const isAdmin = userLevel <= 2;
     const btnTambah = document.getElementById("btn-tambah-anggota");
     if (btnTambah) btnTambah.style.display = isAdmin ? "inline-block" : "none";
 
@@ -2397,14 +2381,10 @@ function renderAnggotaTable(list) {
 }
 
 function filterAnggota() {
-  const q     = (document.getElementById("anggota-search")?.value || "").toLowerCase();
-  const peran = document.getElementById("anggota-filter-peran")?.value  || "";
-  const div   = document.getElementById("anggota-filter-divisi")?.value || "";
-  const out   = _anggotaData.filter(m => {
+  const q   = (document.getElementById("anggota-search")?.value || "").toLowerCase();
+  const out = _anggotaData.filter(m => {
     const nama = (m.namaLengkap || m.username).toLowerCase();
-    return (!q     || nama.includes(q) || m.username.toLowerCase().includes(q))
-        && (!peran || m.group  === peran)
-        && (!div   || m.divisi === div);
+    return !q || nama.includes(q) || m.username.toLowerCase().includes(q);
   });
   renderAnggotaTable(out);
 }
