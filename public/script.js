@@ -3665,6 +3665,7 @@ function switchAksesTab(tab) {
         loadSistemSettings();
         loadScreenshotToggle();
         loadWorkPhotoToggle();
+        loadAutoTutupOvertimeToggle();
       } else {
         akordionSistem.style.display = "none";
       }
@@ -9985,3 +9986,58 @@ async function toggleWorkPhotoFeature() {
 window.loadWorkPhotoToggle   = loadWorkPhotoToggle;
 window.renderWorkPhotoToggle = renderWorkPhotoToggle;
 window.toggleWorkPhotoFeature = toggleWorkPhotoFeature;
+
+// ============================================================
+// TOGGLE AUTO TUTUP KEKURANGAN JAM DARI OVERTIME
+// ============================================================
+let _atoFeatureEnabled = false; // default nonaktif
+
+async function loadAutoTutupOvertimeToggle() {
+  try {
+    const r = await authFetch("/app-settings");
+    if (!r.ok) return;
+    const d = await r.json();
+    _atoFeatureEnabled = d.autoTutupOvertimeEnabled === true; // default false
+    renderAutoTutupOvertimeToggle(_atoFeatureEnabled);
+  } catch {}
+}
+
+function renderAutoTutupOvertimeToggle(enabled) {
+  const label = document.getElementById("ato-toggle-label");
+  const sub   = document.getElementById("ato-toggle-sub");
+  const sw    = document.getElementById("ato-toggle-switch");
+  const knob  = document.getElementById("ato-toggle-knob");
+  if (!label || !sw || !knob) return;
+  if (enabled) {
+    label.textContent   = "✅ Fitur Aktif";
+    label.style.color   = "#27ae60";
+    sub.textContent     = "Kekurangan jam otomatis ditutupi dari saldo overtime tiap tgl 1 jam 06:00";
+    sw.style.background = "#27ae60";
+    knob.style.left     = "27px";
+  } else {
+    label.textContent   = "⛔ Fitur Nonaktif";
+    label.style.color   = "#95a5a6";
+    sub.textContent     = "Kekurangan jam tidak otomatis ditutupi dari overtime";
+    sw.style.background = "#ccc";
+    knob.style.left     = "3px";
+  }
+}
+
+async function toggleAutoTutupOvertime() {
+  if (userLevel > 1) { showToast("⛔ Hanya Owner yang dapat mengubah pengaturan ini", "error"); return; }
+  const newState = !_atoFeatureEnabled;
+  try {
+    const r = await authFetch("/app-settings/auto-tutup-overtime-toggle", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: newState }),
+    });
+    if (!r.ok) { showToast("❌ Gagal menyimpan", "error"); return; }
+    _atoFeatureEnabled = newState;
+    renderAutoTutupOvertimeToggle(newState);
+    showToast(newState ? "✅ Auto Tutup Overtime diaktifkan" : "🔕 Auto Tutup Overtime dinonaktifkan");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+window.loadAutoTutupOvertimeToggle    = loadAutoTutupOvertimeToggle;
+window.renderAutoTutupOvertimeToggle  = renderAutoTutupOvertimeToggle;
+window.toggleAutoTutupOvertime        = toggleAutoTutupOvertime;

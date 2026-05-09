@@ -1020,6 +1020,37 @@
                 </div>
               </div>
 
+              <!-- Divider -->
+              <div style="height:1px;background:#eee;margin:18px 0;"></div>
+
+              <!-- Toggle Auto Tutup Kekurangan Jam dari Overtime -->
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
+                  ⏱️ Auto Tutup Kekurangan Jam (Overtime)
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+                  Jika diaktifkan, kekurangan jam kerja bulan lalu akan otomatis ditutupi dari saldo cuti overtime karyawan setiap tanggal 1 pukul 06:00. Sisa kekurangan yang tidak tertutup tetap menjadi potongan gaji.
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            background:#f8f9ff;border-radius:12px;padding:12px 14px;
+                            border:1px solid #e8ecf0;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;" id="ato-toggle-label">Memuat...</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="ato-toggle-sub"></div>
+                  </div>
+                  <!-- Toggle switch -->
+                  <div onclick="toggleAutoTutupOvertime()"
+                    id="ato-toggle-switch"
+                    style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                           cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                    <div id="ato-toggle-knob"
+                      style="width:22px;height:22px;border-radius:50%;background:white;
+                             position:absolute;top:3px;left:3px;
+                             transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
