@@ -958,6 +958,37 @@
                 💾 Simpan Pengaturan Sistem
               </button>
 
+              <!-- Divider -->
+              <div style="height:1px;background:#eee;margin:18px 0;"></div>
+
+              <!-- Toggle Fitur Screenshot -->
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
+                  🖥️ Fitur Monitor Layar (Screenshot)
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+                  Jika diaktifkan, karyawan wajib izinkan berbagi layar saat Clock In via desktop. Screenshot diambil otomatis setiap 15 menit.
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            background:#f8f9ff;border-radius:12px;padding:12px 14px;
+                            border:1px solid #e8ecf0;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;" id="ss-toggle-label">Memuat...</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="ss-toggle-sub"></div>
+                  </div>
+                  <!-- Toggle switch -->
+                  <div onclick="toggleScreenshotFeature()"
+                    id="ss-toggle-switch"
+                    style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                           cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                    <div id="ss-toggle-knob"
+                      style="width:22px;height:22px;border-radius:50%;background:white;
+                             position:absolute;top:3px;left:3px;
+                             transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -2674,7 +2705,7 @@
             style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
             🔍 Lihat
           </button>
-          <button onclick="loadScreenshots(true)"
+          <button onclick="loadScreenshotActiveList(true);ssPopulateUserSelect()"
             style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
             🔄
           </button>
@@ -2699,8 +2730,7 @@
             <div style="font-size:14px;font-weight:700;" id="ss-grid-title">Screenshot</div>
             <span id="ss-grid-count" style="font-size:12px;color:var(--muted);"></span>
           </div>
-          <div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
-          </div>
+          <div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
           <p id="ss-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
             Belum ada screenshot untuk karyawan ini hari ini.
           </p>

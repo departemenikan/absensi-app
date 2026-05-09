@@ -133,6 +133,7 @@ async function loadAll() {
     pengajuan_cuti: [], aktivitas_kustom: [],
     rules: { messList: [] }, push_subscriptions: {},
     app_settings: { timezone: "Asia/Makassar" },
+    screenshots: {},
   };
 
   await Promise.all(
@@ -508,7 +509,7 @@ function initGroups() {
           "aksesibilitas",
           "area","area.daftar","area.tambah",
           "libur","libur.hari-libur","libur.kebijakan-cuti","libur.kuota-cuti",
-          "aktivitas","timesheet","tracking","screenshot",
+          "aktivitas","timesheet","tracking",
           "cuti","cuti.daftar","cuti.saldo"
         ]
       },
@@ -520,14 +521,14 @@ function initGroups() {
           "aksesibilitas",
           "area","area.daftar","area.tambah",
           "libur","libur.hari-libur","libur.kebijakan-cuti","libur.kuota-cuti",
-          "aktivitas","timesheet","tracking","screenshot",
+          "aktivitas","timesheet","tracking",
           "cuti","cuti.daftar","cuti.saldo"
         ]
       },
       {
         id: "manager", name: "Manager", level: 3, color: "#27ae60",
         menus: [
-          "home","rekap","admin","aktivitas","timesheet","tracking","screenshot",
+          "home","rekap","admin","aktivitas","timesheet","tracking",
           "cuti","cuti.daftar","cuti.saldo"
         ]
       },
@@ -3140,14 +3141,20 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
 // SCREENSHOT BUKTI KERJA
 // ========================
 
-// POST /screenshot — terima screenshot dari client (user yang sedang clock in)
+// POST /screenshot — terima screenshot dari client
 app.post("/screenshot", requireLevel(99), (req, res) => {
+  // Cek apakah fitur screenshot diaktifkan
+  const settings = load(F.appSettings, {});
+  if (settings.screenshotEnabled === false) {
+    return res.status(403).json({ status: "DISABLED", msg: "Fitur screenshot tidak aktif" });
+  }
+
   const user  = req._requester;
   const today = todayLocal();
 
-  // Validasi: user harus sedang clock in (status IN)
-  const data  = load(F.data, []);
-  const rec   = data.find(d => d.user === user && d.date === today);
+  // Validasi: user harus sedang clock in
+  const data = load(F.data, []);
+  const rec  = data.find(d => d.user === user && d.date === today);
   if (!rec || rec.jamKeluar) {
     return res.status(403).json({ status: "NOT_WORKING", msg: "Hanya bisa kirim screenshot saat sedang bekerja" });
   }
@@ -3156,40 +3163,29 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   if (!image || !image.startsWith("data:image/")) {
     return res.status(400).json({ status: "ERROR", msg: "Data gambar tidak valid" });
   }
-
-  // Batasi ukuran: max 500KB base64
   if (image.length > 700000) {
     return res.status(400).json({ status: "ERROR", msg: "Ukuran screenshot terlalu besar" });
   }
 
   const screenshots = load(F.screenshots, {});
-  const todayKey    = today;
+  if (!screenshots[today]) screenshots[today] = {};
+  if (!screenshots[today][user]) screenshots[today][user] = [];
 
-  if (!screenshots[todayKey]) screenshots[todayKey] = {};
-  if (!screenshots[todayKey][user]) screenshots[todayKey][user] = [];
+  screenshots[today][user].push({ ts: new Date().toISOString(), image });
 
-  // Simpan screenshot dengan timestamp
-  screenshots[todayKey][user].push({
-    ts:    new Date().toISOString(),
-    image,
-  });
-
-  // Batasi max 100 screenshot per user per hari (safety)
-  if (screenshots[todayKey][user].length > 100) {
-    screenshots[todayKey][user] = screenshots[todayKey][user].slice(-100);
+  // Batasi max 100 per user per hari
+  if (screenshots[today][user].length > 100) {
+    screenshots[today][user] = screenshots[today][user].slice(-100);
   }
-
-  // Hapus data lebih dari 1 hari (cleanup otomatis)
-  Object.keys(screenshots).forEach(dateKey => {
-    if (dateKey !== todayKey) delete screenshots[dateKey];
-  });
+  // Hapus data lebih dari 1 hari
+  Object.keys(screenshots).forEach(k => { if (k !== today) delete screenshots[k]; });
 
   save(F.screenshots, screenshots);
-  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — ${screenshots[todayKey][user].length} total`);
+  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total: ${screenshots[today][user].length}`);
   res.json({ status: "OK" });
 });
 
-// GET /screenshots/today — ambil daftar user + jumlah screenshot hari ini (untuk active list)
+// GET /screenshots/today — daftar user aktif + jumlah screenshot
 app.get("/screenshots/today", requireLevel(3), (req, res) => {
   const today       = todayLocal();
   const screenshots = load(F.screenshots, {});
@@ -3197,14 +3193,13 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
   const data        = load(F.data, []);
   const todayData   = screenshots[today] || {};
 
-  const requester      = req._requester;
-  const requesterGroup = getUserGroup(requester);
-  const requesterUser  = users[requester];
+  const requester       = req._requester;
+  const requesterGroup  = getUserGroup(requester);
+  const requesterUser   = users[requester];
   const requesterDivisi = Array.isArray(requesterUser?.divisi)
     ? requesterUser.divisi
     : (requesterUser?.divisi ? [requesterUser.divisi] : []);
 
-  // Ambil semua user yang punya screenshot hari ini + yang sedang IN
   const allUsers = new Set([
     ...Object.keys(todayData),
     ...data.filter(d => d.date === today && !d.jamKeluar).map(d => d.user),
@@ -3215,7 +3210,7 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
       if (requesterGroup === "owner" || requesterGroup === "admin") return true;
       if (requesterGroup === "manager") {
         const tg = getUserGroup(username);
-        if (tg === "owner" || tg === "admin" || tg === "manager") return false;
+        if (["owner","admin","manager"].includes(tg)) return false;
         const tu = users[username];
         const td = Array.isArray(tu?.divisi) ? tu.divisi : (tu?.divisi ? [tu.divisi] : []);
         return requesterDivisi.some(d => td.includes(d));
@@ -3223,40 +3218,38 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec    = data.find(d => d.user === username && d.date === today);
-      let status   = "OUT";
+      const rec   = data.find(d => d.user === username && d.date === today);
+      let status  = "OUT";
       if (rec && !rec.jamKeluar) {
         const lb = rec.breaks?.at(-1);
         status   = (lb && !lb.end) ? "BREAK" : "IN";
       } else if (rec && rec.jamKeluar) status = "DONE";
       const shots = todayData[username] || [];
-      const last  = shots.length ? shots[shots.length - 1].ts : null;
       return {
         username,
-        namaLengkap:  users[username]?.namaLengkap || username,
-        jabatan:      users[username]?.jabatan || "",
+        namaLengkap:      users[username]?.namaLengkap || username,
+        jabatan:          users[username]?.jabatan || "",
         status,
         totalScreenshots: shots.length,
-        lastScreenshot:   last,
+        lastScreenshot:   shots.length ? shots[shots.length - 1].ts : null,
       };
     })
-    .filter(u => u.status !== "OUT") // hanya tampil yg pernah/sedang masuk
-    .sort((a, b) => (a.namaLengkap).localeCompare(b.namaLengkap, "id"));
+    .filter(u => u.status !== "OUT")
+    .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
 
   res.json(result);
 });
 
-// GET /screenshots/:user — ambil semua screenshot user hari ini (tanpa data image, hanya metadata)
+// GET /screenshots/:user — metadata list (tanpa image)
 app.get("/screenshots/:user", requireLevel(3), (req, res) => {
   const { user } = req.params;
   const today       = todayLocal();
   const screenshots = load(F.screenshots, {});
   const shots       = (screenshots[today] || {})[user] || [];
-  // Kirim hanya timestamp (tanpa image) untuk list
   res.json(shots.map((s, i) => ({ index: i, ts: s.ts })));
 });
 
-// GET /screenshots/:user/:index — ambil satu screenshot (dengan image)
+// GET /screenshots/:user/:index — satu screenshot dengan image
 app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
   const { user, index } = req.params;
   const today       = todayLocal();
@@ -3473,6 +3466,17 @@ app.post("/app-settings", (req, res) => {
   process.env.TZ = timezone;
 
   res.json({ status: "OK", settings: updated });
+});
+
+// Toggle fitur screenshot — hanya Owner (level 1)
+app.post("/app-settings/screenshot-toggle", requireLevel(1), (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
+  const current = load(F.appSettings, { timezone: "Asia/Makassar" });
+  const updated  = { ...current, screenshotEnabled: enabled };
+  save(F.appSettings, updated);
+  console.log(`[SETTING] Fitur screenshot ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
+  res.json({ status: "OK", screenshotEnabled: enabled });
 });
 
 // ========================
