@@ -427,7 +427,10 @@ setInterval(() => {
     }
   });
 
-  if (changed) save(F.data, data);
+  if (changed) {
+    save(F.data, data);
+    // Overtime tidak dihitung realtime — hanya diakumulasi setiap Minggu 23:59
+  }
 
   // ── MIDNIGHT SPLIT — jam 23:59, split semua sesi yang masih aktif ──────────
   if (hour === 23 && min === 59) {
@@ -836,6 +839,8 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
   save(F.data, data);
   logAktivitas(user, type, time);
+
+  // Overtime tidak dihitung realtime setiap clock-out — hanya diakumulasi setiap Minggu 23:59
 
   // Push notification — konfirmasi absen ke user
   const labelPush = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Istirahat dimulai ☕", BREAK_END: "Selesai istirahat, kerja lagi! 💪" };
@@ -2154,8 +2159,7 @@ app.post("/timesheet/absen-manual", requireLevel(2), (req, res) => {
     });
   }
   save(F.data, data);
-  // Hitung ulang overtime & tukar libur otomatis di background
-  setImmediate(() => hitungOvertimeBackground(targetUser));
+  // Overtime tidak dihitung realtime — hanya diakumulasi setiap Minggu 23:59
   res.send({ status: "OK" });
 });
 
@@ -2213,8 +2217,7 @@ app.put("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   if (req.body.aktivitas !== undefined) rec.aktivitas  = req.body.aktivitas;
   if (req.body.lokasiNama !== undefined) rec.lokasiNama = req.body.lokasiNama;
   save(F.data, data);
-  // Hitung ulang overtime & tukar libur otomatis di background
-  setImmediate(() => hitungOvertimeBackground(targetUser));
+  // Overtime tidak dihitung realtime — hanya diakumulasi setiap Minggu 23:59
   res.send({ status: "OK", sesi: rec.sesi });
 });
 // GET: ambil semua sesi (parts) untuk user + tanggal tertentu
@@ -2253,8 +2256,7 @@ app.delete("/timesheet/absen/:user/:date", requireLevel(2), (req, res) => {
   }
   if (filtered.length === before) return res.status(404).json({ status: "NOT_FOUND", message: "Record tidak ditemukan" });
   save(F.data, filtered);
-  // Hitung ulang overtime & tukar libur otomatis di background
-  setImmediate(() => hitungOvertimeBackground(user));
+  // Overtime tidak dihitung realtime — hanya diakumulasi setiap Minggu 23:59
   res.json({ status: "OK", deleted: before - filtered.length });
 });
 
