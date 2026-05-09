@@ -763,6 +763,35 @@ async function verifyFace(label) {
 // ============================================================
 // SCREENSHOT BUKTI KERJA
 // ============================================================
+
+// Helper: kompres gambar base64 ke target ukuran maksimal
+// maxW    = lebar maksimal piksel
+// quality = kualitas JPEG awal (0-1)
+// maxKB   = target ukuran maksimal output dalam KB
+async function compressImage(base64, maxW = 800, quality = 0.65, maxKB = 150) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      let result = canvas.toDataURL("image/jpeg", quality);
+      let q = quality;
+      // Iterasi turunkan quality jika masih > maxKB
+      while (result.length > maxKB * 1024 * 1.37 && q > 0.3) {
+        q = Math.round((q - 0.1) * 10) / 10;
+        result = canvas.toDataURL("image/jpeg", q);
+      }
+      resolve(result);
+    };
+    img.onerror = () => resolve(base64); // fallback kembalikan asli
+    img.src = base64;
+  });
+}
+
 let _ssStream        = null;
 let _ssInterval      = null;
 let _ssCanvas        = null;
@@ -797,7 +826,8 @@ async function ssTakeAndSend() {
     let base64;
     if (typeof ImageCapture !== "undefined") {
       try {
-        const blob = await new ImageCapture(track).takePhoto({ imageWidth: 1280 });
+        // Minta resolusi lebih kecil langsung dari API (800px)
+        const blob = await new ImageCapture(track).takePhoto({ imageWidth: 800 });
         base64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(blob); });
       } catch { base64 = null; }
     }
@@ -807,19 +837,32 @@ async function ssTakeAndSend() {
       await new Promise(r => { video.onloadedmetadata = r; video.play(); });
       await new Promise(r => setTimeout(r, 200));
       if (!_ssCanvas) _ssCanvas = document.createElement("canvas");
-      const scale = Math.min(1, 1280 / video.videoWidth);
+      // Max lebar 800px (hemat storage, cukup untuk monitoring)
+      const scale = Math.min(1, 800 / video.videoWidth);
       _ssCanvas.width  = Math.round(video.videoWidth  * scale);
       _ssCanvas.height = Math.round(video.videoHeight * scale);
       _ssCanvas.getContext("2d").drawImage(video, 0, 0, _ssCanvas.width, _ssCanvas.height);
-      base64 = _ssCanvas.toDataURL("image/jpeg", 0.7);
+      base64 = _ssCanvas.toDataURL("image/jpeg", 0.6);
       video.srcObject = null;
     }
     if (!base64 || base64.length < 1000) return;
+    // Kompres lagi jika masih > 100KB
+    const sizeKB = Math.round(base64.length * 3 / 4 / 1024);
+    if (sizeKB > 100) {
+      base64 = await compressImage(base64, 800, 0.6, 100);
+    }
+    const finalKB = Math.round(base64.length * 3 / 4 / 1024);
+    console.log(`[SS] Ukuran: ${sizeKB}KB → ${finalKB}KB`);
     const r = await authFetch("/screenshot", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image: base64 }),
     });
-    if (r.ok) console.log("[SS] Screenshot terkirim @", new Date().toLocaleTimeString("id-ID"));
+    if (r.ok) {
+      console.log("[SS] Screenshot terkirim @", new Date().toLocaleTimeString("id-ID"), `(${finalKB}KB)`);
+    } else {
+      const err = await r.json().catch(() => ({}));
+      console.warn("[SS] Server tolak:", err.msg || r.status);
+    }
   } catch (e) { console.warn("[SS] Error capture:", e.message); }
 }
 
@@ -1166,8 +1209,12 @@ function _handleWorkPhotoFile(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    _workPhotoData = e.target.result; // data:image/jpeg;base64,...
+  reader.onload = async e => {
+    // Kompres foto dari galeri ke target max 200KB
+    const compressed = await compressImage(e.target.result, 1000, 0.65, 200);
+    _workPhotoData = compressed;
+    const finalKB = Math.round(compressed.length * 3 / 4 / 1024);
+    console.log(`[WORK-PHOTO] Galeri ukuran: ${finalKB}KB`);
     document.getElementById("wpp-preview-img").src = _workPhotoData;
     document.getElementById("wpp-preview-wrap").style.display = "block";
     document.getElementById("wpp-btn-group").style.display = "none";
@@ -1224,14 +1271,24 @@ function _captureWorkPhoto() {
     showToast("⚠️ Kamera belum siap", "warning"); return;
   }
   const canvas = document.createElement("canvas");
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  _workPhotoData = canvas.toDataURL("image/jpeg", 0.82);
-  _closeWorkPhotoCamera();
-  document.getElementById("wpp-preview-img").src = _workPhotoData;
-  document.getElementById("wpp-preview-wrap").style.display = "block";
-  document.getElementById("wpp-save-btn").style.display = "block";
+  // Max lebar 1000px untuk foto kegiatan (cukup jelas, hemat storage)
+  const maxW = 1000;
+  let w = video.videoWidth, h = video.videoHeight;
+  if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+  canvas.width  = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(video, 0, 0, w, h);
+  const raw = canvas.toDataURL("image/jpeg", 0.7);
+  // Kompres ke target max 200KB
+  compressImage(raw, 1000, 0.65, 200).then(compressed => {
+    _workPhotoData = compressed;
+    const finalKB = Math.round(compressed.length * 3 / 4 / 1024);
+    console.log(`[WORK-PHOTO] Ukuran: ${finalKB}KB`);
+    _closeWorkPhotoCamera();
+    document.getElementById("wpp-preview-img").src = _workPhotoData;
+    document.getElementById("wpp-preview-wrap").style.display = "block";
+    document.getElementById("wpp-save-btn").style.display = "block";
+  });
 }
 
 async function loadStatus() {

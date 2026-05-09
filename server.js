@@ -499,6 +499,38 @@ setInterval(() => {
 
 }, 60000); // cek setiap 1 menit
 
+// ── CLEANUP MALAM — hapus screenshot & foto kegiatan > 7 hari ────────────────
+// Berjalan setiap menit, eksekusi cleanup hanya jam 00:05
+setInterval(() => {
+  const now  = new Date();
+  if (now.getHours() !== 0 || now.getMinutes() !== 5) return;
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toLocaleDateString("sv-SE");
+
+  // Cleanup screenshots
+  const screenshots = load(F.screenshots, {});
+  let ssDeleted = 0;
+  Object.keys(screenshots).forEach(k => { if (k < cutoffStr) { delete screenshots[k]; ssDeleted++; } });
+  if (ssDeleted > 0) {
+    save(F.screenshots, screenshots);
+    console.log(`[CLEANUP] ✅ Hapus ${ssDeleted} hari data screenshot (retensi 7 hari)`);
+  }
+
+  // Cleanup work photos
+  const workPhotos = load(F.workPhotos, {});
+  let wpDeleted = 0;
+  Object.keys(workPhotos).forEach(k => { if (k < cutoffStr) { delete workPhotos[k]; wpDeleted++; } });
+  if (wpDeleted > 0) {
+    save(F.workPhotos, workPhotos);
+    console.log(`[CLEANUP] ✅ Hapus ${wpDeleted} hari data foto kegiatan (retensi 7 hari)`);
+  }
+
+  if (ssDeleted > 0 || wpDeleted > 0)
+    console.log(`[CLEANUP] Selesai @ ${now.toLocaleTimeString("id-ID")} — SS: ${ssDeleted}, WP: ${wpDeleted} hari dihapus`);
+}, 60000);
+
 // Inisialisasi default groups jika belum ada
 function initGroups() {
   if (!fs.existsSync(F.groups)) {
@@ -753,13 +785,24 @@ app.post("/absen", requireLevel(99), (req, res) => {
     const lb = record.breaks.at(-1);
     if (lb && !lb.end) lb.end = timeNorm;
     // Simpan foto kegiatan dari mobile jika ada
-    if (workPhoto && typeof workPhoto === "string" && workPhoto.startsWith("data:image/") && workPhoto.length < 700000) {
-      const wpStore = load(F.workPhotos, {});
-      const today2  = todayLocal();
-      if (!wpStore[today2]) wpStore[today2] = {};
-      if (!wpStore[today2][user]) wpStore[today2][user] = [];
-      wpStore[today2][user].push({ ts: new Date().toISOString(), image: workPhoto });
-      save(F.workPhotos, wpStore);
+    if (workPhoto && typeof workPhoto === "string" && workPhoto.startsWith("data:image/")) {
+      // Batas 200KB (base64 ≈ 4/3 ukuran asli → 280000 chars)
+      if (workPhoto.length > 280000) {
+        console.warn(`[WORK-PHOTO] ${user} foto terlalu besar: ${Math.round(workPhoto.length/1000)}KB — dilewati`);
+      } else {
+        const wpStore = load(F.workPhotos, {});
+        const today2  = todayLocal();
+        if (!wpStore[today2]) wpStore[today2] = {};
+        if (!wpStore[today2][user]) wpStore[today2][user] = [];
+        wpStore[today2][user].push({ ts: new Date().toISOString(), image: workPhoto });
+        // Retensi 7 hari — hapus data lebih dari 7 hari
+        const wpCutoff = new Date();
+        wpCutoff.setDate(wpCutoff.getDate() - 7);
+        const wpCutoffStr = wpCutoff.toLocaleDateString("sv-SE");
+        Object.keys(wpStore).forEach(k => { if (k < wpCutoffStr) delete wpStore[k]; });
+        save(F.workPhotos, wpStore);
+        console.log(`[WORK-PHOTO] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — ${Math.round(workPhoto.length/1000)}KB`);
+      }
     }
   } else if (type === "BREAK_START" && record) {
     record.breaks.push({ start: timeNorm, end: null });
@@ -3174,8 +3217,10 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   if (!image || !image.startsWith("data:image/")) {
     return res.status(400).json({ status: "ERROR", msg: "Data gambar tidak valid" });
   }
-  if (image.length > 700000) {
-    return res.status(400).json({ status: "ERROR", msg: "Ukuran screenshot terlalu besar" });
+  // Batas 300KB (client sudah kompres, base64 ≈ 4/3 ukuran asli)
+  if (image.length > 410000) {
+    console.warn(`[SCREENSHOT] ${user} kirim gambar terlalu besar: ${Math.round(image.length/1000)}KB — ditolak`);
+    return res.status(400).json({ status: "TOO_LARGE", msg: "Screenshot terlalu besar (maks 300KB)" });
   }
 
   const screenshots = load(F.screenshots, {});
@@ -3184,15 +3229,24 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
 
   screenshots[today][user].push({ ts: new Date().toISOString(), image });
 
-  // Batasi max 100 per user per hari
-  if (screenshots[today][user].length > 100) {
-    screenshots[today][user] = screenshots[today][user].slice(-100);
+  // Batasi max 50 per user per hari (8 jam × 4 SS/jam = 32, dengan buffer)
+  if (screenshots[today][user].length > 50) {
+    screenshots[today][user] = screenshots[today][user].slice(-50);
   }
-  // Hapus data lebih dari 1 hari
-  Object.keys(screenshots).forEach(k => { if (k !== today) delete screenshots[k]; });
+
+  // Retensi 7 hari — hapus data lebih dari 7 hari
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toLocaleDateString("sv-SE");
+  Object.keys(screenshots).forEach(k => {
+    if (k < cutoffStr) {
+      delete screenshots[k];
+      console.log(`[SCREENSHOT] Cleanup: hapus data tanggal ${k}`);
+    }
+  });
 
   save(F.screenshots, screenshots);
-  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total: ${screenshots[today][user].length}`);
+  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total hari ini: ${screenshots[today][user].length}`);
   res.json({ status: "OK" });
 });
 
@@ -3251,24 +3305,38 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
   res.json(result);
 });
 
-// GET /screenshots/:user — metadata list (tanpa image)
-app.get("/screenshots/:user", requireLevel(3), (req, res) => {
+// GET /screenshots/dates/:user — daftar tanggal yang ada screenshot (7 hari terakhir)
+app.get("/screenshots/dates/:user", requireLevel(3), (req, res) => {
   const { user } = req.params;
-  const today       = todayLocal();
   const screenshots = load(F.screenshots, {});
-  const shots       = (screenshots[today] || {})[user] || [];
-  res.json(shots.map((s, i) => ({ index: i, ts: s.ts })));
+  const dates = Object.keys(screenshots)
+    .filter(date => (screenshots[date][user] || []).length > 0)
+    .sort((a, b) => b.localeCompare(a)); // terbaru dulu
+  res.json(dates.map(date => ({
+    date,
+    count: screenshots[date][user].length,
+    last:  screenshots[date][user].at(-1)?.ts || null,
+  })));
 });
 
-// GET /screenshots/:user/:index — satu screenshot dengan image
+// GET /screenshots/:user — metadata list (tanpa image), support ?date=YYYY-MM-DD
+app.get("/screenshots/:user", requireLevel(3), (req, res) => {
+  const { user } = req.params;
+  const date        = req.query.date || todayLocal();
+  const screenshots = load(F.screenshots, {});
+  const shots       = (screenshots[date] || {})[user] || [];
+  res.json(shots.map((s, i) => ({ index: i, ts: s.ts, date })));
+});
+
+// GET /screenshots/:user/:index — satu screenshot dengan image, support ?date=YYYY-MM-DD
 app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
   const { user, index } = req.params;
-  const today       = todayLocal();
+  const date        = req.query.date || todayLocal();
   const screenshots = load(F.screenshots, {});
-  const shots       = (screenshots[today] || {})[user] || [];
+  const shots       = (screenshots[date] || {})[user] || [];
   const shot        = shots[parseInt(index)];
   if (!shot) return res.status(404).json({ status: "NOT_FOUND" });
-  res.json({ ts: shot.ts, image: shot.image });
+  res.json({ ts: shot.ts, image: shot.image, date });
 });
 
 
@@ -3325,6 +3393,49 @@ app.post("/app-settings/work-photo-toggle", requireLevel(1), (req, res) => {
   save(F.appSettings, updated);
   console.log(`[SETTING] Fitur Foto Kegiatan ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
   res.json({ status: "OK", workPhotoEnabled: enabled });
+});
+
+// GET /admin/storage-info — monitoring ukuran storage screenshot & foto (owner/admin)
+app.get("/admin/storage-info", requireLevel(2), (req, res) => {
+  const screenshots = load(F.screenshots, {});
+  const workPhotos  = load(F.workPhotos, {});
+
+  function calcSizeKB(obj) {
+    return Math.round(JSON.stringify(obj).length / 1024);
+  }
+
+  const ssInfo = Object.keys(screenshots).sort().map(date => {
+    const day = screenshots[date];
+    return {
+      date,
+      userCount:   Object.keys(day).length,
+      totalShots:  Object.values(day).reduce((s, arr) => s + arr.length, 0),
+      sizeKB:      calcSizeKB(day),
+    };
+  });
+
+  const wpInfo = Object.keys(workPhotos).sort().map(date => {
+    const day = workPhotos[date];
+    return {
+      date,
+      userCount:   Object.keys(day).length,
+      totalPhotos: Object.values(day).reduce((s, arr) => s + arr.length, 0),
+      sizeKB:      calcSizeKB(day),
+    };
+  });
+
+  const totalSS_KB = ssInfo.reduce((s, d) => s + d.sizeKB, 0);
+  const totalWP_KB = wpInfo.reduce((s, d) => s + d.sizeKB, 0);
+  const totalKB    = totalSS_KB + totalWP_KB;
+
+  res.json({
+    screenshots: { days: ssInfo, totalKB: totalSS_KB },
+    workPhotos:  { days: wpInfo, totalKB: totalWP_KB },
+    totalKB,
+    totalMB:       Math.round(totalKB / 1024 * 10) / 10,
+    supabaseLimitKB: 512000,
+    pctUsed:       Math.round(totalKB / 512000 * 1000) / 10,
+  });
 });
 
 // ========================
