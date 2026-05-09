@@ -4361,6 +4361,7 @@ function toggleGroupBody(id) {
   const chev = document.getElementById("chev-" + id.replace("gbody-", ""));
   if (!el) return;
   const willOpen = !el.classList.contains("open");
+
   // Tutup semua accordion lain dulu
   document.querySelectorAll(".group-body.open").forEach(other => {
     if (other.id !== id) {
@@ -4369,8 +4370,19 @@ function toggleGroupBody(id) {
       if (otherChev) otherChev.style.transform = "";
     }
   });
+
   el.classList.toggle("open", willOpen);
   if (chev) chev.style.transform = willOpen ? "rotate(90deg)" : "";
+
+  // Scroll ke header accordion yang dibuka
+  if (willOpen) {
+    const header = el.previousElementSibling;
+    if (header) {
+      setTimeout(() => {
+        header.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    }
+  }
 }
 
 // ============================================================
