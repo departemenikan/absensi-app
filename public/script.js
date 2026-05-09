@@ -3662,13 +3662,7 @@ function switchAksesTab(tab) {
     if (akordionKaryawan) {
       if (userLevel <= 2) {
         akordionKaryawan.style.display = "";
-        // Buka otomatis dan muat data
-        const gbody = document.getElementById("gbody-rules-absensi");
-        const chev  = document.getElementById("chev-rules-absensi");
-        if (gbody && !gbody.classList.contains("open")) {
-          gbody.classList.add("open");
-          if (chev) chev.style.transform = "rotate(90deg)";
-        }
+        // Default tertutup — user klik header untuk membuka
         loadRules();
       } else {
         akordionKaryawan.style.display = "none";
