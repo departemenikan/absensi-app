@@ -2844,43 +2844,34 @@ async function openDetailAnggota(username) {
   }
 
   // --- Teks info ---
-  document.getElementById("da-nama").textContent    = nama;
+  document.getElementById("da-nama").textContent = nama;
 
-  // Logika subtitle di bawah nama:
-  // 1. Jabatan diisi → tampilkan jabatan
-  // 2. Jabatan kosong + peran owner → "Owner"
-  // 3. Jabatan kosong + peran admin → "Admin"
-  // 4. Jabatan kosong + peran kosong → "Anggota"
-  const grp = (m.group || "").toLowerCase();
+  // Subtitle: posisi tertinggi di divisi, atau jabatan, atau peran, atau "Anggota"
+  const grp     = (m.group || "").toLowerCase();
   const grpName = m.groupName || "";
+  const userDivisiArr = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
+  const posPriority = { "Owner": 1, "Manager": 2, "Koordinator": 3 };
+  let bestPosisi = null;
+  userDivisiArr.forEach(dNama => {
+    const dItem = _anggotaDivisi.find(d => d.nama === dNama);
+    if (!dItem) return;
+    let pos = null;
+    if (dItem.owner === username)            pos = "Owner";
+    else if (dItem.manager === username)     pos = "Manager";
+    else if (dItem.koordinator === username) pos = "Koordinator";
+    if (pos && (!bestPosisi || (posPriority[pos]||9) < (posPriority[bestPosisi]||9))) bestPosisi = pos;
+  });
   let subtitleText;
-  if (m.jabatan) {
-    subtitleText = m.jabatan;
-  } else if (grp === "owner") {
-    subtitleText = "Owner";
-  } else if (grp === "admin" || grpName.toLowerCase() === "admin") {
-    subtitleText = "Admin";
-  } else {
-    subtitleText = "Anggota";
-  }
+  if (bestPosisi)                                             subtitleText = bestPosisi;
+  else if (m.jabatan)                                        subtitleText = m.jabatan;
+  else if (grp === "owner")                                  subtitleText = "Owner";
+  else if (grp === "admin" || grpName.toLowerCase()==="admin") subtitleText = "Admin";
+  else                                                       subtitleText = "Anggota";
   document.getElementById("da-jabatan").textContent = subtitleText;
 
-  // Divisi bisa array — tampilkan semua
-  const divisiArr = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
-  document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
+  // Divisi: tampilkan nama divisi user
+  document.getElementById("da-divisi").textContent = userDivisiArr.length ? userDivisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
-
-  // Badge peran — hanya tampil jika jabatan diisi (agar tidak duplikat dengan subtitle)
-  const badge = document.getElementById("da-peran-badge");
-  const badgeLabel = grpName || (grp ? grp.charAt(0).toUpperCase() + grp.slice(1) : "Anggota");
-  if (m.jabatan) {
-    badge.textContent      = badgeLabel;
-    badge.style.display    = "inline-block";
-    badge.style.background = (m.groupColor || "#7f8c8d") + "22";
-    badge.style.color      = m.groupColor || "#7f8c8d";
-  } else {
-    badge.style.display = "none";
-  }
 
   // Badge Tugas Luar
   const tlBadge = document.getElementById("da-status-badge");
@@ -2892,18 +2883,6 @@ async function openDetailAnggota(username) {
 
   if (userLevel <= 2) {
     editSec.style.display = "block";
-
-    // Dropdown Divisi — multi-select dengan checkbox
-    const selDiv = document.getElementById("da-select-divisi");
-    const divisiArrM = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
-    selDiv.innerHTML = '<option value="">— Tanpa Divisi —</option>' +
-      _anggotaDivisi.map(d =>
-        `<option value="${d.nama}" ${divisiArrM.includes(d.nama) ? "selected" : ""}>${d.nama}</option>`
-      ).join('');
-    // Aktifkan multiple select
-    selDiv.setAttribute("multiple", "true");
-    selDiv.style.height = Math.min(_anggotaDivisi.length * 34 + 34, 150) + "px";
-
     // Tombol hapus — sembunyikan jika diri sendiri
     document.getElementById("da-btn-hapus").style.display = isSelf ? "none" : "inline-block";
   } else {
@@ -2921,18 +2900,7 @@ function closeDetailAnggota() {
 async function saveDetailAnggota() {
   if (userLevel > 2) { showToast("⛔ Akses ditolak", "error"); return; }
   if (!_detailUsername) return;
-
-  // Ambil semua divisi yang dipilih (multi-select)
-  const selDiv    = document.getElementById("da-select-divisi");
-  const divisiList = [...selDiv.selectedOptions]
-    .map(o => o.value)
-    .filter(v => v !== "");
-
   try {
-    await authFetch(`/anggota/${_detailUsername}/divisi`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set", divisiList })
-    });
     showToast("✅ Data anggota berhasil diperbarui");
     closeDetailAnggota();
     loadAnggota();
