@@ -9444,7 +9444,8 @@ const _origApplyMenuAccess = applyMenuAccess;
 applyMenuAccess = window.applyMenuAccess = function() {
   _origApplyMenuAccess();
   const elSS = document.getElementById("menu-screenshot");
-  if (elSS) elSS.classList.toggle("hidden", !userMenus.includes("screenshot"));
+  // Tampil untuk owner/admin/manager (level <= 3) ATAU jika ada di userMenus
+  if (elSS) elSS.classList.toggle("hidden", userLevel > 3 && !userMenus.includes("screenshot"));
 };
 
 // Juga load status toggle saat app start
