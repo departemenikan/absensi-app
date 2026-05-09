@@ -4280,7 +4280,7 @@ async function loadGroups() {
           }
           ${sectionHTML}
           ${!isOwner ? `
-          <div style="padding:14px 16px;background:#f8f9ff;border-top:1px solid #eef0f8;text-align:center;">
+          <div class="group-save-bar">
             <button id="save-btn-${g.id}"
               onclick="saveGroupMenus('${g.id}')"
               style="display:inline-flex;align-items:center;gap:6px;

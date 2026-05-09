@@ -197,10 +197,11 @@
     .group-title{font-size:15px;font-weight:800;color:white;}
     .group-level{font-size:11px;color:rgba(255,255,255,.75);margin-top:1px;}
     .group-body{background:#f8f9ff;padding:0;display:none;}
-    .group-body.open{display:block;max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .group-body.open{display:flex;flex-direction:column;max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
     .group-body.open::-webkit-scrollbar{width:3px;}
     .group-body.open::-webkit-scrollbar-track{background:transparent;}
     .group-body.open::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
+    .group-save-bar{position:sticky;bottom:0;z-index:2;padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;text-align:center;flex-shrink:0;box-shadow:0 -2px 8px rgba(79,142,247,.10);}
     .akses-section{padding:0;}
     .akses-section-title{font-size:10px;font-weight:800;text-transform:uppercase;
       letter-spacing:.6px;color:var(--muted);padding:10px 16px 5px;
@@ -932,7 +933,7 @@
             <div id="rules-mess-list">
               <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
             </div>
-            <div style="padding:14px 0 4px;text-align:center;">
+            <div class="group-save-bar">
               <button onclick="saveRulesMess()"
                 style="display:inline-flex;align-items:center;gap:6px;
                        padding:11px 28px;border:none;border-radius:10px;
