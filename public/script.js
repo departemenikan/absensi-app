@@ -8160,31 +8160,30 @@ function renderSaldoCuti(k, user) {
       </div>
 
       <!-- Cuti Overtime (kelebihan jam mingguan) -->
-      <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:14px;padding:16px;">
+      <div style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:14px;padding:16px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-weight:800;font-size:14px;color:#1565c0;">⏱️ Cuti Overtime</span>
           <span style="font-size:11px;color:#64b5f6;font-weight:700;">Dari kelebihan jam/minggu</span>
         </div>
-        <div style="text-align:center;background:white;border-radius:12px;padding:14px;margin-bottom:10px;
-          box-shadow:0 2px 8px rgba(21,101,192,.12);">
-          <div style="font-size:40px;font-weight:900;color:#1565c0;line-height:1;">${otHariSetara}</div>
-          <div style="font-size:12px;color:#64b5f6;font-weight:700;margin-top:4px;">HARI tersedia</div>
-          ${otJamSisa > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">+ ${otJamSisa} jam (belum cukup 1 hari)</div>` : ""}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
-            <div style="font-size:13px;font-weight:900;color:#1565c0;">${(k.overtime.jamTL_reguler||0).toFixed(1)}j</div>
-            <div style="font-size:9px;color:#64b5f6;font-weight:700;margin-top:2px;">Terakumulasi</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#1565c0;">${otHariSetara + (k.overtime.hariDiambil||0)}</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Total</div>
           </div>
-          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
-            <div style="font-size:13px;font-weight:900;color:#7b1fa2;">${k.overtime.hariDiambil||0}</div>
-            <div style="font-size:9px;color:#ba68c8;font-weight:700;margin-top:2px;">Diambil</div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#e57373;">${k.overtime.hariDiambil||0}</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;box-shadow:0 2px 8px rgba(21,101,192,.15);">
+            <div style="font-size:26px;font-weight:900;color:#1565c0;">${otHariSetara}</div>
+            <div style="font-size:10px;color:#64b5f6;font-weight:700;margin-top:2px;">Sisa</div>
           </div>
         </div>
-        <div style="background:#bbdefb;border-radius:50px;height:6px;overflow:hidden;margin-bottom:4px;">
+        ${otJamSisa > 0 ? `<div style="font-size:11px;color:#1976d2;margin-bottom:8px;text-align:center;">+ ${otJamSisa} jam (belum cukup 1 hari)</div>` : ""}
+        <div style="background:#bbdefb;border-radius:50px;height:8px;overflow:hidden;">
           <div style="height:100%;background:linear-gradient(90deg,#1565c0,#42a5f5);border-radius:50px;width:${otPct}%;transition:width .5s;"></div>
         </div>
-        <div style="font-size:10px;color:#1976d2;text-align:right;">${otPct}% terpakai</div>
+        <div style="font-size:11px;color:#1976d2;margin-top:5px;text-align:right;">${otPct}% terpakai</div>
         ${(k.overtime.riwayat||[]).length > 0 ? `
         <div style="margin-top:10px;border-top:1px solid #bbdefb;padding-top:8px;">
           <div style="font-size:11px;font-weight:700;color:#1565c0;margin-bottom:6px;">📜 Riwayat</div>
@@ -8205,26 +8204,25 @@ function renderSaldoCuti(k, user) {
           <span style="font-weight:800;font-size:14px;color:#e65100;">🔄 Tukar Libur</span>
           <span style="font-size:11px;color:#ffa726;font-weight:700;">Tidak hangus tahunan</span>
         </div>
-        <div style="text-align:center;background:white;border-radius:12px;padding:14px;margin-bottom:10px;
-          box-shadow:0 2px 8px rgba(230,81,0,.12);">
-          <div style="font-size:40px;font-weight:900;color:#e65100;line-height:1;">${tlHariSetara}</div>
-          <div style="font-size:12px;color:#ffa726;font-weight:700;margin-top:4px;">HARI tersedia</div>
-          ${tlJamSisa > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">+ ${tlJamSisa} jam (belum cukup 1 hari)</div>` : ""}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
-            <div style="font-size:13px;font-weight:900;color:#e65100;">${(tl.jamAkumulasi||0).toFixed(1)}j</div>
-            <div style="font-size:9px;color:#ffa726;font-weight:700;margin-top:2px;">Terakumulasi</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlHariSetara + (tl.hariDiambil||0)}</div>
+            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Total</div>
           </div>
-          <div style="text-align:center;background:rgba(255,255,255,.7);border-radius:10px;padding:10px 6px;">
-            <div style="font-size:13px;font-weight:900;color:#7b1fa2;">${tl.hariDiambil||0}</div>
-            <div style="font-size:9px;color:#ba68c8;font-weight:700;margin-top:2px;">Diambil</div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:26px;font-weight:900;color:#e57373;">${tl.hariDiambil||0}</div>
+            <div style="font-size:10px;color:#ef9a9a;font-weight:700;margin-top:2px;">Terpakai</div>
+          </div>
+          <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;box-shadow:0 2px 8px rgba(230,81,0,.15);">
+            <div style="font-size:26px;font-weight:900;color:#e65100;">${tlHariSetara}</div>
+            <div style="font-size:10px;color:#ffa726;font-weight:700;margin-top:2px;">Sisa</div>
           </div>
         </div>
-        <div style="background:#ffe0b2;border-radius:50px;height:6px;overflow:hidden;margin-bottom:4px;">
+        ${tlJamSisa > 0 ? `<div style="font-size:11px;color:#f57f17;margin-bottom:8px;text-align:center;">+ ${tlJamSisa} jam (belum cukup 1 hari)</div>` : ""}
+        <div style="background:#ffe0b2;border-radius:50px;height:8px;overflow:hidden;">
           <div style="height:100%;background:linear-gradient(90deg,#e65100,#ffa726);border-radius:50px;width:${tlPct}%;transition:width .5s;"></div>
         </div>
-        <div style="font-size:10px;color:#f57f17;text-align:right;">${tlPct}% terpakai</div>
+        <div style="font-size:11px;color:#f57f17;margin-top:5px;text-align:right;">${tlPct}% terpakai</div>
         ${(tl.riwayat||[]).length > 0 ? `
         <div style="margin-top:10px;border-top:1px solid #ffe0b2;padding-top:8px;">
           <div style="font-size:11px;font-weight:700;color:#e65100;margin-bottom:6px;">📜 Riwayat</div>
