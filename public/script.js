@@ -3068,7 +3068,8 @@ async function openBuatGrup() {
   _bgSelectedAnggota = [];
   document.getElementById("bg-nama").value = "";
   document.getElementById("bg-anggota-search").value = "";
-  document.getElementById("bg-anggota-panel").style.display = "none";
+  const _bgOverlay = document.getElementById("bg-anggota-overlay");
+  if (_bgOverlay) _bgOverlay.style.display = "none";
   _renderAnggotaDropdownItems([..._anggotaAll].filter(a => a.group !== "owner").sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id')));
   _renderAnggotaTags();
 
@@ -3094,25 +3095,22 @@ async function openBuatGrup() {
 function _bgOutsideClick(e) {
   const wrap = document.getElementById("bg-anggota-wrap");
   if (wrap && !wrap.contains(e.target)) {
-    document.getElementById("bg-anggota-panel").style.display = "none";
+    const ov = document.getElementById("bg-anggota-overlay");
+    if (ov) ov.style.display = "none";
     document.removeEventListener("click", _bgOutsideClick);
   }
 }
 
 function toggleAnggotaDropdown() {
-  const panel   = document.getElementById("bg-anggota-panel");
+  const overlay = document.getElementById("bg-anggota-overlay");
   const trigger = document.getElementById("bg-anggota-trigger");
-  const isOpen  = panel.style.display !== "none";
+  if (!overlay) return;
+  const isOpen  = overlay.style.display === "flex";
   if (isOpen) {
-    panel.style.display = "none";
+    overlay.style.display = "none";
     return;
   }
-  // Hitung posisi trigger untuk tempatkan panel fixed tepat di bawahnya
-  const rect = trigger.getBoundingClientRect();
-  panel.style.top   = (rect.bottom + 4) + "px";
-  panel.style.left  = rect.left + "px";
-  panel.style.width = rect.width + "px";
-  panel.style.display = "block";
+  overlay.style.display = "flex";
   document.getElementById("bg-anggota-search").value = "";
   filterAnggotaDropdown();
   setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
@@ -3193,9 +3191,22 @@ function _renderAnggotaTags() {
 
 function closeBuatGrup() {
   document.getElementById("modal-buat-grup").style.display = "none";
-  document.getElementById("bg-anggota-panel").style.display = "none";
+  const ov = document.getElementById("bg-anggota-overlay");
+  if (ov) ov.style.display = "none";
   document.removeEventListener("click", _bgOutsideClick);
   _bgSelectedAnggota = [];
+}
+
+function bgCloseAnggotaOverlay() {
+  const ov = document.getElementById("bg-anggota-overlay");
+  if (ov) ov.style.display = "none";
+}
+
+function bgCloseOverlay(e) {
+  // Tutup hanya jika klik di backdrop (bukan konten dalam)
+  if (e.target === document.getElementById("bg-anggota-overlay")) {
+    bgCloseAnggotaOverlay();
+  }
 }
 
 async function saveBuatGrup() {
