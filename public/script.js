@@ -4366,24 +4366,157 @@ async function saveGroupMenus(groupId) {
   if (btn) { btn.disabled = false; btn.innerHTML = `💾 Simpan Pengaturan`; }
 }
 
+let _groupOverlayActiveId  = null;
+let _groupOverlayPlaceholder = null; // penampung sementara saat elemen dipindah
+
+// Daftar gbody yang punya elemen dengan ID unik — harus dipindah, bukan dicopy
+const GROUP_MOVE_IDS = new Set(["gbody-sistem", "gbody-rules-absensi"]);
+
 function toggleGroupBody(id) {
-  const el   = document.getElementById(id);
-  const chev = document.getElementById("chev-" + id.replace("gbody-", ""));
-  if (!el) return;
-  const willOpen = !el.classList.contains("open");
-
-  // Tutup semua accordion lain dulu
-  document.querySelectorAll(".group-body.open").forEach(other => {
-    if (other.id !== id) {
-      other.classList.remove("open");
-      const otherChev = document.getElementById("chev-" + other.id.replace("gbody-", ""));
-      if (otherChev) otherChev.style.transform = "";
-    }
-  });
-
-  el.classList.toggle("open", willOpen);
-  if (chev) chev.style.transform = willOpen ? "rotate(90deg)" : "";
+  if (_groupOverlayActiveId === id) { closeGroupOverlay(); return; }
+  openGroupOverlay(id);
 }
+
+function openGroupOverlay(id) {
+  const body    = document.getElementById(id);
+  const overlay = document.getElementById("group-overlay");
+  const obody   = document.getElementById("group-overlay-body");
+  const ofooter = document.getElementById("group-overlay-footer");
+  const otitle  = document.getElementById("group-overlay-title");
+  const osub    = document.getElementById("group-overlay-subtitle");
+  if (!body || !overlay || !obody) return;
+
+  // Tutup overlay sebelumnya jika ada
+  if (_groupOverlayActiveId) _restoreGroupBody();
+
+  // Ambil info judul dari group-header
+  const groupItem   = body.parentElement;
+  const titleEl     = groupItem ? groupItem.querySelector(".group-title") : null;
+  const levelEl     = groupItem ? groupItem.querySelector(".group-level,.group-level-sub") : null;
+  const headerEl    = groupItem ? groupItem.querySelector(".group-header") : null;
+  const headerBg    = headerEl ? headerEl.style.background : "var(--primary)";
+
+  if (otitle) otitle.textContent = titleEl ? titleEl.textContent.trim() : "";
+  if (osub)   osub.textContent   = levelEl ? levelEl.textContent.trim() : "";
+
+  // Warnai titlebar sesuai header accordion
+  const titlebar = document.getElementById("group-overlay-titlebar");
+  if (titlebar) {
+    titlebar.style.background = headerBg;
+    titlebar.style.borderBottom = "none";
+  }
+  const titleDiv = document.getElementById("group-overlay-title");
+  const subDiv   = document.getElementById("group-overlay-subtitle");
+  const closeBtn = document.getElementById("group-overlay-close");
+  if (titleDiv) titleDiv.style.color = "white";
+  if (subDiv)   subDiv.style.color   = "rgba(255,255,255,.75)";
+  if (closeBtn) { closeBtn.style.background = "rgba(255,255,255,.2)"; closeBtn.style.color = "white"; }
+
+  if (GROUP_MOVE_IDS.has(id)) {
+    // ── PINDAH elemen (agar ID unik tidak duplikat) ──
+    // Buat placeholder pengganti di posisi asli
+    const ph = document.createElement("div");
+    ph.id = "grp-ph-" + id;
+    ph.style.display = "none";
+    body.parentNode.insertBefore(ph, body);
+    _groupOverlayPlaceholder = ph;
+
+    obody.innerHTML = "";
+    const scrollArea = body.querySelector(".group-scroll-area");
+    if (scrollArea) {
+      obody.appendChild(scrollArea);
+    } else {
+      obody.appendChild(body);
+    }
+    // Footer: tombol simpan (jika ada)
+    const saveBar = body.querySelector(".group-save-bar");
+    if (saveBar && ofooter) {
+      ofooter.appendChild(saveBar);
+      ofooter.style.display = "block";
+    } else if (ofooter) {
+      ofooter.style.display = "none";
+    }
+  } else {
+    // ── COPY innerHTML (accordion biasa tanpa ID unik) ──
+    const scrollArea = body.querySelector(".group-scroll-area");
+    const saveBar    = body.querySelector(".group-save-bar");
+    obody.innerHTML  = scrollArea ? scrollArea.innerHTML : body.innerHTML;
+    if (saveBar && ofooter) {
+      ofooter.innerHTML     = saveBar.innerHTML;
+      ofooter.style.display = "block";
+    } else if (ofooter) {
+      ofooter.style.display = "none";
+    }
+  }
+
+  // Chevron aktif
+  document.querySelectorAll(".akses-chevron").forEach(c => c.style.transform = "");
+  const chev = document.getElementById("chev-" + id.replace("gbody-", ""));
+  if (chev) chev.style.transform = "rotate(90deg)";
+
+  _groupOverlayActiveId = id;
+  overlay.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function _restoreGroupBody() {
+  if (!_groupOverlayActiveId) return;
+  const id      = _groupOverlayActiveId;
+  const body    = document.getElementById(id);
+  const obody   = document.getElementById("group-overlay-body");
+  const ofooter = document.getElementById("group-overlay-footer");
+
+  if (GROUP_MOVE_IDS.has(id) && body) {
+    // Kembalikan elemen ke posisi aslinya
+    const ph = document.getElementById("grp-ph-" + id);
+    const scrollArea = obody.querySelector(".group-scroll-area");
+    const saveBar    = ofooter ? ofooter.querySelector(".group-save-bar") : null;
+
+    if (scrollArea && body) {
+      body.appendChild(scrollArea);
+    }
+    if (saveBar && body) {
+      body.appendChild(saveBar);
+    }
+    if (ph) { ph.parentNode.removeChild(ph); }
+  }
+
+  if (obody)   obody.innerHTML = "";
+  if (ofooter) { ofooter.innerHTML = ""; ofooter.style.display = "none"; }
+  _groupOverlayPlaceholder = null;
+}
+
+function closeGroupOverlay() {
+  const overlay = document.getElementById("group-overlay");
+  _restoreGroupBody();
+  if (overlay) overlay.classList.remove("open");
+  document.body.style.overflow = "";
+  if (_groupOverlayActiveId) {
+    const chev = document.getElementById("chev-" + _groupOverlayActiveId.replace("gbody-", ""));
+    if (chev) chev.style.transform = "";
+  }
+  _groupOverlayActiveId = null;
+}
+
+function _groupOverlayBgClick(e) {
+  if (e.target === document.getElementById("group-overlay")) closeGroupOverlay();
+}
+
+// Tutup overlay saat pindah halaman — patch openView tanpa redeclare const
+(function() {
+  const _prev = window.openView;
+  if (_prev) {
+    window.openView = function(viewId) {
+      if (_groupOverlayActiveId) closeGroupOverlay();
+      _prev(viewId);
+    };
+  }
+})();
+
+window.toggleGroupBody       = toggleGroupBody;
+window.openGroupOverlay      = openGroupOverlay;
+window.closeGroupOverlay     = closeGroupOverlay;
+window._groupOverlayBgClick  = _groupOverlayBgClick;
 
 // ============================================================
 // AREA
