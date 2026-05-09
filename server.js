@@ -1974,14 +1974,17 @@ function hitungOvertimeBackground(username) {
       });
 
     Object.entries(dateMap).forEach(([dateStr, sesiList]) => {
-      const jamKerja  = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
-      const infoLibur = cekHariLibur(dateStr, username);
-      const wk        = weekKey(dateStr);
+      const jamKerja     = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const infoLibur    = cekHariLibur(dateStr, username);
+      const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
+      const wk           = weekKey(dateStr);
       if (!weekMap[wk]) weekMap[wk] = 0;
-      if (infoLibur) {
+      if (infoLibur && !isHariMinggu) {
+        // Libur nasional/agama bukan Minggu → jam aktual masuk TL, weekMap pakai jam libur
         jamTLLibur += jamKerja;
         weekMap[wk] += infoLibur.jamLibur;
       } else {
+        // Reguler atau libur jatuh Minggu → semua masuk weekMap biasa
         weekMap[wk] += jamKerja;
       }
     });
@@ -2280,7 +2283,7 @@ function initKuotaUser(kuota, username, tahun) {
     // Carry-over tukarLibur dari tahun lalu (tidak hangus)
     const prevTL      = prevData ? (prevData.tukarLibur || {}) : {};
     const carryOverTL = Math.max(0,
-      (prevTL.jamAkumulasi || 0) - (prevTL.jamTerpakai || 0)
+      (prevTL.jamAkumulasi || 0) + (prevTL.jamCarryOver || 0) - (prevTL.jamTerpakai || 0)
     );
     // Carry-over overtime dari tahun lalu
     const prevOT      = prevData ? (prevData.overtime || {}) : {};
@@ -2496,11 +2499,12 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
       dateMapOT[d.date].push(d);
     });
   Object.entries(dateMapOT).forEach(([dateStr, sesiList]) => {
-    const jamKerja  = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
-    const infoLibur = cekHariLibur(dateStr, username);
-    const wk        = weekKey(dateStr);
+    const jamKerja     = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+    const infoLibur    = cekHariLibur(dateStr, username);
+    const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
+    const wk           = weekKey(dateStr);
     if (!weekMap[wk]) weekMap[wk] = 0;
-    if (infoLibur) {
+    if (infoLibur && !isHariMinggu) {
       jamTLLibur += jamKerja;
       weekMap[wk] += infoLibur.jamLibur;
     } else {
@@ -2610,11 +2614,12 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
     data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
       .forEach(d => { if (!dateMapSS[d.date]) dateMapSS[d.date] = []; dateMapSS[d.date].push(d); });
     Object.entries(dateMapSS).forEach(([dateStrX, sesiX]) => {
-      const jamKerja  = sesiX.reduce((s, d) => s + hitungJamKerja(d), 0);
-      const infoLibur = cekHariLibur(dateStrX, username);
-      const wk        = weekKey(dateStrX);
+      const jamKerja     = sesiX.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const infoLibur    = cekHariLibur(dateStrX, username);
+      const isHariMinggu = new Date(dateStrX + "T12:00:00").getDay() === 0;
+      const wk           = weekKey(dateStrX);
       if (!weekMap[wk]) weekMap[wk] = 0;
-      if (infoLibur) {
+      if (infoLibur && !isHariMinggu) {
         jamTLLibur += jamKerja;
         weekMap[wk] += infoLibur.jamLibur;
       } else {
@@ -2842,7 +2847,7 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     const sisa = k.tahunan.total - k.tahunan.terpakai;
     if (durasiHari > sisa) return res.send({ status: "ERROR", msg: `Saldo cuti tahunan tidak cukup (sisa: ${sisa} hari)` });
     k.tahunan.terpakai += durasiHari;
-  } else if (kuotaKey === "overtime") {
+  } else if (kuotaKey === "overtime" || kuotaKey === "tukarLibur") {
     const satuanJam = satuanDurasi === "jam" ? parseFloat(durasi) : parseFloat(durasi) * 5; // 1 hari TL = 5 jam
     // Cek apakah pengajuan dari overtime atau tukarLibur
     const isTukarLibur = kuotaKey === "tukarLibur";
@@ -2860,8 +2865,8 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
       k.overtime.jamTerpakai = parseFloat(((k.overtime.jamTerpakai || 0) + satuanJam).toFixed(2));
       k.overtime.riwayat = k.overtime.riwayat || [];
       k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: -satuanJam, sumber: "ambil", keterangan: `Pengajuan Cuti Overtime ${durasi} ${satuanDurasi}` });
+      if (satuanDurasi === "hari") k.overtime.hariDiambil = (k.overtime.hariDiambil || 0) + parseFloat(durasi);
     }
-    k.overtime.hariDiambil  += satuanDurasi === "hari" ? parseFloat(durasi) : 0;
   } else if (isCustomKuota) {
     // Custom kuota: catat saldo
     if (!k.customKuota) k.customKuota = {};
@@ -2989,9 +2994,9 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   if (p.kuotaKey === "tahunan") {
     // durasi tersimpan dalam HARI, kembalikan langsung
     k.tahunan.terpakai = Math.max(0, k.tahunan.terpakai - parseFloat(p.durasi));
-  } else if (p.kuotaKey === "overtime") {
-    const jamKembali = p.satuanDurasi === "jam" ? p.durasi : p.durasi * 8;
-        if (p.kuotaKey === "tukarLibur") {
+  } else if (p.kuotaKey === "overtime" || p.kuotaKey === "tukarLibur") {
+    const jamKembali = p.satuanDurasi === "jam" ? parseFloat(p.durasi) : parseFloat(p.durasi) * 5;
+    if (p.kuotaKey === "tukarLibur") {
       k.tukarLibur = k.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
       k.tukarLibur.jamTerpakai = parseFloat(Math.max(0, (k.tukarLibur.jamTerpakai || 0) - jamKembali).toFixed(2));
       k.tukarLibur.riwayat = k.tukarLibur.riwayat || [];
@@ -3000,8 +3005,8 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
       k.overtime.jamTerpakai = parseFloat(Math.max(0, (k.overtime.jamTerpakai || 0) - jamKembali).toFixed(2));
       k.overtime.riwayat = k.overtime.riwayat || [];
       k.overtime.riwayat.push({ tanggal: new Date().toLocaleDateString("sv-SE"), jam: jamKembali, sumber: "kembali", keterangan: "Cuti Overtime dibatalkan/ditolak" });
+      if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, (k.overtime.hariDiambil || 0) - parseFloat(p.durasi));
     }
-    if (p.satuanDurasi === "hari") k.overtime.hariDiambil = Math.max(0, k.overtime.hariDiambil - p.durasi);
   } else if (p.kebijakanId && k.customKuota && k.customKuota[p.kebijakanId]) {
     // Kembalikan saldo custom kuota
     const ck = k.customKuota[p.kebijakanId];
