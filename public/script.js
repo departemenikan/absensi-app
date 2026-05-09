@@ -3754,7 +3754,7 @@ async function loadRules() {
     return;
   }
 
-  // ── Deteksi mobile: lebar layar ≤ 600px pakai spreadsheet panel layout ──
+  // ── Deteksi layout: mobile jika layar sempit (overlay di desktop sudah lebar 900px) ──
   const isMobile = window.innerWidth <= 600;
 
   if (isMobile) {
@@ -4457,6 +4457,11 @@ function openGroupOverlay(id) {
   _groupOverlayActiveId = id;
   overlay.classList.add("open");
   document.body.style.overflow = "hidden";
+
+  // Untuk Pengaturan Karyawan: reload setelah overlay terbuka agar lebar container akurat
+  if (id === "gbody-rules-absensi" && typeof loadRules === "function") {
+    requestAnimationFrame(() => loadRules());
+  }
 }
 
 function _restoreGroupBody() {
