@@ -3657,21 +3657,17 @@ function switchAksesTab(tab) {
     btnRules.style.background = "transparent";
     btnRules.style.color      = "var(--muted)";
     btnRules.style.boxShadow  = "none";
-    // Tampilkan akordion Pengaturan Karyawan hanya untuk Owner/Admin
-    const akordionKaryawan = document.getElementById("akordion-pengaturan-karyawan");
-    if (akordionKaryawan) {
+    // Tampilkan akordion Sistem hanya untuk Owner/Admin
+    const akordionSistem = document.getElementById("akordion-sistem");
+    if (akordionSistem) {
       if (userLevel <= 2) {
-        akordionKaryawan.style.display = "";
-        // Buka otomatis dan muat data
-        const gbody = document.getElementById("gbody-rules-absensi");
-        const chev  = document.getElementById("chev-rules-absensi");
-        if (gbody && !gbody.classList.contains("open")) {
-          gbody.classList.add("open");
-          if (chev) chev.style.transform = "rotate(90deg)";
-        }
-        loadRules();
+        akordionSistem.style.display = "";
+        loadSistemSettings();
+        loadScreenshotToggle();
+        loadWorkPhotoToggle();
+        loadAutoTutupOvertimeToggle();
       } else {
-        akordionKaryawan.style.display = "none";
+        akordionSistem.style.display = "none";
       }
     }
   } else {
@@ -3681,26 +3677,14 @@ function switchAksesTab(tab) {
     btnAkses.style.background = "transparent";
     btnAkses.style.color      = "var(--muted)";
     btnAkses.style.boxShadow  = "none";
-    // Tampilkan akordion Pengaturan Sistem hanya untuk Owner/Admin
-    const akordionSistem = document.getElementById("akordion-sistem");
-    if (akordionSistem) {
-      if (userLevel <= 2) {
-        akordionSistem.style.display = "";
-        // Buka otomatis
-        const gbody = document.getElementById("gbody-sistem");
-        const chev  = document.getElementById("chev-sistem");
-        if (gbody && !gbody.classList.contains("open")) {
-          gbody.classList.add("open");
-          if (chev) chev.style.transform = "rotate(90deg)";
-        }
-        loadSistemSettings();
-        loadScreenshotToggle();
-        loadWorkPhotoToggle();
-        loadAutoTutupOvertimeToggle();
-      } else {
-        akordionSistem.style.display = "none";
-      }
+    // Buka section Rules otomatis
+    const gbody = document.getElementById("gbody-rules-absensi");
+    const chev  = document.getElementById("chev-rules-absensi");
+    if (gbody && !gbody.classList.contains("open")) {
+      gbody.classList.add("open");
+      if (chev) chev.style.transform = "rotate(90deg)";
     }
+    loadRules();
   }
 }
 
@@ -3901,7 +3885,8 @@ async function loadRules() {
     });
 
   } else {
-    // ── DESKTOP: Layout tabel dengan lebar kolom tetap ─────────────
+    // ── DESKTOP: Layout tabel terpusat, lebar kolom tetap ──────────
+    const NAME_W = "width:260px;min-width:260px;flex-shrink:0;";
     const COL = {
       owner: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
       admin: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
@@ -3912,7 +3897,8 @@ async function loadRules() {
     const colHeaderHTML = `
     <div style="display:flex;align-items:stretch;padding:12px 0 14px;
                 border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
-      <div style="flex:1;"></div>
+      <!-- Kolom nama — lebar tetap sama dengan baris data -->
+      <div style="${NAME_W}"></div>
 
       <div style="display:flex;flex-direction:column;align-items:center;
                   background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
@@ -3961,7 +3947,8 @@ async function loadRules() {
 
       return `
       <div style="display:flex;align-items:center;padding:13px 0;border-bottom:1px solid #f0f2f5;">
-        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+        <!-- Kolom nama: lebar tetap 260px -->
+        <div style="display:flex;align-items:center;gap:10px;${NAME_W}">
           ${avatar}
           <div style="min-width:0;">
             <div>
@@ -4007,7 +3994,12 @@ async function loadRules() {
       </div>`;
     }).join("");
 
-    el.innerHTML = colHeaderHTML + rowsHTML;
+    // Bungkus dengan max-width + margin auto agar terpusat di layar lebar
+    el.innerHTML = `
+      <div style="max-width:740px;margin:0 auto;">
+        ${colHeaderHTML}
+        ${rowsHTML}
+      </div>`;
   }
 }
 
