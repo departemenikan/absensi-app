@@ -8202,7 +8202,7 @@ function renderSaldoCuti(k, user) {
       <div style="background:linear-gradient(135deg,#fff8e1,#fff3e0);border-radius:14px;padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span style="font-weight:800;font-size:14px;color:#e65100;">🔄 Tukar Libur</span>
-          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tidak hangus tahunan</span>
+          <span style="font-size:11px;color:#ffa726;font-weight:700;">Tukar hari libur Nasional dan Keagamaan</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="text-align:center;background:white;border-radius:10px;padding:12px 8px;">
