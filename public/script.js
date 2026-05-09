@@ -2845,17 +2845,49 @@ async function openDetailAnggota(username) {
 
   // --- Teks info ---
   document.getElementById("da-nama").textContent    = nama;
-  document.getElementById("da-jabatan").textContent = m.jabatan || "—";
+
+  // Logika subtitle di bawah nama:
+  // 1. Jabatan diisi → tampilkan jabatan
+  // 2. Jabatan kosong + peran owner → "Owner"
+  // 3. Jabatan kosong + peran admin → "Admin"
+  // 4. Jabatan kosong + peran kosong → "Anggota"
+  const grp = (m.group || "").toLowerCase();
+  const grpName = m.groupName || "";
+  let subtitleText;
+  if (m.jabatan) {
+    subtitleText = m.jabatan;
+  } else if (grp === "owner") {
+    subtitleText = "Owner";
+  } else if (grp === "admin" || grpName.toLowerCase() === "admin") {
+    subtitleText = "Admin";
+  } else {
+    subtitleText = "Anggota";
+  }
+  document.getElementById("da-jabatan").textContent = subtitleText;
+
   // Divisi bisa array — tampilkan semua
   const divisiArr = Array.isArray(m.divisi) ? m.divisi : (m.divisi ? [m.divisi] : []);
   document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
 
-  // Badge peran
+  // Badge peran — sembunyikan jika sama dengan subtitle agar tidak duplikat
   const badge = document.getElementById("da-peran-badge");
-  badge.textContent   = m.groupName;
-  badge.style.background = (m.groupColor || "#7f8c8d") + "22";
-  badge.style.color      = m.groupColor || "#7f8c8d";
+  const badgeLabel = grpName || (grp ? grp.charAt(0).toUpperCase() + grp.slice(1) : "Anggota");
+  // Tampilkan badge hanya jika kontennya berbeda dari subtitle (misal jabatan diisi)
+  if (m.jabatan && badgeLabel.toLowerCase() !== subtitleText.toLowerCase()) {
+    badge.textContent      = badgeLabel;
+    badge.style.display    = "inline-block";
+    badge.style.background = (m.groupColor || "#7f8c8d") + "22";
+    badge.style.color      = m.groupColor || "#7f8c8d";
+  } else if (!m.jabatan) {
+    // Jabatan kosong: badge sudah tercermin di subtitle, sembunyikan badge
+    badge.style.display = "none";
+  } else {
+    badge.textContent      = badgeLabel;
+    badge.style.display    = "inline-block";
+    badge.style.background = (m.groupColor || "#7f8c8d") + "22";
+    badge.style.color      = m.groupColor || "#7f8c8d";
+  }
 
   // Badge Tugas Luar
   const tlBadge = document.getElementById("da-status-badge");
@@ -3068,8 +3100,7 @@ async function openBuatGrup() {
   _bgSelectedAnggota = [];
   document.getElementById("bg-nama").value = "";
   document.getElementById("bg-anggota-search").value = "";
-  const _bgOverlay = document.getElementById("bg-anggota-overlay");
-  if (_bgOverlay) _bgOverlay.style.display = "none";
+  document.getElementById("bg-anggota-panel").style.display = "none";
   _renderAnggotaDropdownItems([..._anggotaAll].filter(a => a.group !== "owner").sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id')));
   _renderAnggotaTags();
 
@@ -3095,22 +3126,25 @@ async function openBuatGrup() {
 function _bgOutsideClick(e) {
   const wrap = document.getElementById("bg-anggota-wrap");
   if (wrap && !wrap.contains(e.target)) {
-    const ov = document.getElementById("bg-anggota-overlay");
-    if (ov) ov.style.display = "none";
+    document.getElementById("bg-anggota-panel").style.display = "none";
     document.removeEventListener("click", _bgOutsideClick);
   }
 }
 
 function toggleAnggotaDropdown() {
-  const overlay = document.getElementById("bg-anggota-overlay");
+  const panel   = document.getElementById("bg-anggota-panel");
   const trigger = document.getElementById("bg-anggota-trigger");
-  if (!overlay) return;
-  const isOpen  = overlay.style.display === "flex";
+  const isOpen  = panel.style.display !== "none";
   if (isOpen) {
-    overlay.style.display = "none";
+    panel.style.display = "none";
     return;
   }
-  overlay.style.display = "flex";
+  // Hitung posisi trigger untuk tempatkan panel fixed tepat di bawahnya
+  const rect = trigger.getBoundingClientRect();
+  panel.style.top   = (rect.bottom + 4) + "px";
+  panel.style.left  = rect.left + "px";
+  panel.style.width = rect.width + "px";
+  panel.style.display = "block";
   document.getElementById("bg-anggota-search").value = "";
   filterAnggotaDropdown();
   setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
@@ -3191,22 +3225,9 @@ function _renderAnggotaTags() {
 
 function closeBuatGrup() {
   document.getElementById("modal-buat-grup").style.display = "none";
-  const ov = document.getElementById("bg-anggota-overlay");
-  if (ov) ov.style.display = "none";
+  document.getElementById("bg-anggota-panel").style.display = "none";
   document.removeEventListener("click", _bgOutsideClick);
   _bgSelectedAnggota = [];
-}
-
-function bgCloseAnggotaOverlay() {
-  const ov = document.getElementById("bg-anggota-overlay");
-  if (ov) ov.style.display = "none";
-}
-
-function bgCloseOverlay(e) {
-  // Tutup hanya jika klik di backdrop (bukan konten dalam)
-  if (e.target === document.getElementById("bg-anggota-overlay")) {
-    bgCloseAnggotaOverlay();
-  }
 }
 
 async function saveBuatGrup() {
