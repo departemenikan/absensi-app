@@ -3901,49 +3901,48 @@ async function loadRules() {
     });
 
   } else {
-    // ── DESKTOP: Layout tabel terpusat, lebar kolom tetap ──────────
-    const NAME_W = "width:260px;min-width:260px;flex-shrink:0;";
+    // ── DESKTOP: Nama rata kiri (flex:1), padding tepi, gap antar kolom ──
+    const GAP = "margin-right:24px;";
     const COL = {
-      owner: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-      admin: "width:70px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-      tl:    "width:130px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-      mess:  "width:120px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      owner: "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      admin: "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      tl:    "width:140px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      mess:  "width:140px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
     };
 
     const colHeaderHTML = `
-    <div style="display:flex;align-items:stretch;padding:12px 0 14px;
+    <div style="display:flex;align-items:stretch;padding:12px 16px 14px;
                 border-bottom:2px solid #e8ecf4;margin-bottom:4px;">
-      <!-- Kolom nama — lebar tetap sama dengan baris data -->
-      <div style="${NAME_W}"></div>
+      <div style="flex:1;min-width:0;"></div>
 
       <div style="display:flex;flex-direction:column;align-items:center;
                   background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
-                  padding:8px 0 7px;margin-right:12px;width:140px;flex-shrink:0;">
+                  padding:8px 0 7px;${GAP}width:160px;flex-shrink:0;">
         <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
                      letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🎖️ Peran</span>
         <div style="display:flex;width:100%;">
-          <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#6a1b9a;white-space:nowrap;">Owner</span></div>
-          <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1565c0;white-space:nowrap;">Admin</span></div>
+          <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#6a1b9a;">Owner</span></div>
+          <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1565c0;">Admin</span></div>
         </div>
       </div>
 
       <div style="display:flex;flex-direction:column;align-items:center;
                   background:#fff4ee;border-radius:12px;border:1px solid #f0d0c0;
-                  padding:8px 0 7px;margin-right:12px;width:130px;flex-shrink:0;">
+                  padding:8px 0 7px;${GAP}width:140px;flex-shrink:0;">
         <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
                      letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🚗 Status Kerja</span>
         <div style="display:flex;width:100%;">
-          <div style="${COL.tl}"><span style="font-size:11px;font-weight:700;color:#e65100;white-space:nowrap;">Tugas Luar</span></div>
+          <div style="${COL.tl}"><span style="font-size:11px;font-weight:700;color:#e65100;">Tugas Luar</span></div>
         </div>
       </div>
 
       <div style="display:flex;flex-direction:column;align-items:center;
                   background:#fff8e1;border-radius:12px;border:1px solid #f0e0a0;
-                  padding:8px 0 7px;width:120px;flex-shrink:0;">
+                  padding:8px 0 7px;width:140px;flex-shrink:0;">
         <span style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;
                      letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🏠 Tempat Tinggal</span>
         <div style="display:flex;width:100%;">
-          <div style="${COL.mess}"><span style="font-size:11px;font-weight:700;color:#e67e22;white-space:nowrap;">Mess</span></div>
+          <div style="${COL.mess}"><span style="font-size:11px;font-weight:700;color:#e67e22;">Mess</span></div>
         </div>
       </div>
     </div>`;
@@ -3962,14 +3961,11 @@ async function loadRules() {
                font-weight:800;font-size:15px;flex-shrink:0;">${initials}</div>`;
 
       return `
-      <div style="display:flex;align-items:center;padding:13px 0;border-bottom:1px solid #f0f2f5;">
-        <!-- Kolom nama: lebar tetap 260px -->
-        <div style="display:flex;align-items:center;gap:10px;${NAME_W}">
+      <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #f0f2f5;">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           ${avatar}
           <div style="min-width:0;">
-            <div>
-              <span style="font-size:14px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};">${nama}</span>
-            </div>
+            <div><span style="font-size:14px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};">${nama}</span></div>
             <div id="mess-label-${u.username}" style="font-size:11px;margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
               <span id="peran-badge-${u.username}" style="display:none;"></span>
               ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
@@ -3977,45 +3973,36 @@ async function loadRules() {
             </div>
           </div>
         </div>
-        <div style="display:flex;width:140px;flex-shrink:0;margin-right:12px;">
+        <div style="display:flex;width:160px;flex-shrink:0;${GAP}">
           <div style="${COL.owner}">
-            <input type="checkbox" id="owner-cb-${u.username}"
-              ${isOwner ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
+            <input type="checkbox" id="owner-cb-${u.username}" ${isOwner?"checked":""}
+              onchange="onPeranToggle('${u.username}','owner',this.checked)"
               style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
           </div>
           <div style="${COL.admin}">
-            <input type="checkbox" id="admin-cb-${u.username}"
-              ${isAdmin ? "checked" : ""}
-              onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
+            <input type="checkbox" id="admin-cb-${u.username}" ${isAdmin?"checked":""}
+              onchange="onPeranToggle('${u.username}','admin',this.checked)"
               style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
           </div>
         </div>
-        <div style="display:flex;width:130px;flex-shrink:0;margin-right:12px;">
+        <div style="display:flex;width:140px;flex-shrink:0;${GAP}">
           <div style="${COL.tl}">
-            <input type="checkbox" id="tl-cb-${u.username}"
-              ${isTL ? "checked" : ""}
-              onchange="onTugasLuarToggle('${u.username}', this.checked)"
+            <input type="checkbox" id="tl-cb-${u.username}" ${isTL?"checked":""}
+              onchange="onTugasLuarToggle('${u.username}',this.checked)"
               style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
           </div>
         </div>
-        <div style="display:flex;width:120px;flex-shrink:0;">
+        <div style="display:flex;width:140px;flex-shrink:0;">
           <div style="${COL.mess}">
-            <input type="checkbox" id="mess-cb-${u.username}"
-              ${isMess ? "checked" : ""}
-              onchange="onMessToggle('${u.username}', this.checked)"
+            <input type="checkbox" id="mess-cb-${u.username}" ${isMess?"checked":""}
+              onchange="onMessToggle('${u.username}',this.checked)"
               style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
           </div>
         </div>
       </div>`;
     }).join("");
 
-    // Bungkus dengan max-width + margin auto agar terpusat di layar lebar
-    el.innerHTML = `
-      <div style="max-width:740px;margin:0 auto;">
-        ${colHeaderHTML}
-        ${rowsHTML}
-      </div>`;
+    el.innerHTML = colHeaderHTML + rowsHTML;
   }
 }
 
