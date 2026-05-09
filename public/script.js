@@ -2870,23 +2870,16 @@ async function openDetailAnggota(username) {
   document.getElementById("da-divisi").textContent  = divisiArr.length ? divisiArr.join(", ") : "—";
   document.getElementById("da-lastseen").textContent = timeAgo(m.lastSeen);
 
-  // Badge peran — sembunyikan jika sama dengan subtitle agar tidak duplikat
+  // Badge peran — hanya tampil jika jabatan diisi (agar tidak duplikat dengan subtitle)
   const badge = document.getElementById("da-peran-badge");
   const badgeLabel = grpName || (grp ? grp.charAt(0).toUpperCase() + grp.slice(1) : "Anggota");
-  // Tampilkan badge hanya jika kontennya berbeda dari subtitle (misal jabatan diisi)
-  if (m.jabatan && badgeLabel.toLowerCase() !== subtitleText.toLowerCase()) {
+  if (m.jabatan) {
     badge.textContent      = badgeLabel;
     badge.style.display    = "inline-block";
     badge.style.background = (m.groupColor || "#7f8c8d") + "22";
     badge.style.color      = m.groupColor || "#7f8c8d";
-  } else if (!m.jabatan) {
-    // Jabatan kosong: badge sudah tercermin di subtitle, sembunyikan badge
-    badge.style.display = "none";
   } else {
-    badge.textContent      = badgeLabel;
-    badge.style.display    = "inline-block";
-    badge.style.background = (m.groupColor || "#7f8c8d") + "22";
-    badge.style.color      = m.groupColor || "#7f8c8d";
+    badge.style.display = "none";
   }
 
   // Badge Tugas Luar
@@ -3100,7 +3093,8 @@ async function openBuatGrup() {
   _bgSelectedAnggota = [];
   document.getElementById("bg-nama").value = "";
   document.getElementById("bg-anggota-search").value = "";
-  document.getElementById("bg-anggota-panel").style.display = "none";
+  const _bgOverlay = document.getElementById("bg-anggota-overlay");
+  if (_bgOverlay) _bgOverlay.style.display = "none";
   _renderAnggotaDropdownItems([..._anggotaAll].filter(a => a.group !== "owner").sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id')));
   _renderAnggotaTags();
 
@@ -3126,25 +3120,21 @@ async function openBuatGrup() {
 function _bgOutsideClick(e) {
   const wrap = document.getElementById("bg-anggota-wrap");
   if (wrap && !wrap.contains(e.target)) {
-    document.getElementById("bg-anggota-panel").style.display = "none";
+    const ov = document.getElementById("bg-anggota-overlay");
+    if (ov) ov.style.display = "none";
     document.removeEventListener("click", _bgOutsideClick);
   }
 }
 
 function toggleAnggotaDropdown() {
-  const panel   = document.getElementById("bg-anggota-panel");
-  const trigger = document.getElementById("bg-anggota-trigger");
-  const isOpen  = panel.style.display !== "none";
+  const overlay = document.getElementById("bg-anggota-overlay");
+  if (!overlay) return;
+  const isOpen = overlay.style.display === "flex";
   if (isOpen) {
-    panel.style.display = "none";
+    overlay.style.display = "none";
     return;
   }
-  // Hitung posisi trigger untuk tempatkan panel fixed tepat di bawahnya
-  const rect = trigger.getBoundingClientRect();
-  panel.style.top   = (rect.bottom + 4) + "px";
-  panel.style.left  = rect.left + "px";
-  panel.style.width = rect.width + "px";
-  panel.style.display = "block";
+  overlay.style.display = "flex";
   document.getElementById("bg-anggota-search").value = "";
   filterAnggotaDropdown();
   setTimeout(() => document.getElementById("bg-anggota-search").focus(), 50);
@@ -3225,9 +3215,21 @@ function _renderAnggotaTags() {
 
 function closeBuatGrup() {
   document.getElementById("modal-buat-grup").style.display = "none";
-  document.getElementById("bg-anggota-panel").style.display = "none";
+  const ov = document.getElementById("bg-anggota-overlay");
+  if (ov) ov.style.display = "none";
   document.removeEventListener("click", _bgOutsideClick);
   _bgSelectedAnggota = [];
+}
+
+function bgCloseAnggotaOverlay() {
+  const ov = document.getElementById("bg-anggota-overlay");
+  if (ov) ov.style.display = "none";
+}
+
+function bgCloseOverlay(e) {
+  if (e.target === document.getElementById("bg-anggota-overlay")) {
+    bgCloseAnggotaOverlay();
+  }
 }
 
 async function saveBuatGrup() {
