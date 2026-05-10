@@ -3936,3 +3936,4 @@ app.get("/wa/logout", async (req, res) => {
   await logoutWA();
   res.send({ status: "OK", msg: "Logout berhasil. Buka /wa/qr untuk scan ulang." });
 });
+
