@@ -4253,8 +4253,7 @@ function _renderGroupList() {
     const total   = allMenuKeys().length;
     const cnt     = isOwner ? total : (_aksesTemp[g.id] ? _aksesTemp[g.id].size : 0);
     return `
-    <div class="group-card-new" onclick="openAksesDetail('${g.id}')">
-      <div class="gc-strip" style="background:${meta.strip};"></div>
+    <div class="group-card-new" style="border-left:4px solid ${meta.strip};" onclick="openAksesDetail('${g.id}')">
       <div class="gc-row">
         <div class="gc-left">
           <div class="gc-avatar" style="background:${meta.bg}22;">${meta.emoji}</div>
@@ -4296,10 +4295,8 @@ function openAksesDetail(gid) {
 
   const total = allMenuKeys().length;
   const cnt   = isOwner ? total : (_aksesTemp[gid] ? _aksesTemp[gid].size : 0);
-  document.getElementById("akd-meta-avatar").textContent    = meta.emoji;
-  document.getElementById("akd-meta-avatar").style.background = meta.bg + "30";
-  document.getElementById("akd-meta-text").textContent
-    = `Level ${g.level} · ${isOwner ? "Akses penuh" : cnt+" akses aktif"}`;
+  document.getElementById("akd-meta-text").textContent =
+    `Level ${g.level} · ${isOwner ? "Akses penuh" : cnt+" akses aktif"}`;
 
   _renderAksesDetail(gid, isOwner);
   _updateAkdSaveBtn(gid);
