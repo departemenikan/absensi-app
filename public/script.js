@@ -4213,11 +4213,11 @@ async function saveRulesMess() {
 
 // ── ICON & WARNA per group ───────────────────────────────────
 const GROUP_META = {
-  owner:       { emoji:"👑", strip:"#e64a19", bg:"#bf360c" },
-  admin:       { emoji:"🛡️",  strip:"#1565c0", bg:"#0d47a1" },
-  manager:     { emoji:"💼", strip:"#00695c", bg:"#004d40" },
-  koordinator: { emoji:"🎯", strip:"#4527a0", bg:"#311b92" },
-  anggota:     { emoji:"👤", strip:"#455a64", bg:"#263238" },
+  owner:       { emoji:"👑", strip:"#e64a19", bg:"#bf360c", card:"#e8541e", text:"#fff" },
+  admin:       { emoji:"🛡️",  strip:"#1565c0", bg:"#0d47a1", card:"#1a6ac7", text:"#fff" },
+  manager:     { emoji:"💼", strip:"#00695c", bg:"#004d40", card:"#00796b", text:"#fff" },
+  koordinator: { emoji:"🎯", strip:"#4527a0", bg:"#311b92", card:"#5c35c9", text:"#fff" },
+  anggota:     { emoji:"👤", strip:"#455a64", bg:"#263238", card:"#546e7a", text:"#fff" },
 };
 function _gMeta(gid) {
   return GROUP_META[gid] || { emoji:"👤", strip:"#4f8ef7", bg:"#1a237e" };
@@ -4253,18 +4253,18 @@ function _renderGroupList() {
     const total   = allMenuKeys().length;
     const cnt     = isOwner ? total : (_aksesTemp[g.id] ? _aksesTemp[g.id].size : 0);
     return `
-    <div class="group-card-new" style="border-left:4px solid ${meta.strip};" onclick="openAksesDetail('${g.id}')">
+    <div class="group-card-new" style="background:${meta.card};" onclick="openAksesDetail('${g.id}')">
       <div class="gc-row">
         <div class="gc-left">
-          <div class="gc-avatar" style="background:${meta.bg}22;">${meta.emoji}</div>
+          <div class="gc-avatar">${meta.emoji}</div>
           <div>
-            <div class="gc-name">${g.name} ${meta.emoji}</div>
-            <div class="gc-meta">Level ${g.level} · ${isOwner ? 'Akses penuh' : cnt+' dari '+total+' akses aktif'}</div>
+            <div class="gc-name" style="color:#fff;">${g.name}</div>
+            <div class="gc-meta" style="color:#fff;">Level ${g.level} · ${isOwner ? 'Akses penuh' : cnt+' dari '+total+' akses aktif'}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           ${isOwner ? '<span class="gc-lock">Terkunci</span>' : ''}
-          <span class="gc-chevron">›</span>
+          <span class="gc-chevron" style="color:#fff;">›</span>
         </div>
       </div>
     </div>`;

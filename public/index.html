@@ -192,20 +192,19 @@
     /* GROUP / AKSESIBILITAS */
     /* ── AKSESIBILITAS: GROUP CARD LIST ── */
     .group-body{display:none;} /* tidak dipakai lagi, dipertahankan agar JS lama tidak error */
-    .group-card-new{background:white;border-radius:14px;margin-bottom:10px;
-      overflow:hidden;cursor:pointer;transition:opacity .15s;
-      border:1.5px solid #eef0f5;}
-    .group-card-new:active{opacity:.75;}
-    .gc-strip{height:0;display:none;}
-    .gc-row{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;}
-    .gc-left{display:flex;align-items:center;gap:11px;}
-    .gc-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
-      justify-content:center;font-size:18px;flex-shrink:0;}
-    .gc-name{font-size:14px;font-weight:800;color:var(--text);}
-    .gc-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+    .group-card-new{border-radius:14px;margin-bottom:10px;
+      overflow:hidden;cursor:pointer;transition:opacity .15s;}
+    .group-card-new:active{opacity:.8;}
+    .gc-strip{display:none;}
+    .gc-row{display:flex;align-items:center;justify-content:space-between;padding:16px 15px;}
+    .gc-left{display:flex;align-items:center;gap:12px;}
+    .gc-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;
+      justify-content:center;font-size:20px;flex-shrink:0;background:rgba(255,255,255,.25);}
+    .gc-name{font-size:15px;font-weight:800;}
+    .gc-meta{font-size:11px;margin-top:3px;opacity:.75;}
     .gc-lock{font-size:10px;padding:3px 9px;border-radius:20px;
-      background:#fff3e0;color:#e65100;font-weight:700;}
-    .gc-chevron{color:#c8cdd8;font-size:22px;font-weight:300;line-height:1;}
+      background:rgba(255,255,255,.3);font-weight:700;}
+    .gc-chevron{font-size:22px;font-weight:300;line-height:1;opacity:.6;}
 
     /* ── AKSESIBILITAS: SLIDE-IN DETAIL VIEW ── */
     #view-akses-detail{
