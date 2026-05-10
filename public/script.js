@@ -2399,7 +2399,9 @@ function rekapRender() {
   // ─── BANGUN BARIS ─────────────────────────────────────────────
   const rows = filtered.map(u => {
     // Avatar — photo tidak disertakan di response rekap, gunakan inisial
-    const avatarHtml = `<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+    const _rjInfo   = _jabatanInfo(u.group, u.jabatan);
+    const _rAvBg    = (_GROUP_LABEL[(u.group||"").toLowerCase()] || {color:"#546e7a"}).color;
+    const avatarHtml = `<div style="width:26px;height:26px;border-radius:50%;background:${_rAvBg};
           display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:10px;flex-shrink:0;">
         ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
 
@@ -2409,7 +2411,7 @@ function rekapRender() {
           ${avatarHtml}
           <div style="min-width:0;">
             <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;">${u.nama||u.username}</div>
-            <div style="font-size:9px;color:var(--muted);">${u.jabatan}</div>
+            <div style="font-size:9px;color:${_rjInfo.color};font-weight:600;">${_rjInfo.label}</div>
           </div>
         </div>
       </td>`;
@@ -4227,6 +4229,26 @@ const GROUP_META = {
 };
 function _gMeta(gid) {
   return GROUP_META[gid] || { emoji:"👤", strip:"#4f8ef7", bg:"#1a237e" };
+}
+
+// Helper: label & warna jabatan konsisten dari group
+const _GROUP_LABEL = {
+  owner:       { label:"Owner",       color:"#e8541e" },
+  admin:       { label:"Admin",       color:"#1a6ac7" },
+  manager:     { label:"Manager",     color:"#00796b" },
+  koordinator: { label:"Koordinator", color:"#5c35c9" },
+  anggota:     { label:"Anggota",     color:"#546e7a" },
+};
+function _jabatanInfo(group, jabatan) {
+  const g = (group || "").toLowerCase();
+  const meta = _GROUP_LABEL[g];
+  const defaultLabels = new Set(["owner","admin","manager","koordinator","anggota","-",""]);
+  const jabLower = (jabatan || "").toLowerCase();
+  const useJabatan = jabatan && !defaultLabels.has(jabLower);
+  return {
+    label: useJabatan ? jabatan : (meta ? meta.label : "Anggota"),
+    color: meta ? meta.color : "#546e7a",
+  };
 }
 
 // ── LOAD GROUPS — render sebagai kartu list ──────────────────
@@ -6459,7 +6481,7 @@ function tsRender() {
     // Avatar
     const avatarHtml = u.photo
       ? `<img src="${u.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-      : `<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+      : `<div style="width:30px;height:30px;border-radius:50%;background:${(_GROUP_LABEL[(u.group||"").toLowerCase()]||{color:"#546e7a"}).color};
               display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:12px;flex-shrink:0;">
           ${(u.nama||u.username).charAt(0).toUpperCase()}</div>`;
 
@@ -6472,7 +6494,7 @@ function tsRender() {
           ${avatarHtml}
           <div style="min-width:0;">
             <div style="font-weight:700;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.nama||u.username}</div>
-            <div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.jabatan}</div>
+            <div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${_jabatanInfo(u.group,u.jabatan).color};font-weight:600;">${_jabatanInfo(u.group,u.jabatan).label}</div>
           </div>
         </div>
       </td>

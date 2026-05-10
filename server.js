@@ -1998,8 +1998,8 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
       username,
       nama:       u.namaLengkap || username,
       jabatan:    u.jabatan || "-",
+      group:      u.group || "anggota",
       divisi:     Array.isArray(u.divisi) ? u.divisi.join(", ") : (u.divisi || "-"),
-      // photo & group tidak disertakan — tidak dibutuhkan untuk rekap jam kerja
       days,
       weekTotals,
       totalBulan,
