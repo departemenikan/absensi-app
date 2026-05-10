@@ -36,6 +36,7 @@
     @keyframes slideUp {
       from { transform: translateY(30px); opacity: 0; }
       to   { transform: translateY(0);    opacity: 1; }
+    }
 
     /* Paksa format 24 jam pada semua input time — cegah AM/PM di semua browser */
     input[type="time"] {
@@ -46,12 +47,13 @@
     input[type="time"]::-webkit-datetime-edit-ampm-field {
       display: none !important;
     }
-    }
     /* Highlight item terpilih di scroll picker jam/menit */
     .ts-picker-selected { color: #e65100 !important; font-weight: 900 !important; }
     #ts-er-col-jam::-webkit-scrollbar, #ts-er-col-menit::-webkit-scrollbar { width: 0; }
     .ts-dr-col::-webkit-scrollbar { width: 0; }
-    .ts-dr-col { -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+    /* pan-x pan-y: biarkan browser pilih arah scroll sesuai gesture user,
+       tidak lagi konflik dengan body yang minta pan-y */
+    .ts-dr-col { -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 
     /* Pull-to-Refresh indicator */
     #ptr-indicator {
@@ -3232,39 +3234,41 @@
 
 <script>
 // ============================================================
-// GESTURE SYSTEM v4 — Tiga gesture benar-benar terpisah:
+// GESTURE SYSTEM v5 — Perbaikan mobile:
 //
-//   1. SCROLL   — vertikal bebas, diserahkan 100% ke browser
+//   1. SCROLL   — vertikal bebas, 100% ke browser (passive)
 //   2. SWIPE    — horizontal ±, pindah tab navbar
-//   3. REFRESH  — tarik ke bawah saat sudah di paling atas halaman
+//   3. REFRESH  — pull-to-refresh dengan preventDefault
+//                 agar browser native PTR tidak muncul bersamaan
 //
-// Prinsip:
-//   • Direction lock: sekali putuskan arah, tidak bisa berubah
-//   • Scroll TIDAK pernah dipotong (semua listener passive:true)
-//   • Swipe hanya aktif di nav-page, hanya jika angle < 20° dari horizontal
-//   • Refresh hanya aktif jika scrollY === 0 DAN arah ke bawah
-//   • Tidak ada preventDefault → scroll browser selalu mulus
+// Perubahan dari v4:
+//   • ptrEl dibuat & dipasang LANGSUNG (tidak tunggu DOMContentLoaded)
+//   • touchmove NON-passive → bisa preventDefault saat PTR aktif
+//     sehingga browser Chrome Android tidak double-trigger refresh
+//   • SWIPE_MIN_PX turun 80→55px: lebih responsif di layar kecil
+//   • triggerRefresh tunggu promise sebelum tutup indikator
+//   • Swipe: visual feedback opacity saat gesture in-progress
+//   • isHorizontalScrollable: cache hasil per touch session
 // ============================================================
 (function(){
 
   // ─── Konfigurasi ───────────────────────────────────────────
   const NAV_PAGES     = ['home','timesheet','cuti','setting'];
-  const EDGE_ZONE     = 40;   // px tepi layar kiri/kanan (Android back gesture)
-  const SWIPE_MIN_PX  = 80;   // jarak horizontal minimum untuk trigger swipe
-  const SWIPE_MAX_DEG = 20;   // sudut maksimal dari horizontal (derajat)
-  const PTR_TRIGGER   = 70;   // jarak tarik ke bawah untuk trigger refresh
+  const EDGE_ZONE     = 40;   // px tepi layar (Android back gesture)
+  const SWIPE_MIN_PX  = 55;   // [v5: turun dari 80] lebih responsif di layar kecil
+  const SWIPE_MAX_DEG = 20;   // sudut maks dari horizontal
+  const PTR_TRIGGER   = 70;   // jarak tarik untuk trigger refresh
   const PTR_MAX       = 100;  // batas visual tarik (px)
-  const DECIDE_PX     = 16;   // minimal gerak sebelum putuskan arah
+  const DECIDE_PX     = 14;   // [v5: turun dari 16] putuskan arah lebih cepat
 
   // ─── State ─────────────────────────────────────────────────
   let startX = 0, startY = 0;
-  let dir = null;   // null | 'H' | 'V' | 'PTR'
-  // H   = horizontal (swipe navbar)
-  // V   = vertikal (scroll — diserahkan ke browser)
-  // PTR = pull-to-refresh
+  let dir = null;             // null | 'H' | 'V' | 'PTR'
+  let hScrollCache = null;    // [v5] cache isHorizontalScrollable per touch session
 
   // ─── PTR DOM ────────────────────────────────────────────────
-  // Buat satu elemen PTR indicator yang reusable
+  // [v5] Buat & pasang LANGSUNG — tidak tunggu DOMContentLoaded
+  // Kalau body belum ada (script sangat awal), fallback ke DOMContentLoaded
   const ptrEl = document.createElement('div');
   ptrEl.id = 'ptr-indicator';
   ptrEl.innerHTML = '<span id="ptr-icon">↓</span><span id="ptr-label">Tarik untuk refresh</span>';
@@ -3277,58 +3281,79 @@
     zIndex: '8888', transition: 'height .15s ease',
     pointerEvents: 'none',
   });
-  document.addEventListener('DOMContentLoaded', () => document.body.prepend(ptrEl));
+  if (document.body) {
+    document.body.prepend(ptrEl);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => document.body.prepend(ptrEl));
+  }
 
-  let ptrActive  = false;
-  let ptrDy      = 0;
+  let ptrActive = false;
+  let ptrDy     = 0;
+  let ptrRefreshing = false;  // [v5] cegah double-trigger
 
   function ptrSetHeight(px) {
     ptrEl.style.height = Math.min(px, PTR_MAX) + 'px';
-    const ratio  = Math.min(px / PTR_TRIGGER, 1);
-    const icon   = document.getElementById('ptr-icon');
-    const label  = document.getElementById('ptr-label');
+    const ratio = Math.min(px / PTR_TRIGGER, 1);
+    const icon  = document.getElementById('ptr-icon');
+    const label = document.getElementById('ptr-label');
     if (icon)  icon.style.transform = `rotate(${ratio * 180}deg)`;
-    if (label) label.textContent = px >= PTR_TRIGGER ? 'Lepas untuk refresh' : 'Tarik untuk refresh';
+    if (label) label.textContent = px >= PTR_TRIGGER ? '↑ Lepas untuk refresh' : '↓ Tarik untuk refresh';
   }
 
   function ptrReset(doRefresh) {
+    ptrActive = false; ptrDy = 0;
+    if (doRefresh && !ptrRefreshing) {
+      triggerRefresh();   // indicator tetap tampil sampai refresh selesai
+    } else {
+      _ptrClose();
+    }
+  }
+
+  function _ptrClose() {
+    ptrRefreshing = false;
     ptrEl.style.transition = 'height .25s ease';
     ptrEl.style.height = '0px';
-    ptrActive = false; ptrDy = 0;
-    if (doRefresh) triggerRefresh();
     setTimeout(() => { ptrEl.style.transition = 'height .15s ease'; }, 300);
   }
 
-  // ─── Fungsi refresh per halaman ────────────────────────────
+  // ─── Fungsi refresh per halaman ─────────────────────────────
+  // [v5] Tampilkan spinner selama refresh, tutup setelah selesai
   function triggerRefresh() {
     const activeView = document.querySelector('.view.active');
-    if (!activeView) return;
+    if (!activeView) { _ptrClose(); return; }
     const vid = activeView.id;
 
-    // Animasi loading singkat
+    ptrRefreshing = true;
     const icon  = document.getElementById('ptr-icon');
     const label = document.getElementById('ptr-label');
-    if (icon)  icon.textContent = '⟳';
+    if (icon)  { icon.style.transform = 'none'; icon.textContent = '⟳'; }
     if (label) label.textContent = 'Memuat...';
+    ptrEl.style.transition = 'height .15s ease';
     ptrEl.style.height = '44px';
 
-    // Petakan view ke fungsi refresh
     const refreshMap = {
-      'view-home':        () => { if (typeof loadStatus === 'function') loadStatus(); },
-      'view-timesheet':   () => { if (typeof loadTimesheet === 'function') loadTimesheet(); },
-      'view-cuti':        () => { if (typeof loadCuti === 'function') loadCuti(); },
-      'view-setting':     () => { if (typeof loadProfil === 'function') loadProfil(); },
-      'view-aktivitas':   () => { if (typeof loadAktivitas === 'function') loadAktivitas(); },
-      'view-admin':       () => { if (typeof loadAdmin === 'function') loadAdmin(); },
-      'view-anggota':     () => { if (typeof loadAnggota === 'function') loadAnggota(); },
-      'view-rekap':       () => { if (typeof loadRekap === 'function') loadRekap(); },
-      'view-screenshot':  () => { if (typeof loadScreenshotPage === 'function') loadScreenshotPage(); },
+      'view-home':        () => typeof loadStatus          === 'function' && loadStatus(),
+      'view-timesheet':   () => typeof loadTimesheet       === 'function' && loadTimesheet(),
+      'view-cuti':        () => typeof loadCuti            === 'function' && loadCuti(),
+      'view-setting':     () => typeof loadProfil          === 'function' && loadProfil(),
+      'view-aktivitas':   () => typeof loadAktivitas       === 'function' && loadAktivitas(),
+      'view-admin':       () => typeof loadAdmin           === 'function' && loadAdmin(),
+      'view-anggota':     () => typeof loadAnggota         === 'function' && loadAnggota(),
+      'view-rekap':       () => typeof loadRekap           === 'function' && loadRekap(),
+      'view-screenshot':  () => typeof loadScreenshotPage  === 'function' && loadScreenshotPage(),
     };
 
     const fn = refreshMap[vid];
-    if (fn) fn();
+    let result;
+    try { result = fn ? fn() : undefined; } catch(e) { result = undefined; }
 
-    setTimeout(() => ptrReset(false), 600);
+    // [v5] Jika fn mengembalikan Promise, tunggu selesai baru tutup
+    // Jika tidak (sync), tutup setelah 700ms
+    if (result && typeof result.finally === 'function') {
+      result.finally(() => setTimeout(_ptrClose, 300));
+    } else {
+      setTimeout(_ptrClose, 700);
+    }
   }
 
   // ─── Helper ─────────────────────────────────────────────────
@@ -3349,13 +3374,18 @@
     return idx >= 0 ? idx : 0;
   }
 
+  // [v5] Terima el dari touchstart, cache hasilnya untuk session ini
   function isHorizontalScrollable(el) {
-    while (el && el !== document.body) {
-      const s = window.getComputedStyle(el);
-      if ((s.overflowX === 'auto' || s.overflowX === 'scroll') && el.scrollWidth > el.clientWidth) return true;
-      el = el.parentElement;
+    if (hScrollCache !== null) return hScrollCache;
+    let cur = el;
+    while (cur && cur !== document.body) {
+      const s = window.getComputedStyle(cur);
+      if ((s.overflowX === 'auto' || s.overflowX === 'scroll') && cur.scrollWidth > cur.clientWidth) {
+        hScrollCache = true; return true;
+      }
+      cur = cur.parentElement;
     }
-    return false;
+    hScrollCache = false; return false;
   }
 
   function isInModal(el) {
@@ -3373,9 +3403,10 @@
 
   // ─── Touch Start ────────────────────────────────────────────
   document.addEventListener('touchstart', function(e) {
-    startX = 0; startY = 0; dir = null; ptrActive = false; ptrDy = 0;
+    startX = 0; startY = 0; dir = null;
+    ptrActive = false; ptrDy = 0;
+    hScrollCache = null;  // [v5] reset cache
 
-    // Abaikan modal, input, multi-touch
     if (e.touches.length > 1) return;
     if (isInModal(e.target)) return;
     if (isTextInput(e.target)) return;
@@ -3386,81 +3417,77 @@
     // Zona tepi layar → biarkan Android handle back gesture
     if (x <= EDGE_ZONE || x >= window.innerWidth - EDGE_ZONE) return;
 
+    // [v5] Pre-compute hScrollCache di touchstart agar touchmove lebih ringan
+    isHorizontalScrollable(e.target);
+
     startX = x; startY = y;
   }, { passive: true });
 
   // ─── Touch Move ─────────────────────────────────────────────
+  // [v5] NON-passive: perlu preventDefault untuk PTR agar browser
+  //      Chrome Android tidak munculkan native pull-to-refresh bersamaan
   document.addEventListener('touchmove', function(e) {
     if (!startX) return;
 
-    const x  = e.touches[0].clientX;
-    const y  = e.touches[0].clientY;
-    const dx = x - startX;
-    const dy = y - startY;
+    const x    = e.touches[0].clientX;
+    const y    = e.touches[0].clientY;
+    const dx   = x - startX;
+    const dy   = y - startY;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    // ── Belum cukup bergerak → tunggu ──
+    // Belum cukup bergerak → tunggu
     if (!dir && absDx < DECIDE_PX && absDy < DECIDE_PX) return;
 
-    // ── Putuskan arah satu kali (direction lock) ──
+    // Putuskan arah satu kali (direction lock)
     if (!dir) {
       const angleDeg = getAngleDeg(dx, dy);
 
-      // PTR: harus di paling atas halaman, gerakan ke BAWAH, bukan di scroll elem
-      if (dy > 0 && isAtTop() && !isHorizontalScrollable(e.target) && angleDeg > 60) {
+      if (dy > 0 && isAtTop() && !hScrollCache && angleDeg > 60) {
         dir = 'PTR';
-      }
-      // SWIPE H: sudut kecil dari horizontal, di nav-page, bukan elem h-scroll
-      else if (angleDeg <= SWIPE_MAX_DEG && isNavPage() && !isHorizontalScrollable(e.target)) {
+      } else if (angleDeg <= SWIPE_MAX_DEG && isNavPage() && !hScrollCache) {
         dir = 'H';
-      }
-      // Default: scroll vertikal → serahkan ke browser
-      else {
+      } else {
         dir = 'V';
       }
     }
 
-    // ── PTR: update visual indicator ──
+    // PTR: preventDefault cegah browser native PTR di Chrome Android
     if (dir === 'PTR') {
+      e.preventDefault();   // [v5] kunci baru — hanya aktif saat PTR
       ptrActive = true;
       ptrDy = Math.max(0, dy);
       ptrEl.style.transition = 'none';
-      ptrSetHeight(ptrDy * 0.55); // damping agar tidak terlalu jauh
+      ptrSetHeight(ptrDy * 0.55);
     }
 
-    // dir === 'V' dan dir === 'H' → tidak ada yang di-prevent, scroll berjalan normal
-  }, { passive: true });
+    // dir === 'V' → tidak di-prevent, scroll browser berjalan normal
+    // dir === 'H' → tidak di-prevent, browser tetap bisa fling scroll jika perlu
+
+  }, { passive: false });  // [v5] non-passive agar bisa preventDefault
 
   // ─── Touch End ──────────────────────────────────────────────
   document.addEventListener('touchend', function(e) {
     if (!startX || !dir) { startX = 0; startY = 0; dir = null; return; }
 
-    const ex  = e.changedTouches[0].clientX;
-    const ey  = e.changedTouches[0].clientY;
-    const dx  = ex - startX;
-    const dy  = ey - startY;
+    const dx = e.changedTouches[0].clientX - startX;
 
-    // ── PTR: cek apakah cukup jauh untuk refresh ──
+    // PTR: lepas → cek threshold
     if (dir === 'PTR') {
       ptrReset(ptrDy >= PTR_TRIGGER);
     }
 
-    // ── SWIPE H: cek threshold & pindah tab ──
+    // SWIPE H: pindah tab
     if (dir === 'H') {
       if (Math.abs(dx) >= SWIPE_MIN_PX) {
         const cur  = currentNavIndex();
         const next = dx < 0
           ? Math.min(cur + 1, NAV_PAGES.length - 1)
           : Math.max(cur - 1, 0);
-        if (next !== cur) {
-          const fn = window.navTo;
-          if (fn) fn(NAV_PAGES[next]);
-        }
+        if (next !== cur && window.navTo) window.navTo(NAV_PAGES[next]);
       }
     }
 
-    // Reset
     startX = 0; startY = 0; dir = null; ptrActive = false; ptrDy = 0;
   }, { passive: true });
 
