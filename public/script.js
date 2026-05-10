@@ -2663,9 +2663,9 @@ async function downloadRekapXLSX() {
     namaCell.value = u.nama || u.username;
     applyStyle(namaCell, { bgColor: rowBg, bold: true, hAlign: "left", wrapText: true });
 
-    // Jabatan
+    // Jabatan — pakai _jabatanInfo seperti tampilan UI rekap
     const jabCell = ws1.getCell(rowNum, 2);
-    jabCell.value = u.jabatan || "";
+    jabCell.value = _jabatanInfo(u.group, u.jabatan).label;
     applyStyle(jabCell, { bgColor: rowBg, hAlign: "left" });
 
     let ci = 3;
@@ -2755,7 +2755,7 @@ async function downloadRekapXLSX() {
 
     const c1 = ws2.getCell(rowNum, 1); c1.value = u.nama || u.username;
     applyStyle(c1, { bgColor: rowBg, bold: true, hAlign: "left" });
-    const c2 = ws2.getCell(rowNum, 2); c2.value = u.jabatan || "";
+    const c2 = ws2.getCell(rowNum, 2); c2.value = _jabatanInfo(u.group, u.jabatan).label;
     applyStyle(c2, { bgColor: rowBg, hAlign: "left" });
 
     weeks.forEach((w, wi) => {
