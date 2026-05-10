@@ -891,6 +891,10 @@
           style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;">
           🏢 Divisi
         </button>
+        <button id="tab-pengaturan-karyawan" onclick="switchAnggotaTab('pengaturan-karyawan')"
+          style="flex:1;padding:13px;border:none;background:white;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;">
+          ⚙️ Pengaturan
+        </button>
       </div>
 
       <!-- Tab: Data Personil -->
@@ -947,6 +951,24 @@
           <div id="divisi-list"><p style="color:var(--muted);text-align:center;padding:24px;">Memuat...</p></div>
         </div>
       </div>
+
+      <!-- Tab: Pengaturan Karyawan -->
+      <div id="panel-pengaturan-karyawan" class="hidden">
+        <div id="rules-mess-header" style="flex-shrink:0;"></div>
+        <div id="rules-mess-list">
+          <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
+        </div>
+        <div style="padding:16px 0 24px;">
+          <button onclick="saveRulesMess()"
+            style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;
+                   padding:13px 28px;border:none;border-radius:12px;
+                   background:var(--primary);color:white;font-weight:700;
+                   font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(79,142,247,.3);">
+            💾 Simpan Pengaturan Karyawan
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -986,33 +1008,6 @@
         <!-- List jabatan -->
         <div id="group-list">
           <p style="color:var(--muted);text-align:center;padding:24px;">Memuat data jabatan...</p>
-        </div>
-
-        <!-- Akordion: Pengaturan Karyawan (pindahan dari Tab Rules) -->
-        <div class="group-item" id="akordion-pengaturan-karyawan" style="display:none;">
-          <div class="group-header" style="background:linear-gradient(135deg,#1a237e,#4f8ef7);"
-               onclick="toggleGroupBody('gbody-rules-absensi')">
-            <div style="flex:1;">
-              <div class="group-title">👥 Pengaturan Karyawan</div>
-            </div>
-            <span class="akses-chevron" id="chev-rules-absensi"
-                  style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
-          </div>
-          <div class="group-body" id="gbody-rules-absensi">
-            <div id="rules-mess-header" style="flex-shrink:0;"></div>
-            <div id="rules-mess-list" class="group-scroll-area">
-              <p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Memuat...</p>
-            </div>
-            <div class="group-save-bar">
-              <button onclick="saveRulesMess()"
-                style="display:inline-flex;align-items:center;gap:6px;
-                       padding:11px 28px;border:none;border-radius:10px;
-                       background:var(--primary);color:white;font-weight:700;
-                       font-size:14px;cursor:pointer;white-space:nowrap;">
-                💾 Simpan
-              </button>
-            </div>
-          </div>
         </div>
 
       </div>

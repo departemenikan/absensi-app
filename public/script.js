@@ -2623,8 +2623,8 @@ async function loadAdmin() {
 // ANGGOTA (daftar + group)
 // ============================================================
 function switchAnggotaTab(tab) {
-  const isDaftar   = tab === "daftar";
-  const isDivisi   = tab === "divisi";
+  const isDaftar     = tab === "daftar";
+  const isDivisi     = tab === "divisi";
   const isPengaturan = tab === "pengaturan-karyawan";
 
   document.getElementById("panel-daftar").classList.toggle("hidden", !isDaftar);
@@ -2635,11 +2635,9 @@ function switchAnggotaTab(tab) {
   const tDivisi     = document.getElementById("tab-divisi");
   const tPengaturan = document.getElementById("tab-pengaturan-karyawan");
 
-  // Reset semua tab
   [tDaftar, tDivisi, tPengaturan].forEach(t => {
     if (t) { t.style.background = "white"; t.style.color = "var(--muted)"; }
   });
-  // Aktifkan tab yang dipilih
   const active = isDaftar ? tDaftar : isDivisi ? tDivisi : tPengaturan;
   if (active) { active.style.background = "var(--primary)"; active.style.color = "white"; }
 
