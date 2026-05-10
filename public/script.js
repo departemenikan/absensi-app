@@ -9999,6 +9999,8 @@ async function ssPopulateUserSelect() {
     const r = await authFetch(endpoint);
     if (!r.ok) return;
     const list = await r.json();
+    // Urutkan: alfabetis nama A→Z
+    list.sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id'));
     const prev = sel.value;
     while (sel.options.length > 1) sel.remove(1);
     list.forEach(u => {
@@ -10285,6 +10287,8 @@ async function wpPopulateUserSelect() {
     const r = await authFetch(endpoint);
     if (!r.ok) return;
     const list = await r.json();
+    // Urutkan: alfabetis nama A→Z
+    list.sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, 'id'));
     const prev = sel.value;
     while (sel.options.length > 1) sel.remove(1);
     list.forEach(u => {
