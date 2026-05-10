@@ -4240,13 +4240,34 @@ const _GROUP_LABEL = {
   anggota:     { label:"Anggota",     color:"#546e7a" },
 };
 function _jabatanInfo(group, jabatan) {
-  const g = (group || "").toLowerCase();
-  const meta = _GROUP_LABEL[g];
-  const defaultLabels = new Set(["owner","admin","manager","koordinator","anggota","-",""]);
-  const jabLower = (jabatan || "").toLowerCase();
-  const useJabatan = jabatan && !defaultLabels.has(jabLower);
+  // Normalisasi
+  const g   = (group   || "").toLowerCase();
+  const jab = (jabatan || "").trim();
+  const jabLower = jab.toLowerCase();
+
+  // Jabatan "isi" = ada nilai dan bukan label default group/kosong
+  const isDefaultJab = new Set(["anggota","admin","owner","manager","koordinator","-",""]).has(jabLower);
+  const hasJabatan   = jab && !isDefaultJab;
+
+  const meta = _GROUP_LABEL[g]; // warna selalu ikut group
+
+  let label;
+  if (g === "owner") {
+    // Rule 2: Peran Owner → selalu "Owner" apapun jabatannya
+    label = "Owner";
+  } else if (hasJabatan) {
+    // Rule 1 & 3: Jabatan isi + Peran bukan Owner → gunakan jabatan divisi
+    label = jab;
+  } else if (g === "admin") {
+    // Rule 4: Jabatan kosong + Peran Admin → "Admin"
+    label = "Admin";
+  } else {
+    // Rule 5: Jabatan kosong + Peran kosong → "Anggota"
+    label = "Anggota";
+  }
+
   return {
-    label: useJabatan ? jabatan : (meta ? meta.label : "Anggota"),
+    label,
     color: meta ? meta.color : "#546e7a",
   };
 }
@@ -8759,13 +8780,13 @@ function renderDaftarCuti(list, currentUser) {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#1a237e);
+            <div style="width:32px;height:32px;border-radius:50%;background:${(_GROUP_LABEL[(p.groupTarget||'').toLowerCase()]||{color:'#546e7a'}).color};
               display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;flex-shrink:0;">
               ${(p.namaLengkap || p.username).charAt(0).toUpperCase()}
             </div>
             <div>
-              <div style="font-size:14px;font-weight:700;">${p.namaLengkap || p.username}</div>
-              <div style="font-size:11px;color:var(--muted);">${p.jabatan || ""}</div>
+              <div style="font-size:14px;font-weight:700;color:${(_GROUP_LABEL[(p.groupTarget||'').toLowerCase()]||{color:'#2c3e50'}).color};">${p.namaLengkap || p.username}</div>
+              <div style="font-size:11px;font-weight:600;color:${(_GROUP_LABEL[(p.groupTarget||'').toLowerCase()]||{color:'#546e7a'}).color};">${_jabatanInfo(p.groupTarget, p.jabatan).label}</div>
             </div>
           </div>
           <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;">
