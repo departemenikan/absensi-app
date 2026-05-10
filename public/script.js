@@ -10268,7 +10268,14 @@ async function loadScreenshotActiveList(silent = false) {
 }
 
 function ssSelectUser(username) {
-  const sel = document.getElementById("ss-pilih-user");
+  const sel  = document.getElementById("ss-pilih-user");
+  const wrap = document.getElementById("ss-grid-wrap");
+  // Toggle: klik nama yang sama lagi -> tutup grid
+  if (sel && sel.value === username && wrap && wrap.style.display !== "none") {
+    wrap.style.display = "none";
+    sel.value = "";
+    return;
+  }
   if (sel) sel.value = username;
   loadScreenshots();
 }
