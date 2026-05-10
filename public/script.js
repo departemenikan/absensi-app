@@ -2623,14 +2623,28 @@ async function loadAdmin() {
 // ANGGOTA (daftar + group)
 // ============================================================
 function switchAnggotaTab(tab) {
-  const isDaftar = tab === "daftar";
+  const isDaftar   = tab === "daftar";
+  const isDivisi   = tab === "divisi";
+  const isPengaturan = tab === "pengaturan-karyawan";
+
   document.getElementById("panel-daftar").classList.toggle("hidden", !isDaftar);
-  document.getElementById("panel-divisi").classList.toggle("hidden", isDaftar);
-  document.getElementById("tab-daftar").style.background = isDaftar ? "var(--primary)" : "white";
-  document.getElementById("tab-daftar").style.color      = isDaftar ? "white" : "var(--muted)";
-  document.getElementById("tab-divisi").style.background = isDaftar ? "white" : "var(--primary)";
-  document.getElementById("tab-divisi").style.color      = isDaftar ? "var(--muted)" : "white";
-  if (!isDaftar) loadDivisi();
+  document.getElementById("panel-divisi").classList.toggle("hidden", !isDivisi);
+  document.getElementById("panel-pengaturan-karyawan").classList.toggle("hidden", !isPengaturan);
+
+  const tDaftar     = document.getElementById("tab-daftar");
+  const tDivisi     = document.getElementById("tab-divisi");
+  const tPengaturan = document.getElementById("tab-pengaturan-karyawan");
+
+  // Reset semua tab
+  [tDaftar, tDivisi, tPengaturan].forEach(t => {
+    if (t) { t.style.background = "white"; t.style.color = "var(--muted)"; }
+  });
+  // Aktifkan tab yang dipilih
+  const active = isDaftar ? tDaftar : isDivisi ? tDivisi : tPengaturan;
+  if (active) { active.style.background = "var(--primary)"; active.style.color = "white"; }
+
+  if (isDivisi)     loadDivisi();
+  if (isPengaturan) loadRules();
 }
 
 // ================================================================
@@ -3657,17 +3671,6 @@ function switchAksesTab(tab) {
     btnRules.style.background = "transparent";
     btnRules.style.color      = "var(--muted)";
     btnRules.style.boxShadow  = "none";
-    // Tampilkan akordion Pengaturan Karyawan hanya untuk Owner/Admin
-    const akordionKaryawan = document.getElementById("akordion-pengaturan-karyawan");
-    if (akordionKaryawan) {
-      if (userLevel <= 2) {
-        akordionKaryawan.style.display = "";
-        // Default tertutup — user klik header untuk membuka
-        loadRules();
-      } else {
-        akordionKaryawan.style.display = "none";
-      }
-    }
   } else {
     btnRules.style.background = "linear-gradient(135deg,#4f8ef7,#1a237e)";
     btnRules.style.color      = "white";
@@ -3680,7 +3683,6 @@ function switchAksesTab(tab) {
     if (akordionSistem) {
       if (userLevel <= 2) {
         akordionSistem.style.display = "";
-        // Buka otomatis
         const gbody = document.getElementById("gbody-sistem");
         const chev  = document.getElementById("chev-sistem");
         if (gbody && !gbody.classList.contains("open")) {
