@@ -2503,10 +2503,11 @@ async function downloadRekapXLSX() {
   if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang bisa download rekap", "error"); return; }
   if (!_rekapData?.users) { showToast("⚠️ Tampilkan rekap terlebih dahulu", "warning"); return; }
 
-  if (typeof XLSX === "undefined") {
+  // Load ExcelJS dari CDN (support styling gratis)
+  if (typeof ExcelJS === "undefined") {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
       s.onload = res; s.onerror = rej;
       document.head.appendChild(s);
     });
@@ -2515,328 +2516,273 @@ async function downloadRekapXLSX() {
   const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli",
                     "Agustus","September","Oktober","November","Desember"];
   const DOW_S    = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
-  const wb       = XLSX.utils.book_new();
   const weeks    = _rekapData.weeks || [];
   const users    = _rekapData.users || [];
   const [yr, mo] = _rekapMonth.split("-").map(Number);
 
-  function fmtJamXlsx(jam) {
+  function fmtJam(jam) {
     if (!jam || jam <= 0) return "-";
-    const h = Math.floor(jam), m = Math.round((jam-h)*60);
+    const h = Math.floor(jam), m = Math.round((jam - h) * 60);
     return m > 0 ? `${h}j ${m}m` : `${h}j`;
   }
 
-  // ── Helper: encode cell address ──
-  function cellAddr(r, c) { return XLSX.utils.encode_cell({ r, c }); }
-
-  // ── Helper: apply style ke range sel ──
-  function styleRange(ws, rStart, cStart, rEnd, cEnd, style) {
-    for (let r = rStart; r <= rEnd; r++) {
-      for (let c = cStart; c <= cEnd; c++) {
-        const addr = cellAddr(r, c);
-        if (!ws[addr]) ws[addr] = { t: "z", v: "" };
-        ws[addr].s = style;
-      }
-    }
-  }
-
-  // ── Warna ──
-  const COLOR = {
-    judul:        { fgColor: { rgb: "1A3E6C" } }, // biru tua
-    judulFont:    { bold: true, color: { rgb: "FFFFFF" }, sz: 13 },
-    headerMinggu: { fgColor: { rgb: "2E6DA4" } }, // biru header minggu
-    headerMingguFont: { bold: true, color: { rgb: "FFFFFF" }, sz: 10 },
-    headerHari:   { fgColor: { rgb: "D9E8F5" } }, // biru muda
-    headerHariFont: { bold: true, color: { rgb: "1A3E6C" }, sz: 9 },
-    totalMinggu:  { fgColor: { rgb: "FFF2CC" } }, // kuning muda
-    totalMingguFont: { bold: true, color: { rgb: "7D4E00" }, sz: 9 },
-    totalBulan:   { fgColor: { rgb: "E2EFDA" } }, // hijau muda
-    totalBulanFont: { bold: true, color: { rgb: "375623" }, sz: 9 },
-    minggu:       { fgColor: { rgb: "F4CCCC" } }, // merah muda = hari Minggu
-    mingguFont:   { italic: true, color: { rgb: "CC0000" }, sz: 9 },
-    dataGanjil:   { fgColor: { rgb: "FFFFFF" } },
-    dataGenap:    { fgColor: { rgb: "F7FBFF" } },
-    dataFont:     { sz: 9 },
-    border: {
-      top:    { style: "thin", color: { rgb: "B0C4DE" } },
-      bottom: { style: "thin", color: { rgb: "B0C4DE" } },
-      left:   { style: "thin", color: { rgb: "B0C4DE" } },
-      right:  { style: "thin", color: { rgb: "B0C4DE" } },
-    }
+  // ── Warna (argb = alpha + rgb, alpha FF = opaque) ──
+  const C = {
+    judul:       "FF1A3E6C",
+    headerWeek:  "FF2E6DA4",
+    headerDay:   "FFD9E8F5",
+    totalWeek:   "FFFFF2CC",
+    totalMonth:  "FFE2EFDA",
+    sunday:      "FFF4CCCC",
+    rowOdd:      "FFFFFFFF",
+    rowEven:     "FFF0F7FF",
+    white:       "FFFFFFFF",
+    darkBlue:    "FF1A3E6C",
+    yellow:      "FF7D4E00",
+    green:       "FF375623",
+    red:         "FFCC0000",
+    gray:        "FF666666",
   };
 
-  function mkStyle(fill, font, extraBorder) {
-    return {
-      fill: { patternType: "solid", ...fill },
-      font,
-      border: extraBorder || COLOR.border,
-      alignment: { horizontal: "center", vertical: "center", wrapText: true }
-    };
+  // ── Helper: buat style border tipis ──
+  const thinBorder = {
+    top:    { style: "thin", color: { argb: "FFB0C4DE" } },
+    bottom: { style: "thin", color: { argb: "FFB0C4DE" } },
+    left:   { style: "thin", color: { argb: "FFB0C4DE" } },
+    right:  { style: "thin", color: { argb: "FFB0C4DE" } },
+  };
+
+  // ── Helper: apply style ke satu sel ──
+  function applyStyle(cell, { bgColor, fontColor, bold, italic, size, hAlign, border, wrapText } = {}) {
+    if (bgColor) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgColor } };
+    cell.font = { bold: !!bold, italic: !!italic, size: size || 9, color: { argb: fontColor || "FF000000" } };
+    cell.alignment = { horizontal: hAlign || "center", vertical: "middle", wrapText: !!wrapText };
+    if (border !== false) cell.border = border || thinBorder;
   }
 
   // ══════════════════════════════════════════
   // Sheet 1: Rekap Lengkap
   // ══════════════════════════════════════════
-  const wsData = [];
+  const wb  = new ExcelJS.Workbook();
+  const ws1 = wb.addWorksheet("Rekap Lengkap");
 
-  // Baris 0: Judul
-  wsData.push([`REKAP ABSENSI — ${BULAN_ID[mo-1]} ${yr}`]);
-  // Baris 1: Sub-judul
-  wsData.push([`Diekspor: ${new Date().toLocaleString("id-ID")}`]);
-  // Baris 2: Kosong
-  wsData.push([]);
+  // Hitung total kolom
+  let totalCols = 2; // Nama + Jabatan
+  weeks.forEach(w => { totalCols += w.dates.length + 1; }); // hari + total minggu
+  totalCols += 1; // total bulan
+  const totalBulanCol = totalCols; // 1-based
 
-  // Baris 3: Header baris 1 — label minggu
-  const h1 = ["Nama","Jabatan"];
-  const merges = []; // untuk merge cell
-  let colIdx = 2; // mulai setelah Nama & Jabatan
+  // ── Baris 1: Judul ──
+  ws1.mergeCells(1, 1, 1, totalCols);
+  const judulCell = ws1.getCell(1, 1);
+  judulCell.value = `REKAP ABSENSI — ${BULAN_ID[mo-1]} ${yr}`;
+  applyStyle(judulCell, { bgColor: C.judul, fontColor: C.white, bold: true, size: 13, hAlign: "center", border: false });
+  ws1.getRow(1).height = 28;
+
+  // ── Baris 2: Tanggal ekspor ──
+  ws1.mergeCells(2, 1, 2, totalCols);
+  const eksporCell = ws1.getCell(2, 1);
+  eksporCell.value = `Diekspor: ${new Date().toLocaleString("id-ID")}`;
+  applyStyle(eksporCell, { fontColor: C.gray, italic: true, hAlign: "left", border: false });
+  ws1.getRow(2).height = 16;
+
+  // ── Baris 3: Kosong ──
+  ws1.getRow(3).height = 6;
+
+  // ── Baris 4 & 5: Header minggu + nama hari ──
+  ws1.getRow(4).height = 22;
+  ws1.getRow(5).height = 18;
+
+  // Nama & Jabatan — merge baris 4-5
+  ws1.mergeCells(4, 1, 5, 1);
+  ws1.mergeCells(4, 2, 5, 2);
+  const namaH = ws1.getCell(4, 1); namaH.value = "Nama";
+  applyStyle(namaH, { bgColor: C.headerWeek, fontColor: C.white, bold: true, size: 10 });
+  const jabH = ws1.getCell(4, 2); jabH.value = "Jabatan";
+  applyStyle(jabH, { bgColor: C.headerWeek, fontColor: C.white, bold: true, size: 10 });
+
+  // Kolom Nama & Jabatan
+  ws1.getColumn(1).width = 24;
+  ws1.getColumn(2).width = 15;
+
+  let colCursor = 3; // mulai kolom 3 (1-based)
 
   weeks.forEach(w => {
-    const startCol = colIdx;
-    w.dates.forEach(() => { h1.push(""); colIdx++; });
-    h1[startCol] = `${w.weekLabel} (${w.weekRange})`;
-    // Merge label minggu ke seluruh kolom hari dalam minggu itu (baris 3)
-    merges.push({ s: { r: 3, c: startCol }, e: { r: 3, c: colIdx - 1 } });
-    h1.push(`Total ${w.weekLabel}`);
-    colIdx++;
-  });
-  h1.push("Total Bulan");
-  const totalBulanCol = colIdx;
-  wsData.push(h1);
+    const weekStart = colCursor;
+    // Merge label minggu ke seluruh kolom hari
+    ws1.mergeCells(4, weekStart, 4, weekStart + w.dates.length - 1);
+    const weekLabelCell = ws1.getCell(4, weekStart);
+    weekLabelCell.value = `${w.weekLabel} (${w.weekRange})`;
+    applyStyle(weekLabelCell, { bgColor: C.headerWeek, fontColor: C.white, bold: true, size: 10 });
 
-  // Baris 4: Header baris 2 — nama hari
-  const h2 = ["",""];
-  // Merge Nama & Jabatan dari baris 3 ke baris 4
-  merges.push({ s: { r: 3, c: 0 }, e: { r: 4, c: 0 } }); // Nama
-  merges.push({ s: { r: 3, c: 1 }, e: { r: 4, c: 1 } }); // Jabatan
-  merges.push({ s: { r: 3, c: totalBulanCol }, e: { r: 4, c: totalBulanCol } }); // Total Bulan
+    // Isi merge area juga diberi style (ExcelJS butuh tiap sel di-style manual)
+    for (let x = weekStart + 1; x < weekStart + w.dates.length; x++) {
+      applyStyle(ws1.getCell(4, x), { bgColor: C.headerWeek, fontColor: C.white, bold: true });
+    }
 
-  colIdx = 2;
-  weeks.forEach(w => {
+    // Nama hari (baris 5)
     w.dates.forEach(date => {
-      const d = new Date(date+"T00:00:00");
-      h2.push(`${DOW_S[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`);
-      colIdx++;
+      const d = new Date(date + "T00:00:00");
+      const isSun = d.getDay() === 0;
+      const dayCell = ws1.getCell(5, colCursor);
+      dayCell.value = `${DOW_S[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
+      applyStyle(dayCell, {
+        bgColor: isSun ? C.sunday : C.headerDay,
+        fontColor: isSun ? C.red : C.darkBlue,
+        bold: true, italic: isSun, size: 9
+      });
+      ws1.getColumn(colCursor).width = 9;
+      colCursor++;
     });
-    // Merge "Total Minggu" dari baris 3 ke baris 4
-    merges.push({ s: { r: 3, c: colIdx }, e: { r: 4, c: colIdx } });
-    h2.push("");
-    colIdx++;
-  });
-  h2.push("");
-  wsData.push(h2);
 
-  // Baris data per user (mulai baris 5)
-  const dataStartRow = 5;
+    // Total Minggu — merge baris 4-5
+    ws1.mergeCells(4, colCursor, 5, colCursor);
+    const totWCell = ws1.getCell(4, colCursor);
+    totWCell.value = `Total ${w.weekLabel}`;
+    applyStyle(totWCell, { bgColor: C.totalWeek, fontColor: C.yellow, bold: true, size: 9 });
+    ws1.getColumn(colCursor).width = 13;
+    colCursor++;
+  });
+
+  // Total Bulan — merge baris 4-5
+  ws1.mergeCells(4, totalBulanCol, 5, totalBulanCol);
+  const totBCell = ws1.getCell(4, totalBulanCol);
+  totBCell.value = "Total Bulan";
+  applyStyle(totBCell, { bgColor: C.totalMonth, fontColor: C.green, bold: true, size: 9 });
+  ws1.getColumn(totalBulanCol).width = 13;
+
+  // ── Baris data per user ──
   users.forEach((u, uIdx) => {
-    const row = [u.nama||u.username, u.jabatan];
+    const rowNum = 6 + uIdx;
+    const isEven = uIdx % 2 === 1;
+    const rowBg  = isEven ? C.rowEven : C.rowOdd;
+    ws1.getRow(rowNum).height = 17;
+
+    // Nama
+    const namaCell = ws1.getCell(rowNum, 1);
+    namaCell.value = u.nama || u.username;
+    applyStyle(namaCell, { bgColor: rowBg, bold: true, hAlign: "left", wrapText: true });
+
+    // Jabatan
+    const jabCell = ws1.getCell(rowNum, 2);
+    jabCell.value = u.jabatan || "";
+    applyStyle(jabCell, { bgColor: rowBg, hAlign: "left" });
+
+    let ci = 3;
     weeks.forEach(w => {
       w.dates.forEach(date => {
-        const day = u.days.find(d => d.date === date);
-        const tot = day ? day.jamKerja + day.jamCuti : 0;
-        const dow = day ? day.dow : new Date(date+"T00:00:00").getDay();
+        const day = u.days?.find(d => d.date === date);
+        const tot = day ? (day.jamKerja + day.jamCuti) : 0;
+        const dow = day ? day.dow : new Date(date + "T00:00:00").getDay();
+        const isSun = dow === 0;
+        const hasWork = tot > 0;
+
+        const cell = ws1.getCell(rowNum, ci);
         // FIX: hari Minggu — tampilkan jam jika ada kerja, "Libur" jika tidak
-        if (dow === 0) {
-          row.push(tot > 0 ? fmtJamXlsx(tot) : "Libur");
-        } else {
-          row.push(fmtJamXlsx(tot));
-        }
+        cell.value = isSun && !hasWork ? "Libur" : fmtJam(tot);
+        applyStyle(cell, {
+          bgColor: isSun && !hasWork ? C.sunday : rowBg,
+          fontColor: isSun && !hasWork ? C.red : "FF000000",
+          italic: isSun && !hasWork,
+        });
+        ci++;
       });
+
+      // Total minggu
       const wt = u.weekTotals?.find(ww => ww.weekIdx === w.weekIdx);
-      row.push(fmtJamXlsx(wt?.totalEfektif || 0));
+      const totWkCell = ws1.getCell(rowNum, ci);
+      totWkCell.value = fmtJam(wt?.totalEfektif || 0);
+      applyStyle(totWkCell, { bgColor: C.totalWeek, fontColor: C.yellow, bold: true });
+      ci++;
     });
-    row.push(fmtJamXlsx(u.totalBulan || 0));
-    wsData.push(row);
-  });
 
-  const ws1 = XLSX.utils.aoa_to_sheet(wsData);
-  ws1["!merges"] = merges;
-
-  // ── Lebar kolom ──
-  const colWidths = [{ wch: 22 }, { wch: 14 }];
-  weeks.forEach(w => { w.dates.forEach(() => colWidths.push({ wch: 9 })); colWidths.push({ wch: 12 }); });
-  colWidths.push({ wch: 12 });
-  ws1["!cols"] = colWidths;
-
-  // ── Freeze pane: beku Nama & Jabatan ──
-  ws1["!freeze"] = { xSplit: 2, ySplit: 5, topLeftCell: "C6" };
-
-  // ── Tinggi baris header ──
-  ws1["!rows"] = [{ hpt: 24 }, { hpt: 14 }, { hpt: 6 }, { hpt: 22 }, { hpt: 18 }];
-
-  // ── Apply styling ──
-  const totalCols = colWidths.length;
-
-  // Baris 0: judul
-  if (ws1[cellAddr(0,0)]) {
-    ws1[cellAddr(0,0)].s = mkStyle(COLOR.judul, COLOR.judulFont);
-  }
-  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } });
-  // Baris 1: sub-judul
-  if (ws1[cellAddr(1,0)]) {
-    ws1[cellAddr(1,0)].s = { font: { italic: true, color: { rgb: "555555" }, sz: 9 }, alignment: { horizontal: "left" } };
-  }
-  merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } });
-
-  // Header baris 3 & 4 — styling per kolom
-  let ci = 2;
-  weeks.forEach(w => {
-    const wStart = ci;
-    // Label minggu (baris 3)
-    const mingguAddr = cellAddr(3, wStart);
-    if (ws1[mingguAddr]) ws1[mingguAddr].s = mkStyle(COLOR.headerMinggu, COLOR.headerMingguFont);
-    // Isi kosong di baris 3 juga diberi warna
-    for (let x = wStart + 1; x < wStart + w.dates.length; x++) {
-      const a = cellAddr(3, x);
-      if (!ws1[a]) ws1[a] = { t: "z", v: "" };
-      ws1[a].s = mkStyle(COLOR.headerMinggu, COLOR.headerMingguFont);
-    }
-    // Nama hari (baris 4)
-    w.dates.forEach((date, di) => {
-      const d = new Date(date+"T00:00:00");
-      const isSun = d.getDay() === 0;
-      const a = cellAddr(4, wStart + di);
-      if (ws1[a]) ws1[a].s = mkStyle(
-        isSun ? COLOR.minggu : COLOR.headerHari,
-        isSun ? COLOR.mingguFont : COLOR.headerHariFont
-      );
-    });
-    ci += w.dates.length;
-    // Total minggu — header baris 3 & 4
-    [3,4].forEach(r => {
-      const a = cellAddr(r, ci);
-      if (!ws1[a]) ws1[a] = { t: "z", v: "" };
-      ws1[a].s = mkStyle(COLOR.totalMinggu, COLOR.totalMingguFont);
-    });
-    ci++;
-  });
-
-  // Nama & Jabatan header (baris 3 & 4)
-  [0,1].forEach(c => {
-    [3,4].forEach(r => {
-      const a = cellAddr(r, c);
-      if (!ws1[a]) ws1[a] = { t: "z", v: "" };
-      ws1[a].s = mkStyle(COLOR.headerMinggu, COLOR.headerMingguFont);
-    });
-  });
-  // Total Bulan header (baris 3 & 4)
-  [3,4].forEach(r => {
-    const a = cellAddr(r, totalBulanCol);
-    if (!ws1[a]) ws1[a] = { t: "z", v: "" };
-    ws1[a].s = mkStyle(COLOR.totalBulan, COLOR.totalBulanFont);
-  });
-
-  // Baris data
-  users.forEach((u, uIdx) => {
-    const rowR = dataStartRow + uIdx;
-    const isGenap = uIdx % 2 === 1;
-    const baseFill = isGenap ? COLOR.dataGenap : COLOR.dataGanjil;
-
-    let ci2 = 0;
-    // Nama & Jabatan
-    [0,1].forEach(c => {
-      const a = cellAddr(rowR, c);
-      if (ws1[a]) ws1[a].s = { fill: { patternType:"solid", ...baseFill }, font: { bold: c===0, sz:9 }, border: COLOR.border, alignment: { vertical:"center", wrapText:true } };
-      ci2++;
-    });
-    ci2 = 2;
-    weeks.forEach(w => {
-      w.dates.forEach((date, di) => {
-        const d = new Date(date+"T00:00:00");
-        const isSun = d.getDay() === 0;
-        const a = cellAddr(rowR, ci2);
-        const day = u.days?.find(dd => dd.date === date);
-        const hasWork = day && (day.jamKerja + day.jamCuti) > 0;
-        if (ws1[a]) ws1[a].s = mkStyle(
-          isSun && !hasWork ? COLOR.minggu : baseFill,
-          isSun && !hasWork ? COLOR.mingguFont : COLOR.dataFont
-        );
-        ci2++;
-      });
-      // Total minggu kolom
-      const a = cellAddr(rowR, ci2);
-      if (ws1[a]) ws1[a].s = mkStyle(COLOR.totalMinggu, { ...COLOR.totalMingguFont, bold: false });
-      ci2++;
-    });
     // Total bulan
-    const a = cellAddr(rowR, totalBulanCol);
-    if (ws1[a]) ws1[a].s = mkStyle(COLOR.totalBulan, { ...COLOR.totalBulanFont });
+    const totBulanCell = ws1.getCell(rowNum, totalBulanCol);
+    totBulanCell.value = fmtJam(u.totalBulan || 0);
+    applyStyle(totBulanCell, { bgColor: C.totalMonth, fontColor: C.green, bold: true });
   });
 
-  // Re-set merges (sudah ditambahkan judul)
-  ws1["!merges"] = merges;
-
-  XLSX.utils.book_append_sheet(wb, ws1, "Rekap Lengkap");
+  // ── Freeze pane: beku 2 kolom (Nama & Jabatan) + 5 baris header ──
+  ws1.views = [{ state: "frozen", xSplit: 2, ySplit: 5, topLeftCell: "C6" }];
 
   // ══════════════════════════════════════════
   // Sheet 2: Ringkasan Mingguan
   // ══════════════════════════════════════════
-  const ws2Data = [];
-  ws2Data.push([`RINGKASAN MINGGUAN — ${BULAN_ID[mo-1]} ${yr}`]);
-  ws2Data.push([`Diekspor: ${new Date().toLocaleString("id-ID")}`]);
-  ws2Data.push([]);
-  ws2Data.push(["Nama","Jabatan",...weeks.map(w => `${w.weekLabel} (${w.weekRange})`),"Total Bulan"]);
-  users.forEach(u => {
-    const row = [u.nama||u.username, u.jabatan];
-    weeks.forEach(w => {
-      const wt = u.weekTotals?.find(ww => ww.weekIdx === w.weekIdx);
-      row.push(fmtJamXlsx(wt?.totalEfektif || 0));
-    });
-    row.push(fmtJamXlsx(u.totalBulan || 0));
-    ws2Data.push(row);
+  const ws2     = wb.addWorksheet("Ringkasan Mingguan");
+  const ws2Cols = 2 + weeks.length + 1;
+
+  ws2.mergeCells(1, 1, 1, ws2Cols);
+  const s2Judul = ws2.getCell(1, 1);
+  s2Judul.value = `RINGKASAN MINGGUAN — ${BULAN_ID[mo-1]} ${yr}`;
+  applyStyle(s2Judul, { bgColor: C.judul, fontColor: C.white, bold: true, size: 13, hAlign: "center", border: false });
+  ws2.getRow(1).height = 28;
+
+  ws2.mergeCells(2, 1, 2, ws2Cols);
+  const s2Ekspor = ws2.getCell(2, 1);
+  s2Ekspor.value = `Diekspor: ${new Date().toLocaleString("id-ID")}`;
+  applyStyle(s2Ekspor, { fontColor: C.gray, italic: true, hAlign: "left", border: false });
+  ws2.getRow(2).height = 16;
+
+  ws2.getRow(3).height = 6;
+  ws2.getRow(4).height = 22;
+
+  // Header sheet 2
+  ws2.getColumn(1).width = 24;
+  ws2.getColumn(2).width = 15;
+  const s2NamaH = ws2.getCell(4, 1); s2NamaH.value = "Nama";
+  applyStyle(s2NamaH, { bgColor: C.headerWeek, fontColor: C.white, bold: true, size: 10 });
+  const s2JabH = ws2.getCell(4, 2); s2JabH.value = "Jabatan";
+  applyStyle(s2JabH, { bgColor: C.headerWeek, fontColor: C.white, bold: true, size: 10 });
+
+  weeks.forEach((w, wi) => {
+    const c = 3 + wi;
+    const h = ws2.getCell(4, c);
+    h.value = `${w.weekLabel} (${w.weekRange})`;
+    applyStyle(h, { bgColor: C.totalWeek, fontColor: C.yellow, bold: true, size: 9 });
+    ws2.getColumn(c).width = 18;
   });
+  const s2TotCol = 3 + weeks.length;
+  const s2TotH = ws2.getCell(4, s2TotCol);
+  s2TotH.value = "Total Bulan";
+  applyStyle(s2TotH, { bgColor: C.totalMonth, fontColor: C.green, bold: true, size: 9 });
+  ws2.getColumn(s2TotCol).width = 14;
 
-  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
-  const ws2Cols = weeks.length + 3; // Nama + Jabatan + minggu-minggu + Total Bulan
-
-  // Merge judul sheet 2
-  const ws2Merges = [
-    { s:{r:0,c:0}, e:{r:0,c:ws2Cols-1} },
-    { s:{r:1,c:0}, e:{r:1,c:ws2Cols-1} },
-  ];
-  ws2["!merges"] = ws2Merges;
-
-  // Styling sheet 2
-  if (ws2[cellAddr(0,0)]) ws2[cellAddr(0,0)].s = mkStyle(COLOR.judul, COLOR.judulFont);
-  if (ws2[cellAddr(1,0)]) ws2[cellAddr(1,0)].s = { font: { italic:true, color:{rgb:"555555"}, sz:9 }, alignment:{horizontal:"left"} };
-
-  // Header baris 3
-  [0,1].forEach(c => {
-    const a = cellAddr(3,c);
-    if (ws2[a]) ws2[a].s = mkStyle(COLOR.headerMinggu, COLOR.headerMingguFont);
-  });
-  weeks.forEach((w,wi) => {
-    const a = cellAddr(3, 2+wi);
-    if (ws2[a]) ws2[a].s = mkStyle(COLOR.totalMinggu, COLOR.totalMingguFont);
-  });
-  const tbCol2 = 2 + weeks.length;
-  const a2 = cellAddr(3, tbCol2);
-  if (ws2[a2]) ws2[a2].s = mkStyle(COLOR.totalBulan, COLOR.totalBulanFont);
-
-  // Data rows sheet 2
   users.forEach((u, uIdx) => {
-    const rowR = 4 + uIdx;
-    const isGenap = uIdx % 2 === 1;
-    const baseFill = isGenap ? COLOR.dataGenap : COLOR.dataGanjil;
-    [0,1].forEach(c => {
-      const a = cellAddr(rowR, c);
-      if (ws2[a]) ws2[a].s = { fill:{patternType:"solid",...baseFill}, font:{bold:c===0,sz:9}, border:COLOR.border, alignment:{vertical:"center"} };
+    const rowNum = 5 + uIdx;
+    const isEven = uIdx % 2 === 1;
+    const rowBg  = isEven ? C.rowEven : C.rowOdd;
+    ws2.getRow(rowNum).height = 17;
+
+    const c1 = ws2.getCell(rowNum, 1); c1.value = u.nama || u.username;
+    applyStyle(c1, { bgColor: rowBg, bold: true, hAlign: "left" });
+    const c2 = ws2.getCell(rowNum, 2); c2.value = u.jabatan || "";
+    applyStyle(c2, { bgColor: rowBg, hAlign: "left" });
+
+    weeks.forEach((w, wi) => {
+      const wt = u.weekTotals?.find(ww => ww.weekIdx === w.weekIdx);
+      const c  = ws2.getCell(rowNum, 3 + wi);
+      c.value  = fmtJam(wt?.totalEfektif || 0);
+      applyStyle(c, { bgColor: C.totalWeek, fontColor: C.yellow, bold: false });
     });
-    weeks.forEach((w,wi) => {
-      const a = cellAddr(rowR, 2+wi);
-      if (ws2[a]) ws2[a].s = mkStyle(COLOR.totalMinggu, {...COLOR.totalMingguFont, bold:false});
-    });
-    const a = cellAddr(rowR, tbCol2);
-    if (ws2[a]) ws2[a].s = mkStyle(COLOR.totalBulan, COLOR.totalBulanFont);
+    const cTot = ws2.getCell(rowNum, s2TotCol);
+    cTot.value = fmtJam(u.totalBulan || 0);
+    applyStyle(cTot, { bgColor: C.totalMonth, fontColor: C.green, bold: true });
   });
 
-  ws2["!cols"] = [{ wch:22 },{ wch:14 },...weeks.map(() => ({ wch:18 })),{ wch:14 }];
-  ws2["!rows"] = [{ hpt:24 },{ hpt:14 },{ hpt:6 },{ hpt:22 }];
-  ws2["!freeze"] = { xSplit:2, ySplit:4, topLeftCell:"C5" };
+  ws2.views = [{ state: "frozen", xSplit: 2, ySplit: 4, topLeftCell: "C5" }];
 
-  XLSX.utils.book_append_sheet(wb, ws2, "Ringkasan Mingguan");
+  // ── Generate & download file ──
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement("a");
+  a.href       = url;
+  a.download   = `Rekap_${_rekapMonth}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 
-  XLSX.writeFile(wb, `Rekap_${_rekapMonth}.xlsx`);
   showToast("✅ File rekap berhasil diunduh!");
 }
 
