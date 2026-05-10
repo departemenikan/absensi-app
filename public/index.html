@@ -1032,19 +1032,9 @@
       <!-- Panel: Pengaturan Sistem -->
       <div id="panel-akses-rules" style="display:none;">
 
-        <!-- Akordion: Pengaturan Sistem (pindahan dari Tab Kontrol Akses) -->
-        <div class="group-item" id="akordion-sistem">
-          <div class="group-header" style="background:linear-gradient(135deg,#1b5e20,#43a047);"
-               onclick="toggleGroupBody('gbody-sistem')">
-            <div style="flex:1;">
-              <div class="group-title">🌐 Pengaturan Sistem</div>
-              <div style="font-size:11px;opacity:.8;margin-top:2px;">Timezone & konfigurasi aplikasi</div>
-            </div>
-            <span class="akses-chevron" id="chev-sistem"
-                  style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
-          </div>
-          <div class="group-body" id="gbody-sistem">
-            <div class="group-scroll-area" style="padding:16px;">
+        <!-- Panel: Pengaturan Sistem — langsung terbuka, tanpa akordion -->
+        <div id="akordion-sistem">
+          <div style="padding:16px;">
 
               <!-- Timezone -->
               <div style="margin-bottom:16px;">
@@ -1168,7 +1158,6 @@
               </div>
 
               <div style="height:16px;"></div>
-            </div>
           </div>
         </div>
 

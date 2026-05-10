@@ -3683,24 +3683,16 @@ function switchAksesTab(tab) {
     btnAkses.style.background = "transparent";
     btnAkses.style.color      = "var(--muted)";
     btnAkses.style.boxShadow  = "none";
-    // Tampilkan akordion Pengaturan Sistem hanya untuk Owner/Admin
+    // Tampilkan panel Pengaturan Sistem langsung (tanpa akordion)
     const akordionSistem = document.getElementById("akordion-sistem");
     if (akordionSistem) {
-      if (userLevel <= 2) {
-        akordionSistem.style.display = "";
-        const gbody = document.getElementById("gbody-sistem");
-        const chev  = document.getElementById("chev-sistem");
-        if (gbody && !gbody.classList.contains("open")) {
-          gbody.classList.add("open");
-          if (chev) chev.style.transform = "rotate(90deg)";
-        }
-        loadSistemSettings();
-        loadScreenshotToggle();
-        loadWorkPhotoToggle();
-        loadAutoTutupOvertimeToggle();
-      } else {
-        akordionSistem.style.display = "none";
-      }
+      akordionSistem.style.display = userLevel <= 2 ? "" : "none";
+    }
+    if (userLevel <= 2) {
+      loadSistemSettings();
+      loadScreenshotToggle();
+      loadWorkPhotoToggle();
+      loadAutoTutupOvertimeToggle();
     }
   }
 }
