@@ -2735,7 +2735,7 @@ function renderAnggotaTable(list) {
     // Warna nama & avatar selaras GROUP_META
     const _GC = { owner:"#e8541e", admin:"#1a6ac7", manager:"#00796b", koordinator:"#5c35c9", anggota:"#546e7a" };
     const namaColor = _GC[m.group] || "#2c3e50";
-    const avatarBg  = m.groupColor || _GC[m.group] || "#546e7a";
+    const avatarBg  = _GC[m.group] || "#546e7a";
 
     // Avatar: foto atau inisial
     const avStyle = `width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
@@ -2864,7 +2864,8 @@ async function openDetailAnggota(username) {
     avEl.style.background = "transparent";
   } else {
     avEl.innerHTML = nama.charAt(0).toUpperCase();
-    avEl.style.background = m.groupColor || "#7f8c8d";
+    const _GC2 = { owner:"#e8541e", admin:"#1a6ac7", manager:"#00796b", koordinator:"#5c35c9", anggota:"#546e7a" };
+    avEl.style.background = _GC2[m.group] || "#546e7a";
   }
 
   // --- Teks info ---
