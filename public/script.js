@@ -3063,7 +3063,7 @@ function _renderOwnerField(selectId, ownerList, selectedVal = "") {
   } else {
     // Lebih dari 1 owner: tampilkan dropdown biasa
     sel.innerHTML =
-      '<option value="">— Pilih Owner —</option>' +
+      '<option value="">Pilih Owner</option>' +
       ownerList.map(a =>
         `<option value="${a.username}" ${a.username === selectedVal ? 'selected' : ''}>${a.namaLengkap || a.username}</option>`
       ).join('');
@@ -3099,10 +3099,10 @@ async function openBuatGrup() {
 
   // Dropdown Manager & Koordinator: semua anggota
   const allList = _anggotaAll;
-  const opts = '<option value="">— Pilih —</option>' +
+  const opts = '<option value="">Pilih</option>' +
     allList.map(a => `<option value="${a.username}">${a.namaLengkap || a.username} (${a.jabatan || a.groupName || a.group})</option>`).join('');
-  document.getElementById("bg-manager").innerHTML    = opts.replace('— Pilih —', '— Pilih Manager —');
-  document.getElementById("bg-koordinator").innerHTML = opts.replace('— Pilih —', '— Pilih Koordinator —');
+  document.getElementById("bg-manager").innerHTML    = opts.replace('Pilih', 'Pilih Manager');
+  document.getElementById("bg-koordinator").innerHTML = opts.replace('Pilih', 'Pilih Koordinator');
 
   document.getElementById("modal-buat-grup").style.display = "flex";
 
@@ -3190,7 +3190,7 @@ function _renderAnggotaTags() {
   if (!_bgSelectedAnggota.length) {
     wrap.innerHTML = "";
     label.style.color = "#aaa";
-    label.textContent = "— Pilih Anggota —";
+    label.textContent = "Pilih Anggota";
     return;
   }
   label.style.color = "#222";
@@ -3331,11 +3331,11 @@ async function openDetailDivisi(id) {
     _renderOwnerField("dd-owner", ownerList, d.owner || "");
 
     document.getElementById("dd-manager").innerHTML =
-      '<option value="">— Pilih Manager —</option>' +
+      '<option value="">Pilih Manager</option>' +
       _anggotaAll.map(a => `<option value="${a.username}" ${a.username===d.manager?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
 
     document.getElementById("dd-koordinator").innerHTML =
-      '<option value="">— Pilih Koordinator —</option>' +
+      '<option value="">Pilih Koordinator</option>' +
       _anggotaAll.map(a => `<option value="${a.username}" ${a.username===(d.koordinator||'')?'selected':''}>${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`).join('');
 
     // Checkbox anggota — checked jika sudah di divisi ini (array-aware)
@@ -3513,7 +3513,7 @@ async function openDetailDivisi(id) {
 
     _renderOwnerField("dd-owner", _anggotaAll.filter(a => a.group === "owner"), d.owner || "");
 
-    const opts = '<option value="">— Pilih —</option>' +
+    const opts = '<option value="">Pilih</option>' +
       _anggotaAll.map(a =>
         `<option value="${a.username}">${a.namaLengkap||a.username} (${a.jabatan||a.groupName})</option>`
       ).join('');
@@ -5231,7 +5231,7 @@ async function saveArea() {
       document.getElementById("area-name").value = "";
       document.getElementById("area-lat").value  = "";
       document.getElementById("area-lng").value  = "";
-      document.getElementById("area-coords-display").textContent = "— Belum ada titik dipilih —";
+      document.getElementById("area-coords-display").textContent = "Belum ada titik dipilih";
       // Reset marker & circle
       if (_areaMarker) { _areaMap.removeLayer(_areaMarker); _areaMarker = null; }
       if (_areaCircle) { _areaMap.removeLayer(_areaCircle); _areaCircle = null; }
@@ -7459,7 +7459,7 @@ function _renderTambahEntriForm() {
     const eSM = parseInt(partsS[1])||nowM;
 
     // Lokasi options
-    const lokasiOpts = `<option value="">-- Pilih lokasi --</option>` +
+    const lokasiOpts = `<option value="">Pilih lokasi</option>` +
       _drAreas.map(a => `<option value="${a.name}" ${e.lokasi===a.name?"selected":""}>${a.name}</option>`).join("");
 
     const isIstirahat = e.tab === "istirahat";
@@ -7618,7 +7618,7 @@ function _renderTambahEntriForm() {
               <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:4px;">🏃 Pilih jenis aktivitas</div>
               <select id="tse-akt-${i}" onchange="_drSetField(${i},'aktivitas',this.value)"
                 style="width:100%;border:none;outline:none;font-size:14px;color:var(--text);background:transparent;">
-                <option value="">-- Pilih aktivitas --</option>
+                <option value="">Pilih aktivitas</option>
               </select>
             </div>
             <!-- Catatan -->
@@ -7721,10 +7721,10 @@ async function tsSimpanTambahEntri() {
   for (let i = 0; i < _drEntries.length; i++) {
     const e = _drEntries[i];
     if (e.tab !== "istirahat" && !e.lokasi) {
-      showToast(`⚠️ Entri ${i+1}: Pilih lokasi`, "warning"); return;
+      showToast(`⚠️ Entri ${i+1}: Pilih lokasi`,"warning"); return;
     }
     if (!e.jam) {
-      showToast(`⚠️ Entri ${i+1}: Pilih jam`, "warning"); return;
+      showToast(`⚠️ Entri ${i+1}: Pilih jam`,"warning"); return;
     }
     if (e.tab === "istirahat" && !e.jamSelesai) {
       showToast(`⚠️ Entri ${i+1}: Isi jam selesai istirahat`, "warning"); return;
@@ -7878,7 +7878,7 @@ async function populateHapusSelect() {
     const r   = await authFetch("/anggota");
     const all = await r.json();
     const sel = document.getElementById("hapus-target-select");
-    sel.innerHTML = '<option value="">— Pilih akun yang akan dihapus —</option>';
+    sel.innerHTML = '<option value="">Pilih akun yang akan dihapus</option>';
     all.forEach(m => {
       if (m.username === me) return; // tidak bisa hapus diri sendiri dari sini
       const opt = document.createElement("option");
@@ -8172,7 +8172,7 @@ async function loadTracking() {
     }
     const sel = document.getElementById("trk-pilih-user");
     const sortedAnggota = [..._anggotaAll].sort((a, b) => (a.namaLengkap || a.username || '').localeCompare(b.namaLengkap || b.username || '', 'id'));
-    sel.innerHTML = '<option value="">— Pilih Anggota —</option>' +
+    sel.innerHTML = '<option value="">Pilih Anggota</option>' +
       sortedAnggota.map(a => `<option value="${a.username}">${a.namaLengkap || a.username}</option>`).join('');
   } catch {}
   refreshLiveTracking();
@@ -9096,7 +9096,7 @@ async function openTambahCutiModal() {
   } catch { _kebijakanList = []; }
 
   const sel = document.getElementById("tc-kebijakan");
-  sel.innerHTML = `<option value="">— Pilih Kebijakan Cuti —</option>`;
+  sel.innerHTML = `<option value="">Pilih Kebijakan Cuti</option>`;
   _kebijakanList.forEach(k => {
     sel.innerHTML += `<option value="${k.id}" data-kuota="${k.kuotaKey||""}" data-nama="${k.nama}" data-satuan="${k.satuanDurasi||""}">${k.nama}</option>`;
   });
@@ -9516,7 +9516,7 @@ function loadHomeAktivitasDropdown() {
   if (!sel) return;
   const list = getDaftarAktivitas();
   const cur = sel.value;
-  sel.innerHTML = '<option value="">— Pilih Aktivitas —</option>' +
+  sel.innerHTML = '<option value="">Pilih Aktivitas</option>' +
     list.map(a => `<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join("");
 }
 
@@ -9750,7 +9750,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!sel) return;
     const list = await getDaftarAktivitasServer();
     const cur = sel.value;
-    sel.innerHTML = '<option value="">— Pilih Aktivitas —</option>' +
+    sel.innerHTML = '<option value="">Pilih Aktivitas</option>' +
       list.map(a => `<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join("");
   }
   window.loadHomeAktivitasDropdown = loadHomeAktivitasDropdownServer;
