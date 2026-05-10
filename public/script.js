@@ -3783,10 +3783,10 @@ async function loadRules() {
         <!-- Kolom-kolom checkbox — bisa di-scroll -->
         <div style="display:flex;overflow:hidden;">
           <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
-            <div style="font-size:8px;font-weight:800;color:#6a1b9a;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Owner</div>
+            <div style="font-size:8px;font-weight:800;color:#e8541e;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Owner</div>
           </div>
           <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
-            <div style="font-size:8px;font-weight:800;color:#1565c0;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Admin</div>
+            <div style="font-size:8px;font-weight:800;color:#1a6ac7;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🎖️<br>Admin</div>
           </div>
           <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
             <div style="font-size:8px;font-weight:800;color:#e65100;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🚗<br>Tgs.Luar</div>
@@ -3821,7 +3821,7 @@ async function loadRules() {
           ${avatar}
           <div style="min-width:0;position:relative;">
             <div onclick="showNamaTooltip(this, '${nama.replace(/'/g,"&#39;")}')"
-                 style="font-size:12px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};
+                 style="font-size:12px;font-weight:700;color:${isOwner?"#e8541e":isAdmin?"#1a6ac7":"#2c3e50"};
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
                         max-width:88px;cursor:pointer;user-select:none;">${nama}</div>
             <div id="mess-label-${u.username}" style="font-size:9px;margin-top:2px;display:flex;gap:3px;flex-wrap:wrap;align-items:center;">
@@ -3835,19 +3835,19 @@ async function loadRules() {
         <div style="display:flex;align-items:center;overflow:hidden;">
           <!-- Owner -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
-                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isOwner?"#f3eeff":"transparent"};">
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isOwner?"#fef0ea":"transparent"};">
             <input type="checkbox" id="owner-cb-${u.username}"
               ${isOwner ? "checked" : ""}
               onchange="onPeranToggle('${u.username}', 'owner', this.checked)"
-              style="width:15px;height:15px;accent-color:#6a1b9a;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#e8541e;cursor:pointer;">
           </div>
           <!-- Admin -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
-                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isAdmin?"#eef3ff":"transparent"};">
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isAdmin?"#eaf0fb":"transparent"};">
             <input type="checkbox" id="admin-cb-${u.username}"
               ${isAdmin ? "checked" : ""}
               onchange="onPeranToggle('${u.username}', 'admin', this.checked)"
-              style="width:15px;height:15px;accent-color:#1565c0;cursor:pointer;">
+              style="width:15px;height:15px;accent-color:#1a6ac7;cursor:pointer;">
           </div>
           <!-- Tugas Luar -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
@@ -3923,13 +3923,13 @@ async function loadRules() {
       <div style="flex:1;min-width:0;"></div>
 
       <div style="display:flex;flex-direction:column;align-items:center;
-                  background:#f0f0ff;border-radius:12px;border:1px solid #d0d0f0;
+                  background:#fef3ee;border-radius:12px;border:1px solid #f0c9b0;
                   padding:8px 0 7px;${GAP}width:160px;flex-shrink:0;">
-        <span style="font-size:10px;font-weight:800;color:#4527a0;text-transform:uppercase;
+        <span style="font-size:10px;font-weight:800;color:#bf360c;text-transform:uppercase;
                      letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🎖️ Peran</span>
         <div style="display:flex;width:100%;">
-          <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#6a1b9a;">Owner</span></div>
-          <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1565c0;">Admin</span></div>
+          <div style="${COL.owner}"><span style="font-size:11px;font-weight:700;color:#e8541e;">Owner</span></div>
+          <div style="${COL.admin}"><span style="font-size:11px;font-weight:700;color:#1a6ac7;">Admin</span></div>
         </div>
       </div>
 
@@ -3972,7 +3972,7 @@ async function loadRules() {
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           ${avatar}
           <div style="min-width:0;">
-            <div><span style="font-size:14px;font-weight:700;color:${isOwner?"#6a1b9a":isAdmin?"#1565c0":"#2c3e50"};">${nama}</span></div>
+            <div><span style="font-size:14px;font-weight:700;color:${isOwner?"#e8541e":isAdmin?"#1a6ac7":"#2c3e50"};">${nama}</span></div>
             <div id="mess-label-${u.username}" style="font-size:11px;margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
               <span id="peran-badge-${u.username}" style="display:none;"></span>
               ${isTL ? `<span style="color:#e65100;font-weight:600;">🚗 Tugas Luar</span>` : ""}
@@ -3984,12 +3984,12 @@ async function loadRules() {
           <div style="${COL.owner}">
             <input type="checkbox" id="owner-cb-${u.username}" ${isOwner?"checked":""}
               onchange="onPeranToggle('${u.username}','owner',this.checked)"
-              style="width:18px;height:18px;accent-color:#6a1b9a;cursor:pointer;">
+              style="width:18px;height:18px;accent-color:#e8541e;cursor:pointer;">
           </div>
           <div style="${COL.admin}">
             <input type="checkbox" id="admin-cb-${u.username}" ${isAdmin?"checked":""}
               onchange="onPeranToggle('${u.username}','admin',this.checked)"
-              style="width:18px;height:18px;accent-color:#1565c0;cursor:pointer;">
+              style="width:18px;height:18px;accent-color:#1a6ac7;cursor:pointer;">
           </div>
         </div>
         <div style="display:flex;width:140px;flex-shrink:0;${GAP}">
@@ -4023,14 +4023,14 @@ function _rebuildStatusLabel(username) {
   const isTL    = _rulesTugasLuarList.includes(username);
   const peranNow = _rulesAdminList[username];
   // Tentukan teks & warna badge dari state
-  let badgeText = "Anggota", badgeBg = "#7f8c8d";
-  if (peranNow === "owner")  { badgeText = "Owner"; badgeBg = "#6a1b9a"; }
-  else if (peranNow === "admin") { badgeText = "Admin"; badgeBg = "#1565c0"; }
+  let badgeText = "Anggota", badgeBg = "#546e7a";
+  if (peranNow === "owner")  { badgeText = "Owner"; badgeBg = "#e8541e"; }
+  else if (peranNow === "admin") { badgeText = "Admin"; badgeBg = "#1a6ac7"; }
   // Rebuild innerHTML — tetap sertakan id peran-badge agar onPeranToggle masih bisa cari elemen
   // Update warna nama sesuai peran baru
   const nameEl = label.closest('[style*="min-width:0"]')?.querySelector('span[style*="font-weight:700"][style*="color"]');
   if (nameEl) {
-    nameEl.style.color = peranNow === "owner" ? "#6a1b9a" : peranNow === "admin" ? "#1565c0" : "#2c3e50";
+    nameEl.style.color = peranNow === "owner" ? "#e8541e" : peranNow === "admin" ? "#1a6ac7" : "#2c3e50";
   }
   label.innerHTML =
     `<span id="peran-badge-${username}" style="display:none;"></span>` +
