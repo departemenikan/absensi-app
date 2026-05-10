@@ -2116,15 +2116,20 @@ function hitungOvertimeBackground(username) {
     );
 
     // Grup per tanggal (multi-sesi), akumulasi jam
+    // Sertakan juga sesi aktif (jamKeluar null) di minggu yang sudah lewat
+    const wkToday1 = weekKey(new Date().toLocaleDateString("sv-SE"));
     const dateMap = {};
-    data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
-      .forEach(d => {
+    data.filter(d => {
+      if (d.user !== username || !d.date || !d.date.startsWith(String(tahun))) return false;
+      if (d.jamKeluar) return true;
+      return weekKey(d.date) < wkToday1;
+    }).forEach(d => {
         if (!dateMap[d.date]) dateMap[d.date] = [];
         dateMap[d.date].push(d);
       });
 
     Object.entries(dateMap).forEach(([dateStr, sesiList]) => {
-      const jamKerja     = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const jamKerja = sesiList.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
       const infoLibur    = cekHariLibur(dateStr, username);
       const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
       const wk           = weekKey(dateStr);
@@ -2390,12 +2395,24 @@ const JAM_WAJIB_MINGGU = 40;
 
 // Helper: hitung jam kerja bersih dari satu record absensi
 // Pakai rec.jamKerja tersimpan jika ada (disimpan saat clock out), fallback ke hitung raw
-function hitungJamKerja(rec) {
-  if (!rec.jamMasuk || !rec.jamKeluar) return 0;
-  if (rec.jamKerja) return rec.jamKerja; // sudah tersimpan saat clock out
-  const work = (new Date(rec.jamKeluar) - new Date(rec.jamMasuk)) / 3600000;
+function hitungJamKerja(rec, fallbackEndMs = null) {
+  if (!rec.jamMasuk) return 0;
+  if (!rec.jamKeluar && !fallbackEndMs) return 0;
+  if (rec.jamKerja && rec.jamKeluar) return rec.jamKerja; // sudah tersimpan saat clock out
+  const masukMs  = new Date(rec.jamMasuk).getTime();
+  if (isNaN(masukMs)) return 0;
+  const keluarMs = rec.jamKeluar
+    ? new Date(rec.jamKeluar).getTime()
+    : (fallbackEndMs || Date.now());
+  if (isNaN(keluarMs)) return 0;
+  const work = (keluarMs - masukMs) / 3600000;
   let bt = 0;
-  (rec.breaks || []).forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
+  (rec.breaks || []).forEach(b => {
+    if (!b.end) return;
+    const bs = new Date(b.start).getTime();
+    const be = new Date(b.end).getTime();
+    if (!isNaN(bs) && !isNaN(be) && be > bs) bt += (be - bs) / 3600000;
+  });
   return Math.max(0, work - bt);
 }
 
@@ -2639,14 +2656,19 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
   );
 
   // Grup per tanggal (multi-sesi), lalu akumulasi jam
+  // Sertakan juga sesi aktif (jamKeluar null) di minggu yang sudah lewat
+  const wkToday2 = weekKey(new Date().toLocaleDateString("sv-SE"));
   const dateMapOT = {};
-  data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
-    .forEach(d => {
+  data.filter(d => {
+    if (d.user !== username || !d.date || !d.date.startsWith(String(tahun))) return false;
+    if (d.jamKeluar) return true;
+    return weekKey(d.date) < wkToday2;
+  }).forEach(d => {
       if (!dateMapOT[d.date]) dateMapOT[d.date] = [];
       dateMapOT[d.date].push(d);
     });
   Object.entries(dateMapOT).forEach(([dateStr, sesiList]) => {
-    const jamKerja     = sesiList.reduce((s, d) => s + hitungJamKerja(d), 0);
+    const jamKerja = sesiList.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
     const infoLibur    = cekHariLibur(dateStr, username);
     const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
     const wk           = weekKey(dateStr);
@@ -2757,11 +2779,16 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
     );
 
     // Grup per tanggal (multi-sesi)
+    // Sertakan juga sesi aktif (jamKeluar null) di minggu yang sudah lewat
+    const wkToday3 = weekKey(new Date().toLocaleDateString("sv-SE"));
     const dateMapSS = {};
-    data.filter(d => d.user === username && d.date && d.date.startsWith(String(tahun)) && d.jamKeluar)
-      .forEach(d => { if (!dateMapSS[d.date]) dateMapSS[d.date] = []; dateMapSS[d.date].push(d); });
+    data.filter(d => {
+      if (d.user !== username || !d.date || !d.date.startsWith(String(tahun))) return false;
+      if (d.jamKeluar) return true;
+      return weekKey(d.date) < wkToday3;
+    }).forEach(d => { if (!dateMapSS[d.date]) dateMapSS[d.date] = []; dateMapSS[d.date].push(d); });
     Object.entries(dateMapSS).forEach(([dateStrX, sesiX]) => {
-      const jamKerja     = sesiX.reduce((s, d) => s + hitungJamKerja(d), 0);
+      const jamKerja = sesiX.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
       const infoLibur    = cekHariLibur(dateStrX, username);
       const isHariMinggu = new Date(dateStrX + "T12:00:00").getDay() === 0;
       const wk           = weekKey(dateStrX);
