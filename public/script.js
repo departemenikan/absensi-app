@@ -9983,10 +9983,17 @@ async function loadScreenshotPage() {
   await loadScreenshotActiveList();
 }
 
+function _applySelectPlaceholderColor(sel) {
+  if (!sel) return;
+  sel.style.color = sel.value === "" ? "#aaa" : "var(--text)";
+}
+
 async function ssPopulateUserSelect() {
   const sel  = document.getElementById("ss-pilih-user");
   const date = ssGetDate();
   if (!sel) return;
+  // update warna saat user ganti pilihan
+  sel.onchange = function() { _applySelectPlaceholderColor(sel); ssOnDateChange(); };
   try {
     const endpoint = date === todayLocalStr() ? "/screenshots/today" : `/screenshots/list-users?date=${date}`;
     const r = await authFetch(endpoint);
@@ -10001,6 +10008,7 @@ async function ssPopulateUserSelect() {
       sel.appendChild(o);
     });
     if (prev) sel.value = prev;
+    _applySelectPlaceholderColor(sel);
   } catch {}
 }
 
@@ -10271,6 +10279,7 @@ async function wpPopulateUserSelect() {
   const sel  = document.getElementById("wp-pilih-user");
   const date = wpGetDate();
   if (!sel) return;
+  sel.onchange = function() { _applySelectPlaceholderColor(sel); wpOnDateChange(); };
   try {
     const endpoint = date === todayLocalStr() ? "/work-photos/today" : `/work-photos/list-users?date=${date}`;
     const r = await authFetch(endpoint);
@@ -10285,6 +10294,7 @@ async function wpPopulateUserSelect() {
       sel.appendChild(o);
     });
     if (prev) sel.value = prev;
+    _applySelectPlaceholderColor(sel);
   } catch {}
 }
 

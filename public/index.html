@@ -2878,20 +2878,17 @@
 
         <!-- Filter -->
         <div class="card" style="margin-top:0;padding:14px;">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <select id="ss-pilih-user"
-              style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
-              <option value="">— Pilih Karyawan —</option>
+          <!-- 1 baris: Karyawan (flex) + Tanggal + Refresh -->
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;">
+            <select id="ss-pilih-user" onchange="ssOnDateChange()"
+              style="width:100%;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;min-width:0;color:var(--text);">
+              <option value="" style="color:#aaa;">Pilih Karyawan</option>
             </select>
             <input type="date" id="ss-pilih-tanggal"
-              style="padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;"
+              style="padding:9px 8px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;min-width:0;"
               onchange="ssOnDateChange()">
-            <button onclick="loadScreenshots()"
-              style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
-              🔍 Lihat
-            </button>
             <button onclick="ssRefreshAll()"
-              style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
+              style="padding:9px 12px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:15px;cursor:pointer;white-space:nowrap;">
               🔄
             </button>
           </div>
@@ -2932,20 +2929,17 @@
 
         <!-- Filter -->
         <div class="card" style="margin-top:0;padding:14px;">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <select id="wp-pilih-user"
-              style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
-              <option value="">— Pilih Karyawan —</option>
+          <!-- 1 baris: Karyawan (flex) + Tanggal + Refresh -->
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;">
+            <select id="wp-pilih-user" onchange="wpOnDateChange()"
+              style="width:100%;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;min-width:0;color:var(--text);">
+              <option value="" style="color:#aaa;">Pilih Karyawan</option>
             </select>
             <input type="date" id="wp-pilih-tanggal"
-              style="padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;"
+              style="padding:9px 8px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;min-width:0;"
               onchange="wpOnDateChange()">
-            <button onclick="loadWorkPhotos()"
-              style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
-              🔍 Lihat
-            </button>
             <button onclick="wpRefreshAll()"
-              style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
+              style="padding:9px 12px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:15px;cursor:pointer;white-space:nowrap;">
               🔄
             </button>
           </div>
