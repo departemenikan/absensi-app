@@ -2860,23 +2860,28 @@
               style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
               <option value="">— Pilih Karyawan —</option>
             </select>
+            <input type="date" id="ss-pilih-tanggal"
+              style="padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;"
+              onchange="ssOnDateChange()">
             <button onclick="loadScreenshots()"
               style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
               🔍 Lihat
             </button>
-            <button onclick="loadScreenshotActiveList(true);ssPopulateUserSelect()"
+            <button onclick="ssRefreshAll()"
               style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
               🔄
             </button>
           </div>
+          <!-- Date shortcut chips -->
+          <div id="ss-date-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
           <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
-            Screenshot diambil otomatis setiap 15 menit saat karyawan sedang bekerja di desktop. Disimpan selama 1 hari.
+            Screenshot diambil otomatis setiap 15 menit saat karyawan sedang bekerja di desktop. Disimpan selama 1 minggu.
           </p>
         </div>
 
         <!-- Status karyawan aktif -->
         <div class="card" style="margin-top:12px;padding:14px;">
-          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">👥 Karyawan Aktif Hari Ini</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;" id="ss-active-list-title">👥 Karyawan Aktif Hari Ini</div>
           <div id="ss-active-list">
             <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
           </div>
@@ -2908,23 +2913,28 @@
               style="flex:1;min-width:140px;padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;">
               <option value="">— Pilih Karyawan —</option>
             </select>
+            <input type="date" id="wp-pilih-tanggal"
+              style="padding:9px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;color:var(--text);background:white;cursor:pointer;"
+              onchange="wpOnDateChange()">
             <button onclick="loadWorkPhotos()"
               style="padding:9px 18px;border:none;border-radius:8px;background:var(--primary);color:white;font-weight:700;font-size:13px;cursor:pointer;">
               🔍 Lihat
             </button>
-            <button onclick="loadWorkPhotoList(true);wpPopulateUserSelect()"
+            <button onclick="wpRefreshAll()"
               style="padding:9px 14px;border:none;border-radius:8px;background:#e3f2fd;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer;">
               🔄
             </button>
           </div>
+          <!-- Date shortcut chips -->
+          <div id="wp-date-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
           <p style="margin:8px 0 0;font-size:12px;color:var(--muted);">
-            Foto kegiatan/hasil kerja yang diunggah karyawan mobile saat Clock Out.
+            Foto kegiatan/hasil kerja yang diunggah karyawan mobile saat Clock Out. Disimpan selama 1 minggu.
           </p>
         </div>
 
         <!-- Daftar karyawan yang punya foto -->
         <div class="card" style="margin-top:12px;padding:14px;">
-          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">📋 Foto Kegiatan Hari Ini</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;" id="wp-user-list-title">📋 Foto Kegiatan Hari Ini</div>
           <div id="wp-user-list">
             <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
           </div>

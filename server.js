@@ -3461,6 +3461,24 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
   res.json(result);
 });
 
+// GET /screenshots/list-users?date=YYYY-MM-DD — daftar user yang punya screenshot pada tanggal tertentu
+app.get("/screenshots/list-users", requireLevel(3), (req, res) => {
+  const date        = req.query.date || todayLocal();
+  const screenshots = load(F.screenshots, {});
+  const users       = load(F.users, {});
+  const dateData    = screenshots[date] || {};
+
+  const result = Object.keys(dateData).map(username => ({
+    username,
+    namaLengkap:      users[username]?.namaLengkap || username,
+    jabatan:          users[username]?.jabatan || "",
+    totalScreenshots: dateData[username]?.length || 0,
+    lastScreenshot:   dateData[username]?.at(-1)?.ts || null,
+  })).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
+
+  res.json(result);
+});
+
 // GET /screenshots/dates/:user — daftar tanggal yang ada screenshot (7 hari terakhir)
 app.get("/screenshots/dates/:user", requireLevel(3), (req, res) => {
   const { user } = req.params;
@@ -3502,6 +3520,24 @@ app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
 // FOTO KEGIATAN KERJA (Mobile Clock Out)
 // ========================
 
+// GET /work-photos/list-users?date=YYYY-MM-DD — daftar user yang punya foto pada tanggal tertentu
+app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
+  const date    = req.query.date || todayLocal();
+  const wpStore = load(F.workPhotos, {});
+  const users   = load(F.users, {});
+  const dateData = wpStore[date] || {};
+
+  const result = Object.keys(dateData).map(username => ({
+    username,
+    namaLengkap: users[username]?.namaLengkap || username,
+    jabatan:     users[username]?.jabatan || "",
+    totalPhotos: dateData[username]?.length || 0,
+    lastPhoto:   dateData[username]?.at(-1)?.ts || null,
+  })).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
+
+  res.json(result);
+});
+
 // GET /work-photos/today — daftar user yang punya foto kegiatan hari ini
 app.get("/work-photos/today", requireLevel(3), (req, res) => {
   const today     = todayLocal();
@@ -3520,24 +3556,24 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
   res.json(result);
 });
 
-// GET /work-photos/:user — list metadata foto kegiatan user (tanpa image)
+// GET /work-photos/:user — list metadata foto kegiatan user (tanpa image), support ?date=YYYY-MM-DD
 app.get("/work-photos/:user", requireLevel(3), (req, res) => {
   const { user } = req.params;
-  const today   = todayLocal();
+  const date    = req.query.date || todayLocal();
   const wpStore = load(F.workPhotos, {});
-  const photos  = (wpStore[today] || {})[user] || [];
-  res.json(photos.map((p, i) => ({ index: i, ts: p.ts })));
+  const photos  = (wpStore[date] || {})[user] || [];
+  res.json(photos.map((p, i) => ({ index: i, ts: p.ts, date })));
 });
 
-// GET /work-photos/:user/:index — foto kegiatan dengan image
+// GET /work-photos/:user/:index — foto kegiatan dengan image, support ?date=YYYY-MM-DD
 app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
   const { user, index } = req.params;
-  const today   = todayLocal();
+  const date    = req.query.date || todayLocal();
   const wpStore = load(F.workPhotos, {});
-  const photos  = (wpStore[today] || {})[user] || [];
+  const photos  = (wpStore[date] || {})[user] || [];
   const photo   = photos[parseInt(index)];
   if (!photo) return res.status(404).json({ status: "NOT_FOUND" });
-  res.json({ ts: photo.ts, image: photo.image });
+  res.json({ ts: photo.ts, image: photo.image, date });
 });
 
 // Toggle fitur foto kegiatan — hanya Owner (level 1)

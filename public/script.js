@@ -9910,16 +9910,85 @@ openView = window.openView = function(viewId) {
   if (viewId === "view-screenshot") { loadScreenshotPage(); switchMonitorTab("layar"); }
 };
 
+// ── Helpers tanggal untuk Monitor Layar ──
+function ssGetDate() {
+  const inp = document.getElementById("ss-pilih-tanggal");
+  return inp && inp.value ? inp.value : todayLocalStr();
+}
+function ssSetDateToday() {
+  const inp = document.getElementById("ss-pilih-tanggal");
+  if (inp) inp.value = todayLocalStr();
+}
+function ssOnDateChange() {
+  const date = ssGetDate();
+  const isToday = date === todayLocalStr();
+  const titleEl = document.getElementById("ss-active-list-title");
+  if (titleEl) {
+    titleEl.textContent = isToday
+      ? "👥 Karyawan Aktif Hari Ini"
+      : `👥 Karyawan — ${new Date(date).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+  }
+  loadScreenshotActiveList();
+  ssPopulateUserSelect();
+  // sembunyikan grid saat ganti tanggal
+  const wrap = document.getElementById("ss-grid-wrap");
+  if (wrap) wrap.style.display = "none";
+}
+function ssRefreshAll() {
+  loadScreenshotActiveList(true);
+  ssPopulateUserSelect();
+  ssLoadDateChips();
+}
+
+async function ssLoadDateChips() {
+  const chipsEl = document.getElementById("ss-date-chips");
+  if (!chipsEl) return;
+  // chips 7 hari terakhir (hari ini s.d 6 hari lalu)
+  const today = todayLocalStr();
+  const chips = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    chips.push(d.toLocaleDateString("sv-SE")); // YYYY-MM-DD
+  }
+  chipsEl.innerHTML = chips.map(date => {
+    const isToday = date === today;
+    const label = isToday ? "Hari ini" : new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"});
+    return `<button onclick="ssSetDate('${date}')" id="ss-chip-${date}"
+      style="padding:4px 10px;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;
+             background:${isToday?'var(--primary)':'#e8ecf0'};color:${isToday?'white':'var(--text)'};
+             transition:.15s;" data-date="${date}">${label}</button>`;
+  }).join("");
+}
+function ssSetDate(date) {
+  const inp = document.getElementById("ss-pilih-tanggal");
+  if (inp) inp.value = date;
+  // update chip highlight
+  document.querySelectorAll("#ss-date-chips button").forEach(b => {
+    const isActive = b.dataset.date === date;
+    b.style.background = isActive ? "var(--primary)" : "#e8ecf0";
+    b.style.color = isActive ? "white" : "var(--text)";
+  });
+  ssOnDateChange();
+}
+window.ssSetDate = ssSetDate;
+window.ssOnDateChange = ssOnDateChange;
+window.ssRefreshAll = ssRefreshAll;
+
 async function loadScreenshotPage() {
+  ssSetDateToday();
+  await ssLoadDateChips();
   await ssPopulateUserSelect();
   await loadScreenshotActiveList();
 }
 
 async function ssPopulateUserSelect() {
-  const sel = document.getElementById("ss-pilih-user");
+  const sel  = document.getElementById("ss-pilih-user");
+  const date = ssGetDate();
   if (!sel) return;
   try {
-    const r = await authFetch("/screenshots/today");
+    const endpoint = date === todayLocalStr() ? "/screenshots/today" : `/screenshots/list-users?date=${date}`;
+    const r = await authFetch(endpoint);
     if (!r.ok) return;
     const list = await r.json();
     const prev = sel.value;
@@ -9927,7 +9996,7 @@ async function ssPopulateUserSelect() {
     list.forEach(u => {
       const o = document.createElement("option");
       o.value = u.username;
-      o.textContent = `${u.namaLengkap} (${u.totalScreenshots} foto)`;
+      o.textContent = `${u.namaLengkap} (${u.totalScreenshots || u.totalPhotos || 0} foto)`;
       sel.appendChild(o);
     });
     if (prev) sel.value = prev;
@@ -9935,15 +10004,19 @@ async function ssPopulateUserSelect() {
 }
 
 async function loadScreenshotActiveList(silent = false) {
-  const el = document.getElementById("ss-active-list");
+  const el   = document.getElementById("ss-active-list");
+  const date = ssGetDate();
+  const isToday = date === todayLocalStr();
   if (!el) return;
   if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>';
   try {
-    const r = await authFetch("/screenshots/today");
+    const endpoint = isToday ? "/screenshots/today" : `/screenshots/list-users?date=${date}`;
+    const r = await authFetch(endpoint);
     if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>'; return; }
     const list = await r.json();
+    const emptyMsg = isToday ? "Tidak ada karyawan aktif hari ini" : "Tidak ada record screenshot pada tanggal ini";
     if (!list.length) {
-      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Tidak ada karyawan aktif hari ini</p>';
+      el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:12px 0;">${emptyMsg}</p>`;
       return;
     }
     const statusColor = { IN:"#27ae60", BREAK:"#f39c12", DONE:"#95a5a6" };
@@ -9952,6 +10025,7 @@ async function loadScreenshotActiveList(silent = false) {
       const lastFmt = u.lastScreenshot
         ? new Date(u.lastScreenshot).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
         : "--:--";
+      const total = u.totalScreenshots || u.totalPhotos || 0;
       return `
         <div onclick="ssSelectUser('${u.username}')"
           style="display:flex;align-items:center;gap:12px;padding:10px 12px;
@@ -9966,12 +10040,12 @@ async function loadScreenshotActiveList(silent = false) {
             <div style="font-size:11px;color:var(--muted);">${u.jabatan||""}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;">
-            <div style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;
+            ${u.status ? `<div style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;
                         background:${statusColor[u.status]}22;color:${statusColor[u.status]};">
               ${statusLabel[u.status]||u.status}
-            </div>
+            </div>` : ""}
             <div style="font-size:11px;color:var(--muted);margin-top:3px;">
-              ${u.totalScreenshots > 0 ? `🖥️ ${u.totalScreenshots} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
+              ${total > 0 ? `🖥️ ${total} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
             </div>
           </div>
         </div>`;
@@ -9993,6 +10067,7 @@ async function loadScreenshots(silent = false) {
   const username = sel ? sel.value : "";
   if (!username) { showToast("⚠️ Pilih karyawan terlebih dahulu", "warning"); return; }
 
+  const date  = ssGetDate();
   const wrap  = document.getElementById("ss-grid-wrap");
   const grid  = document.getElementById("ss-grid");
   const empty = document.getElementById("ss-grid-empty");
@@ -10005,13 +10080,14 @@ async function loadScreenshots(silent = false) {
   if (empty) empty.style.display = "none";
 
   try {
-    const r = await authFetch(`/screenshots/${username}`);
+    const r = await authFetch(`/screenshots/${username}?date=${date}`);
     if (!r.ok) { grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Gagal memuat</p>'; return; }
     const shots = await r.json();
-    if (title) title.textContent = `Screenshot — ${username}`;
+    const dateFmt = new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+    if (title) title.textContent = `🖥️ ${username} — ${dateFmt}`;
     if (!shots.length) {
       grid.innerHTML = "";
-      if (empty) empty.style.display = "block";
+      if (empty) { empty.style.display = "block"; empty.textContent = `Tidak ada screenshot untuk ${username} pada ${dateFmt}.`; }
       if (count) count.textContent = "0 foto";
       return;
     }
@@ -10019,7 +10095,7 @@ async function loadScreenshots(silent = false) {
     grid.innerHTML = shots.map((s, i) => {
       const waktu = new Date(s.ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
       return `
-        <div id="ss-thumb-${i}" onclick="ssOpenModal(${i},'${username}')"
+        <div id="ss-thumb-${i}" onclick="ssOpenModal(${i},'${username}','${date}')"
           style="border-radius:10px;overflow:hidden;background:#f0f2f5;cursor:pointer;
                  position:relative;aspect-ratio:16/9;display:flex;align-items:center;
                  justify-content:center;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.08);"
@@ -10029,15 +10105,16 @@ async function loadScreenshots(silent = false) {
           <span style="font-size:28px;color:#bbb;" id="ss-loading-${i}">⏳</span>
         </div>`;
     }).join("");
-    for (const s of shots) ssLoadThumb(s.index, username);
+    for (const s of shots) ssLoadThumb(s.index, username, date);
   } catch {
     grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Terjadi kesalahan</p>';
   }
 }
 
-async function ssLoadThumb(index, username) {
+async function ssLoadThumb(index, username, date) {
+  date = date || ssGetDate();
   try {
-    const r = await authFetch(`/screenshots/${username}/${index}`);
+    const r = await authFetch(`/screenshots/${username}/${index}?date=${date}`);
     if (!r.ok) return;
     const d     = await r.json();
     const thumb = document.getElementById(`ss-thumb-${index}`);
@@ -10051,7 +10128,8 @@ async function ssLoadThumb(index, username) {
   } catch {}
 }
 
-async function ssOpenModal(index, username) {
+async function ssOpenModal(index, username, date) {
+  date = date || ssGetDate();
   const modal = document.getElementById("ss-modal");
   const img   = document.getElementById("ss-modal-img");
   const info  = document.getElementById("ss-modal-info");
@@ -10060,12 +10138,12 @@ async function ssOpenModal(index, username) {
   img.src = "";
   if (info) info.textContent = "Memuat...";
   try {
-    const r = await authFetch(`/screenshots/${username}/${index}`);
+    const r = await authFetch(`/screenshots/${username}/${index}?date=${date}`);
     if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar","error"); return; }
     const d = await r.json();
     img.src = d.image;
-    const waktu = new Date(d.ts).toLocaleString("id-ID",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
-    if (info) info.textContent = `${username} · ${waktu}`;
+    const waktu = new Date(d.ts).toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+    if (info) info.textContent = `🖥️ ${username} · ${waktu}`;
   } catch { modal.style.display = "none"; }
 }
 
@@ -10096,6 +10174,7 @@ window.ssPopulateUserSelect       = ssPopulateUserSelect;
 window.loadScreenshotToggle       = loadScreenshotToggle;
 window.renderScreenshotToggle     = renderScreenshotToggle;
 window.toggleScreenshotFeature    = toggleScreenshotFeature;
+window.ssLoadDateChips            = ssLoadDateChips;
 
 // ============================================================
 // MONITOR AKTIVITAS — Tab Switcher
@@ -10113,6 +10192,8 @@ function switchMonitorTab(tab) {
   if (btnFoto)  btnFoto.style.cssText  += isLayar ? inactiveStyle : activeStyle;
 
   if (!isLayar) {
+    wpSetDateToday();
+    wpLoadDateChips();
     wpPopulateUserSelect();
     loadWorkPhotoList();
   }
@@ -10122,11 +10203,75 @@ window.switchMonitorTab = switchMonitorTab;
 // ============================================================
 // FOTO KERJA — loader & viewer
 // ============================================================
+// ── Helpers tanggal untuk Foto Kerja ──
+function wpGetDate() {
+  const inp = document.getElementById("wp-pilih-tanggal");
+  return inp && inp.value ? inp.value : todayLocalStr();
+}
+function wpSetDateToday() {
+  const inp = document.getElementById("wp-pilih-tanggal");
+  if (inp) inp.value = todayLocalStr();
+}
+function wpOnDateChange() {
+  const date = wpGetDate();
+  const isToday = date === todayLocalStr();
+  const titleEl = document.getElementById("wp-user-list-title");
+  if (titleEl) {
+    titleEl.textContent = isToday
+      ? "📋 Foto Kegiatan Hari Ini"
+      : `📋 Foto Kegiatan — ${new Date(date).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+  }
+  wpActiveUser = null;
+  const wrap = document.getElementById("wp-grid-wrap");
+  if (wrap) wrap.style.display = "none";
+  loadWorkPhotoList();
+  wpPopulateUserSelect();
+}
+function wpRefreshAll() {
+  loadWorkPhotoList(true);
+  wpPopulateUserSelect();
+  wpLoadDateChips();
+}
+async function wpLoadDateChips() {
+  const chipsEl = document.getElementById("wp-date-chips");
+  if (!chipsEl) return;
+  const today = todayLocalStr();
+  const chips = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    chips.push(d.toLocaleDateString("sv-SE"));
+  }
+  chipsEl.innerHTML = chips.map(date => {
+    const isToday = date === today;
+    const label = isToday ? "Hari ini" : new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"});
+    return `<button onclick="wpSetDate('${date}')" id="wp-chip-${date}"
+      style="padding:4px 10px;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;
+             background:${isToday?'#8e44ad':'#e8ecf0'};color:${isToday?'white':'var(--text)'};
+             transition:.15s;" data-date="${date}">${label}</button>`;
+  }).join("");
+}
+function wpSetDate(date) {
+  const inp = document.getElementById("wp-pilih-tanggal");
+  if (inp) inp.value = date;
+  document.querySelectorAll("#wp-date-chips button").forEach(b => {
+    const isActive = b.dataset.date === date;
+    b.style.background = isActive ? "#8e44ad" : "#e8ecf0";
+    b.style.color = isActive ? "white" : "var(--text)";
+  });
+  wpOnDateChange();
+}
+window.wpSetDate = wpSetDate;
+window.wpOnDateChange = wpOnDateChange;
+window.wpRefreshAll = wpRefreshAll;
+
 async function wpPopulateUserSelect() {
-  const sel = document.getElementById("wp-pilih-user");
+  const sel  = document.getElementById("wp-pilih-user");
+  const date = wpGetDate();
   if (!sel) return;
   try {
-    const r = await authFetch("/work-photos/today");
+    const endpoint = date === todayLocalStr() ? "/work-photos/today" : `/work-photos/list-users?date=${date}`;
+    const r = await authFetch(endpoint);
     if (!r.ok) return;
     const list = await r.json();
     const prev = sel.value;
@@ -10134,7 +10279,7 @@ async function wpPopulateUserSelect() {
     list.forEach(u => {
       const o = document.createElement("option");
       o.value = u.username;
-      o.textContent = `${u.namaLengkap} (${u.totalPhotos} foto)`;
+      o.textContent = `${u.namaLengkap} (${u.totalPhotos || 0} foto)`;
       sel.appendChild(o);
     });
     if (prev) sel.value = prev;
@@ -10142,7 +10287,9 @@ async function wpPopulateUserSelect() {
 }
 
 async function loadWorkPhotoList(silent = false) {
-  const el = document.getElementById("wp-user-list");
+  const el   = document.getElementById("wp-user-list");
+  const date = wpGetDate();
+  const isToday = date === todayLocalStr();
   if (!el) return;
   // Reset state aktif saat list di-refresh
   wpActiveUser = null;
@@ -10150,11 +10297,13 @@ async function loadWorkPhotoList(silent = false) {
   if (wrap) wrap.style.display = "none";
   if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>';
   try {
-    const r = await authFetch("/work-photos/today");
+    const endpoint = isToday ? "/work-photos/today" : `/work-photos/list-users?date=${date}`;
+    const r = await authFetch(endpoint);
     if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>'; return; }
     const list = await r.json();
+    const emptyMsg = isToday ? "Belum ada foto kegiatan hari ini" : "Tidak ada foto kegiatan pada tanggal ini";
     if (!list.length) {
-      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px 0;">Belum ada foto kegiatan hari ini</p>';
+      el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:12px 0;">${emptyMsg}</p>`;
       return;
     }
     el.innerHTML = list.map(u => {
@@ -10232,6 +10381,7 @@ async function loadWorkPhotos(silent = false) {
   const username = sel ? sel.value : "";
   if (!username) { showToast("⚠️ Pilih karyawan terlebih dahulu", "warning"); return; }
 
+  const date  = wpGetDate();
   const wrap  = document.getElementById("wp-grid-wrap");
   const grid  = document.getElementById("wp-grid");
   const empty = document.getElementById("wp-grid-empty");
@@ -10244,13 +10394,14 @@ async function loadWorkPhotos(silent = false) {
   if (empty) empty.style.display = "none";
 
   try {
-    const r = await authFetch(`/work-photos/${username}`);
+    const r = await authFetch(`/work-photos/${username}?date=${date}`);
     if (!r.ok) { grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Gagal memuat</p>'; return; }
     const photos = await r.json();
-    if (title) title.textContent = `Foto Kerja — ${username}`;
+    const dateFmt = new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+    if (title) title.textContent = `📸 ${username} — ${dateFmt}`;
     if (!photos.length) {
       grid.innerHTML = "";
-      if (empty) empty.style.display = "block";
+      if (empty) { empty.style.display = "block"; empty.textContent = `Tidak ada foto untuk ${username} pada ${dateFmt}.`; }
       if (count) count.textContent = "0 foto";
       return;
     }
@@ -10258,7 +10409,7 @@ async function loadWorkPhotos(silent = false) {
     grid.innerHTML = photos.map((p, i) => {
       const waktu = new Date(p.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
       return `
-        <div id="wp-thumb-${i}" onclick="wpOpenModal(${i},'${username}')"
+        <div id="wp-thumb-${i}" onclick="wpOpenModal(${i},'${username}','${date}')"
           style="border-radius:10px;overflow:hidden;background:#f0f2f5;cursor:pointer;
                  position:relative;aspect-ratio:4/3;display:flex;align-items:center;
                  justify-content:center;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.08);"
@@ -10268,15 +10419,16 @@ async function loadWorkPhotos(silent = false) {
           <span style="font-size:28px;color:#bbb;" id="wp-loading-${i}">⏳</span>
         </div>`;
     }).join("");
-    for (const p of photos) wpLoadThumb(p.index, username);
+    for (const p of photos) wpLoadThumb(p.index, username, date);
   } catch {
     grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Terjadi kesalahan</p>';
   }
 }
 
-async function wpLoadThumb(index, username) {
+async function wpLoadThumb(index, username, date) {
+  date = date || wpGetDate();
   try {
-    const r = await authFetch(`/work-photos/${username}/${index}`);
+    const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) return;
     const d     = await r.json();
     const thumb = document.getElementById(`wp-thumb-${index}`);
@@ -10290,7 +10442,8 @@ async function wpLoadThumb(index, username) {
   } catch {}
 }
 
-async function wpOpenModal(index, username) {
+async function wpOpenModal(index, username, date) {
+  date = date || wpGetDate();
   const modal = document.getElementById("ss-modal"); // reuse modal yang sama
   const img   = document.getElementById("ss-modal-img");
   const info  = document.getElementById("ss-modal-info");
@@ -10299,11 +10452,11 @@ async function wpOpenModal(index, username) {
   img.src = "";
   if (info) info.textContent = "Memuat...";
   try {
-    const r = await authFetch(`/work-photos/${username}/${index}`);
+    const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar", "error"); return; }
     const d = await r.json();
     img.src = d.image;
-    const waktu = new Date(d.ts).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    const waktu = new Date(d.ts).toLocaleString("id-ID", { day: "2-digit", month: "short", year:"numeric", hour: "2-digit", minute: "2-digit" });
     if (info) info.textContent = `📸 Foto Kerja — ${username} · ${waktu}`;
   } catch { modal.style.display = "none"; }
 }
@@ -10314,6 +10467,7 @@ window.loadWorkPhotoList    = loadWorkPhotoList;
 window.wpSelectUser         = wpSelectUser;
 window.loadWorkPhotos       = loadWorkPhotos;
 window.wpOpenModal          = wpOpenModal;
+window.wpLoadDateChips      = wpLoadDateChips;
 
 // ============================================================
 // TOGGLE FITUR FOTO KERJA
