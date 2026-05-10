@@ -3352,6 +3352,15 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
 // ========================
 
 // POST /screenshot — terima screenshot dari client
+// GET /absen-status — dipakai Electron desktop app untuk verifikasi clock in sudah tercatat
+app.get("/absen-status", requireLevel(99), (req, res) => {
+  const user  = req._requester;
+  const today = todayLocal();
+  const data  = load(F.data, []);
+  const rec   = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  res.json({ clockedIn: !!rec, user, date: today });
+});
+
 app.post("/screenshot", requireLevel(99), (req, res) => {
   // Cek apakah fitur screenshot diaktifkan
   const settings = load(F.appSettings, {});
