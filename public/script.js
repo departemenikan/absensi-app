@@ -110,7 +110,14 @@ function openView(viewId) {
     const hasMonitor = userMenus.includes("aktivitas.monitor") || userMenus.includes("aktivitas");
     switchAktivitasTab(hasDaftar ? "daftar" : hasMonitor ? "monitor" : "daftar");
   }
-  if (viewId === "view-aksesibilitas")  { switchAksesTab("akses"); loadGroups(); }
+  if (viewId === "view-aksesibilitas")  {
+    switchAksesTab("akses");
+    loadGroups();
+    // Pastikan slide-in detail tertutup
+    const det = document.getElementById("view-akses-detail");
+    if (det) det.classList.remove("open");
+    document.body.style.overflow = "";
+  }
   if (viewId === "view-area") {
     if (!userMenus.includes("area") && !userMenus.includes("area.daftar")) {
       showToast("⛔ Akses ditolak", "error"); return;
@@ -3566,15 +3573,15 @@ async function assignDivisi(username, divisiNama) {
 const ALL_MENUS = [
   // ── NAVBAR ──────────────────────────────────
   {
-    key: "home", label: "🏠 Beranda", section: "Navigasi",
+    key: "home", label: "Beranda", icon: "🏠", section: "Navigasi",
     alwaysOn: true  // tidak bisa di-toggle, selalu aktif
   },
   {
-    key: "timesheet", label: "🕐 Timesheet", section: "Navigasi",
+    key: "timesheet", label: "Timesheet", icon: "🕐", section: "Navigasi",
     alwaysOn: true  // selalu tampil di navbar
   },
   {
-    key: "cuti", label: "🌴 Cuti", section: "Navigasi",
+    key: "cuti", label: "Cuti", icon: "🌴", section: "Navigasi",
     alwaysOn: true,
     children: [
       { key: "cuti.daftar", label: "Pengajuan Cuti", parentKey: "cuti" },
@@ -3582,26 +3589,26 @@ const ALL_MENUS = [
     ]
   },
   {
-    key: "setting", label: "⚙️ Pengaturan", section: "Navigasi",
+    key: "setting", label: "Pengaturan", icon: "⚙️", section: "Navigasi",
   },
 
   // ── MENU PENGATURAN ─────────────────────────
   {
-    key: "anggota", label: "👥 Anggota", section: "Pengaturan",
+    key: "anggota", label: "Anggota", icon: "👥", section: "Pengaturan",
     children: [
       { key: "anggota.daftar",  label: "Daftar Anggota", parentKey: "anggota" },
       { key: "anggota.divisi",  label: "Divisi",          parentKey: "anggota" },
     ]
   },
   {
-    key: "area", label: "📍 Area Kantor", section: "Pengaturan",
+    key: "area", label: "Area Kantor", icon: "📍", section: "Pengaturan",
     children: [
       { key: "area.daftar",  label: "Daftar Area",   parentKey: "area" },
       { key: "area.tambah",  label: "Tambah Area",   parentKey: "area" },
     ]
   },
   {
-    key: "libur", label: "📅 Hari Libur & Cuti", section: "Pengaturan",
+    key: "libur", label: "Hari Libur & Cuti", icon: "📅", section: "Pengaturan",
     children: [
       { key: "libur.hari-libur",     label: "Hari Libur",      parentKey: "libur" },
       { key: "libur.kebijakan-cuti", label: "Kebijakan Cuti",  parentKey: "libur" },
@@ -3609,23 +3616,23 @@ const ALL_MENUS = [
     ]
   },
   {
-    key: "aktivitas",    label: "📌 Aktivitas",      section: "Pengaturan",
+    key: "aktivitas",    label: "Aktivitas",      icon: "📌", section: "Pengaturan",
     children: [
       { key: "aktivitas.daftar",  label: "Daftar Aktivitas",  parentKey: "aktivitas" },
       { key: "aktivitas.monitor", label: "Monitor Kehadiran", parentKey: "aktivitas" },
     ]
   },
   {
-    key: "rekap",        label: "📋 Rekap",           section: "Pengaturan",
+    key: "rekap",        label: "Rekap",           icon: "📋", section: "Pengaturan",
   },
   {
-    key: "aksesibilitas", label: "🔐 Aksesibilitas",  section: "Pengaturan",
+    key: "aksesibilitas", label: "Aksesibilitas",  icon: "🔐", section: "Pengaturan",
   },
   {
-    key: "tracking",     label: "🗺️ Tracking",         section: "Pengaturan",
+    key: "tracking",     label: "Tracking",         icon: "🗺️", section: "Pengaturan",
   },
   {
-    key: "profil",       label: "👤 Profil",           section: "Pengaturan",
+    key: "profil",       label: "Profil",           icon: "👤", section: "Pengaturan",
   },
 ];
 
@@ -4204,111 +4211,267 @@ async function saveRulesMess() {
   }
 }
 
+// ── ICON & WARNA per group ───────────────────────────────────
+const GROUP_META = {
+  owner:       { emoji:"👑", strip:"#e64a19", bg:"#bf360c" },
+  admin:       { emoji:"🛡️",  strip:"#1565c0", bg:"#0d47a1" },
+  manager:     { emoji:"💼", strip:"#00695c", bg:"#004d40" },
+  koordinator: { emoji:"🎯", strip:"#4527a0", bg:"#311b92" },
+  anggota:     { emoji:"👤", strip:"#455a64", bg:"#263238" },
+};
+function _gMeta(gid) {
+  return GROUP_META[gid] || { emoji:"👤", strip:"#4f8ef7", bg:"#1a237e" };
+}
+
+// ── LOAD GROUPS — render sebagai kartu list ──────────────────
+let _aksesGroups = []; // cache dari server
+
 async function loadGroups() {
+  const list = document.getElementById("group-list");
+  list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px;font-size:13px;">Memuat...</p>';
   try {
     const r = await authFetch("/groups");
-    const groups = await r.json();
-    const list   = document.getElementById("group-list");
+    _aksesGroups = await r.json();
 
-    const sections = menusBySection();
-
-    // Inisialisasi state lokal dari data server
-    groups.forEach(g => {
+    // Inisialisasi state lokal
+    _aksesGroups.forEach(g => {
       _aksesTemp[g.id] = new Set(g.menus || []);
     });
 
-    list.innerHTML = groups.map(g => {
-      const isOwner = g.id === "owner";
-      const visibleCount = allMenuKeys().filter(k => g.menus.includes(k)).length;
-
-      // Render per section
-      const sectionHTML = Object.entries(sections).map(([secName, menus]) => {
-        const rows = menus.map(m => {
-          const isAlways   = m.alwaysOn === true;
-          const isChecked  = isOwner || g.menus.includes(m.key) || isAlways;
-          const isDisabled = isOwner || isAlways;
-          const hasChildren = m.children && m.children.length > 0;
-
-          const parentRow = `
-            <div class="akses-row akses-parent" style="${hasChildren?'border-bottom:none;':''}">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="akses-label">${m.label}</span>
-                ${isAlways ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 6px;font-weight:700;">Selalu Aktif</span>' : ''}
-              </div>
-              <label class="toggle-switch${isDisabled?' toggle-disabled':''}">
-                <input type="checkbox" ${isChecked?'checked':''} ${isDisabled?'disabled':''}
-                  onchange="onAksesToggle('${g.id}','${m.key}',this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>`;
-
-          const childRows = (m.children || []).map(c => {
-            const cChecked  = isOwner || g.menus.includes(c.key) || isAlways;
-            const cDisabled = isOwner || isAlways;
-            return `
-            <div class="akses-row akses-child">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:#ddd;font-size:12px;margin-left:4px;">└</span>
-                <span class="akses-label akses-label-sub">${c.label}</span>
-              </div>
-              <label class="toggle-switch${cDisabled?' toggle-disabled':''}">
-                <input type="checkbox" ${cChecked?'checked':''} ${cDisabled?'disabled':''}
-                  onchange="onAksesToggle('${g.id}','${c.key}',this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>`;
-          }).join("");
-
-          return parentRow + childRows;
-        }).join("");
-
-        return `
-          <div class="akses-section">
-            <div class="akses-section-title">${secName}</div>
-            ${rows}
-          </div>`;
-      }).join("");
-
-      return `
-      <div class="group-item">
-        <div class="group-header" style="background:${g.color};" onclick="toggleGroupBody('gbody-${g.id}')">
-          <div style="flex:1;">
-            <div class="group-title">${g.name} ${isOwner?'👑':g.id==='admin'?'🛡️':g.id==='manager'?'💼':g.id==='koordinator'?'🎯':'👤'}</div>
-            <div class="group-level">Level ${g.level} · ${visibleCount} akses aktif</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            ${isOwner ? '<span style="font-size:10px;background:rgba(255,255,255,.25);border-radius:6px;padding:2px 8px;color:white;">Akses Penuh</span>' : ''}
-            <span class="akses-chevron" id="chev-${g.id}" style="color:rgba(255,255,255,.7);font-size:18px;transition:transform .2s;">›</span>
-          </div>
-        </div>
-        <div class="group-body" id="gbody-${g.id}">
-          <div class="group-scroll-area">
-          ${isOwner
-            ? '<div style="font-size:12px;color:var(--muted);padding:10px 4px;text-align:center;">👑 Owner selalu memiliki akses penuh ke semua menu & submenu.</div>'
-            : ''
-          }
-          ${sectionHTML}
-          </div>
-          ${!isOwner ? `
-          <div class="group-save-bar">
-            <button id="save-btn-${g.id}"
-              onclick="saveGroupMenus('${g.id}')"
-              style="display:inline-flex;align-items:center;gap:6px;
-                     padding:11px 28px;border:none;border-radius:10px;
-                     background:var(--primary);color:white;font-weight:700;
-                     font-size:14px;cursor:pointer;transition:opacity .15s;white-space:nowrap;"
-              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-              💾 Simpan Pengaturan ${g.name}
-            </button>
-          </div>` : ''}
-        </div>
-      </div>`;
-    }).join("");
-
+    _renderGroupList();
   } catch(e) {
-    document.getElementById("group-list").innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Gagal memuat data jabatan</p>';
+    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;font-size:13px;">Gagal memuat data jabatan</p>';
   }
 }
+
+function _renderGroupList() {
+  const list = document.getElementById("group-list");
+  if (!list) return;
+  list.innerHTML = _aksesGroups.map(g => {
+    const isOwner = g.id === "owner";
+    const meta    = _gMeta(g.id);
+    const total   = allMenuKeys().length;
+    const cnt     = isOwner ? total : (_aksesTemp[g.id] ? _aksesTemp[g.id].size : 0);
+    return `
+    <div class="group-card-new" onclick="openAksesDetail('${g.id}')">
+      <div class="gc-strip" style="background:${meta.strip};"></div>
+      <div class="gc-row">
+        <div class="gc-left">
+          <div class="gc-avatar" style="background:${meta.bg}22;">${meta.emoji}</div>
+          <div>
+            <div class="gc-name">${g.name} ${meta.emoji}</div>
+            <div class="gc-meta">Level ${g.level} · ${isOwner ? 'Akses penuh' : cnt+' dari '+total+' akses aktif'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${isOwner ? '<span class="gc-lock">Terkunci</span>' : ''}
+          <span class="gc-chevron">›</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── SLIDE-IN DETAIL ──────────────────────────────────────────
+let _aksesActiveGid  = null;
+let _aksesOrigSnap   = {};   // snapshot sebelum edit: { gid: Set }
+
+function openAksesDetail(gid) {
+  const g = _aksesGroups.find(x => x.id === gid);
+  if (!g) return;
+  _aksesActiveGid = gid;
+
+  // Snapshot state awal (untuk deteksi dirty)
+  _aksesOrigSnap[gid] = new Set(_aksesTemp[gid] || []);
+
+  const meta    = _gMeta(gid);
+  const isOwner = gid === "owner";
+
+  // Warnai header
+  const headerBg = meta.bg;
+  document.getElementById("akd-topbar").style.background = headerBg;
+  document.getElementById("akd-meta").style.background   = headerBg;
+  document.getElementById("akd-strip").style.background  = meta.strip;
+  document.getElementById("akd-title").textContent       = g.name + " " + meta.emoji;
+
+  const total = allMenuKeys().length;
+  const cnt   = isOwner ? total : (_aksesTemp[gid] ? _aksesTemp[gid].size : 0);
+  document.getElementById("akd-meta-avatar").textContent    = meta.emoji;
+  document.getElementById("akd-meta-avatar").style.background = meta.bg + "30";
+  document.getElementById("akd-meta-text").textContent
+    = `Level ${g.level} · ${isOwner ? "Akses penuh" : cnt+" akses aktif"}`;
+
+  _renderAksesDetail(gid, isOwner);
+  _updateAkdSaveBtn(gid);
+
+  // Buka slide
+  document.getElementById("view-akses-detail").classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeAksesDetail() {
+  document.getElementById("view-akses-detail").classList.remove("open");
+  document.body.style.overflow = "";
+  _aksesActiveGid = null;
+  // Refresh list agar counter akses terupdate
+  _renderGroupList();
+}
+
+function _renderAksesDetail(gid, isOwner) {
+  const body = document.getElementById("akd-body");
+  const cur  = _aksesTemp[gid];
+  const orig = _aksesOrigSnap[gid];
+
+  const sections = menusBySection();
+  body.innerHTML = Object.entries(sections).map(([secName, menus]) => {
+    // Semua key di section ini (parent + child)
+    const secKeys = menus.flatMap(m => [m.key, ...(m.children||[]).map(c=>c.key)]);
+    const allOn   = secKeys.every(k => {
+      const mDef = ALL_MENUS.find(x=>x.key===k) || menus.flatMap(m=>(m.children||[])).find(c=>c.key===k);
+      return isOwner || (mDef && mDef.alwaysOn) || (cur && cur.has(k));
+    });
+
+    const rows = menus.map(m => {
+      const isAlways   = m.alwaysOn === true;
+      const isChecked  = isOwner || (cur && cur.has(m.key)) || isAlways;
+      const isDisabled = isOwner || isAlways;
+      const changed    = !isDisabled && orig && (cur.has(m.key) !== orig.has(m.key));
+
+      const parentRow = `
+        <div class="akd-row${changed?' changed':''}">
+          <div class="akd-row-left">
+            <span class="akd-icon">${m.icon||'📌'}</span>
+            <span class="akd-label">${m.label}</span>
+            ${isAlways ? '<span class="akd-always">Selalu aktif</span>' : ''}
+          </div>
+          <label class="akd-tog">
+            <input type="checkbox" ${isChecked?'checked':''} ${isDisabled?'disabled':''}
+              onchange="onAksesToggle('${gid}','${m.key}',this.checked)">
+            <div class="akd-tog-sl"></div>
+          </label>
+        </div>`;
+
+      const childRows = (m.children||[]).map(c => {
+        const cChecked  = isOwner || (cur && cur.has(c.key)) || isAlways;
+        const cDisabled = isOwner || isAlways;
+        const cChanged  = !cDisabled && orig && (cur.has(c.key) !== orig.has(c.key));
+        return `
+        <div class="akd-row child${cChanged?' changed':''}">
+          <div class="akd-row-left">
+            <span class="akd-label sub" style="padding-left:4px;">└ ${c.label}</span>
+          </div>
+          <label class="akd-tog">
+            <input type="checkbox" ${cChecked?'checked':''} ${cDisabled?'disabled':''}
+              onchange="onAksesToggle('${gid}','${c.key}',this.checked)">
+            <div class="akd-tog-sl"></div>
+          </label>
+        </div>`;
+      }).join("");
+
+      return parentRow + childRows;
+    }).join("");
+
+    // Tombol "aktifkan/nonaktifkan semua" — hanya untuk non-owner
+    const sectionAllBtn = (!isOwner) ? `
+      <span class="akd-section-all"
+        onclick="toggleAksesSection('${gid}','${secName}',${allOn})">
+        ${allOn ? 'Nonaktifkan semua' : 'Aktifkan semua'}
+      </span>` : '';
+
+    return `
+    <div class="akd-section">
+      <div class="akd-section-head">
+        <span class="akd-section-label">${secName}</span>
+        ${sectionAllBtn}
+      </div>
+      ${isOwner ? '<div style="font-size:12px;color:var(--muted);padding:12px 14px;text-align:center;">👑 Owner selalu memiliki akses penuh ke semua menu.</div>' : rows}
+    </div>`;
+  }).join("");
+}
+
+function _updateAkdSaveBtn(gid) {
+  const btn    = document.getElementById("akd-save-btn");
+  const banner = document.getElementById("akd-dirty-banner");
+  const dirty  = _isAksesDirty(gid);
+  btn.disabled = !dirty;
+  btn.classList.toggle("dirty", dirty);
+  if (banner) banner.style.display = dirty ? "block" : "none";
+}
+
+function _isAksesDirty(gid) {
+  const cur  = _aksesTemp[gid];
+  const orig = _aksesOrigSnap[gid];
+  if (!cur || !orig) return false;
+  return Array.from(cur).sort().join() !== Array.from(orig).sort().join();
+}
+
+// Toggle section semua menu
+function toggleAksesSection(gid, secName, currentlyAllOn) {
+  const sections = menusBySection();
+  const menus    = sections[secName] || [];
+  const cur      = _aksesTemp[gid];
+  if (!cur) return;
+  menus.forEach(m => {
+    const isAlways = m.alwaysOn === true;
+    if (isAlways) return;
+    const keys = [m.key, ...(m.children||[]).map(c=>c.key)];
+    keys.forEach(k => currentlyAllOn ? cur.delete(k) : cur.add(k));
+  });
+  cur.add("home");
+  _renderAksesDetail(gid, false);
+  _updateAkdSaveBtn(gid);
+}
+
+// Simpan dari detail view
+async function saveAksesDetail() {
+  const gid = _aksesActiveGid;
+  if (!gid) return;
+  const state = _aksesTemp[gid];
+  if (!state) return;
+
+  const btn = document.getElementById("akd-save-btn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Menyimpan...";
+
+  try {
+    const menus = Array.from(state);
+    const r = await authFetch(`/groups/${gid}/menus`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ menus })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      // Update snapshot setelah berhasil simpan
+      _aksesOrigSnap[gid] = new Set(state);
+      // Update cache _aksesGroups agar list terupdate
+      const g = _aksesGroups.find(x=>x.id===gid);
+      if (g) g.menus = menus;
+      showToast("✅ Pengaturan akses berhasil disimpan!");
+      _updateAkdSaveBtn(gid);
+      // Update meta text
+      const total = allMenuKeys().length;
+      const cnt   = state.size;
+      document.getElementById("akd-meta-text").textContent =
+        `Level ${g ? g.level : ''} · ${cnt} akses aktif`;
+    } else if (d.status === "PROTECTED") {
+      showToast("⚠️ Owner tidak bisa diubah", "warning");
+    } else {
+      showToast("❌ Gagal menyimpan", "error");
+    }
+  } catch {
+    showToast("❌ Gagal terhubung ke server", "error");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Simpan";
+  btn.classList.toggle("dirty", _isAksesDirty(gid));
+}
+
+window.openAksesDetail    = openAksesDetail;
+window.closeAksesDetail   = closeAksesDetail;
+window.saveAksesDetail    = saveAksesDetail;
+window.toggleAksesSection = toggleAksesSection;
 
 // Toggle hanya update state lokal — TIDAK langsung simpan ke server
 function onAksesToggle(groupId, menuKey, enabled) {
@@ -4334,6 +4497,12 @@ function onAksesToggle(groupId, menuKey, enabled) {
 
   // home selalu ada
   state.add("home");
+
+  // Re-render detail view dan update save button
+  if (_aksesActiveGid === groupId) {
+    _renderAksesDetail(groupId, false);
+    _updateAkdSaveBtn(groupId);
+  }
 }
 
 // Simpan state lokal ke server untuk satu group

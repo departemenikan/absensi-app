@@ -190,87 +190,99 @@
     .role-badge{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:700;color:white;}
 
     /* GROUP / AKSESIBILITAS */
-    .group-item{border-radius:14px;margin-bottom:12px;overflow:hidden;
-      box-shadow:0 3px 12px rgba(0,0,0,.1);}
-    .group-header{display:flex;align-items:center;justify-content:space-between;
-      padding:14px 16px;cursor:pointer;user-select:none;}
-    .group-title{font-size:15px;font-weight:800;color:white;}
-    .group-level{font-size:11px;color:rgba(255,255,255,.75);margin-top:1px;}
+    /* ── AKSESIBILITAS: GROUP CARD LIST ── */
+    .group-body{display:none;} /* tidak dipakai lagi, dipertahankan agar JS lama tidak error */
+    .group-card-new{background:white;border-radius:14px;margin-bottom:10px;
+      overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.07);cursor:pointer;
+      transition:transform .15s,box-shadow .15s;border:1px solid #eef0f5;}
+    .group-card-new:active{transform:scale(.98);box-shadow:0 1px 6px rgba(0,0,0,.1);}
+    .gc-strip{height:5px;}
+    .gc-row{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;}
+    .gc-left{display:flex;align-items:center;gap:11px;}
+    .gc-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+      justify-content:center;font-size:18px;flex-shrink:0;}
+    .gc-name{font-size:14px;font-weight:800;color:var(--text);}
+    .gc-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+    .gc-lock{font-size:10px;padding:3px 9px;border-radius:20px;
+      background:#fff3e0;color:#e65100;font-weight:700;}
+    .gc-chevron{color:#c8cdd8;font-size:22px;font-weight:300;line-height:1;}
 
-    /* group-body sekarang pakai overlay modal, bukan expand di tempat */
-    .group-body{display:none;}
-
-    /* OVERLAY MODAL untuk accordion */
-    #group-overlay{
-      position:fixed;inset:0;z-index:900;
-      background:rgba(0,0,0,.55);
-      display:none;align-items:flex-end;justify-content:center;
-    }
-    #group-overlay.open{display:flex;}
-    #group-overlay-sheet{
-      background:white;
-      width:100%;max-width:640px;
-      border-radius:22px 22px 0 0;
-      max-height:88vh;
+    /* ── AKSESIBILITAS: SLIDE-IN DETAIL VIEW ── */
+    #view-akses-detail{
+      position:fixed;inset:0;z-index:500;
+      background:var(--bg);
+      transform:translateX(100%);
+      transition:transform .3s cubic-bezier(.4,0,.2,1);
       display:flex;flex-direction:column;
-      animation:slideUp .28s ease;
+      pointer-events:none;
     }
+    #view-akses-detail.open{transform:translateX(0);pointer-events:auto;}
 
-    /* Desktop: centered dialog, lebih lebar dan tidak bottom-sheet */
-    @media (min-width:601px){
-      #group-overlay{
-        align-items:center;
-      }
-      #group-overlay-sheet{
-        max-width:900px;
-        width:calc(100% - 48px);
-        border-radius:18px;
-        max-height:82vh;
-        margin:0;
-        animation:fadeIn .2s ease;
-      }
-      #group-overlay-handle{ display:none; }
-    }
+    /* header detail */
+    #akd-header{flex-shrink:0;}
+    #akd-topbar{display:flex;align-items:center;gap:10px;
+      padding:12px 14px 8px;}
+    #akd-back{width:34px;height:34px;border-radius:8px;border:1.5px solid rgba(255,255,255,.3);
+      background:rgba(255,255,255,.15);color:white;display:flex;align-items:center;
+      justify-content:center;cursor:pointer;font-size:20px;line-height:1;flex-shrink:0;}
+    #akd-title{font-size:15px;font-weight:800;color:white;flex:1;}
+    #akd-save-btn{padding:8px 18px;border-radius:20px;border:none;font-size:13px;
+      font-weight:700;cursor:pointer;transition:.2s;
+      background:rgba(255,255,255,.18);color:rgba(255,255,255,.5);}
+    #akd-save-btn.dirty{background:white;color:#1a237e;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);}
+    #akd-strip{height:5px;}
+    #akd-meta{display:flex;align-items:center;gap:9px;padding:7px 14px 13px;}
+    #akd-meta-avatar{width:26px;height:26px;border-radius:50%;display:flex;
+      align-items:center;justify-content:center;font-size:13px;}
+    #akd-meta-text{font-size:12px;color:rgba(255,255,255,.72);}
 
-    #group-overlay-handle{
-      width:40px;height:4px;border-radius:4px;
-      background:#ddd;margin:12px auto 0;flex-shrink:0;
-    }
-    #group-overlay-titlebar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 18px 10px;flex-shrink:0;
-      border-bottom:1px solid #eee;
-    }
-    #group-overlay-title{
-      font-size:16px;font-weight:800;color:#2c3e50;
-    }
-    #group-overlay-close{
-      width:30px;height:30px;border-radius:50%;
-      border:none;background:#f0f2f5;
-      font-size:16px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;color:#555;
-    }
-    #group-overlay-body{
-      flex:1;overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
-      overscroll-behavior:contain;
-    }
-    #group-overlay-body::-webkit-scrollbar{width:3px;}
-    #group-overlay-body::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
-    #group-overlay-footer{
-      flex-shrink:0;
-      padding:12px 18px 20px;
-      background:#f0f2fa;
-      border-top:1px solid #dde2f0;
-      text-align:center;
-      box-shadow:0 -2px 8px rgba(79,142,247,.10);
-    }
+    /* dirty banner */
+    #akd-dirty-banner{display:none;margin:0 14px 10px;
+      background:#fff8e1;border:1px solid #ffe082;border-radius:10px;
+      padding:8px 12px;font-size:12px;color:#e65100;font-weight:600;}
 
-    .group-scroll-area{padding:0;}
-    .group-scroll-area::-webkit-scrollbar{width:3px;}
-    .group-scroll-area::-webkit-scrollbar-track{background:transparent;}
-    .group-scroll-area::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
-    .group-save-bar{padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;text-align:center;box-shadow:0 -2px 8px rgba(79,142,247,.10);}
+    /* body scroll */
+    #akd-body{flex:1;overflow-y:auto;padding:12px 14px;
+      -webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    #akd-body::-webkit-scrollbar{width:3px;}
+    #akd-body::-webkit-scrollbar-thumb{background:#c5cfe8;border-radius:4px;}
+
+    /* section blocks */
+    .akd-section{background:white;border-radius:14px;margin-bottom:10px;
+      overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+    .akd-section-head{display:flex;align-items:center;justify-content:space-between;
+      padding:9px 14px;border-bottom:1px solid #f0f2f5;background:#f8f9ff;}
+    .akd-section-label{font-size:10px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.6px;color:var(--muted);}
+    .akd-section-all{font-size:11px;font-weight:700;color:var(--primary);cursor:pointer;}
+
+    /* menu rows */
+    .akd-row{display:flex;align-items:center;justify-content:space-between;
+      padding:11px 14px;border-bottom:1px solid #f0f2f5;transition:background .15s;}
+    .akd-row:last-child{border-bottom:none;}
+    .akd-row.child{padding-left:34px;background:#fafbff;}
+    .akd-row.changed{background:#fff8e1;}
+    .akd-row-left{display:flex;align-items:center;gap:8px;}
+    .akd-icon{font-size:15px;}
+    .akd-label{font-size:13px;color:var(--text);font-weight:600;}
+    .akd-label.sub{font-size:12px;color:#666;font-weight:500;}
+    .akd-always{font-size:10px;padding:2px 7px;border-radius:8px;
+      background:#e8f5e9;color:#2e7d32;font-weight:700;margin-left:4px;}
+
+    /* toggle switch (akd- prefix, tidak konflik) */
+    .akd-tog{position:relative;width:42px;height:24px;flex-shrink:0;}
+    .akd-tog input{opacity:0;width:0;height:0;position:absolute;}
+    .akd-tog-sl{position:absolute;inset:0;background:#ccc;border-radius:50px;
+      cursor:pointer;transition:.25s;}
+    .akd-tog-sl:before{content:"";position:absolute;width:18px;height:18px;
+      left:3px;bottom:3px;background:white;border-radius:50%;transition:.25s;
+      box-shadow:0 1px 4px rgba(0,0,0,.25);}
+    .akd-tog input:checked+.akd-tog-sl{background:var(--primary);}
+    .akd-tog input:checked+.akd-tog-sl:before{transform:translateX(18px);}
+    .akd-tog input:disabled+.akd-tog-sl{opacity:.5;cursor:not-allowed;}
+
+    /* preserve old classes used elsewhere */
     .akses-section{padding:0;}
     .akses-section-title{font-size:10px;font-weight:800;text-transform:uppercase;
       letter-spacing:.6px;color:var(--muted);padding:10px 16px 5px;
@@ -284,6 +296,12 @@
     .akses-label{font-size:13px;color:var(--text);font-weight:600;}
     .akses-label-sub{font-size:12px;color:#666;font-weight:500;}
     .akses-chevron{display:inline-block;transition:transform .2s;}
+    .group-scroll-area{padding:0;}
+    .group-save-bar{padding:10px 16px;background:#f0f2fa;border-top:1px solid #dde2f0;
+      text-align:center;}
+    /* overlay lama — disembunyikan, dipertahankan agar tidak error */
+    #group-overlay{display:none!important;}
+    #group-overlay-sheet{display:none!important;}
     /* Menu-toggle legacy (masih dipakai beberapa tempat) */
     .menu-toggle-row{display:flex;align-items:center;justify-content:space-between;
       padding:8px 0;border-bottom:1px solid #eee;}
@@ -1005,14 +1023,14 @@
       <!-- Panel: Kontrol Akses -->
       <div id="panel-akses-kontrol">
 
-        <!-- List jabatan -->
+        <!-- List jabatan (dirender ulang oleh loadGroups) -->
         <div id="group-list">
           <p style="color:var(--muted);text-align:center;padding:24px;">Memuat data jabatan...</p>
         </div>
 
       </div>
 
-      <!-- Panel: Pengaturan Sistem (menggantikan Rules) -->
+      <!-- Panel: Pengaturan Sistem -->
       <div id="panel-akses-rules" style="display:none;">
 
         <!-- Akordion: Pengaturan Sistem (pindahan dari Tab Kontrol Akses) -->
@@ -3139,7 +3157,36 @@
 
   </div>
 </div>
-<!-- ============ OVERLAY MODAL ACCORDION GRUP ============ -->
+<!-- ============================================================ -->
+<!-- VIEW DETAIL JABATAN — slide-in dari kanan                  -->
+<!-- ============================================================ -->
+<div id="view-akses-detail">
+
+  <!-- Header berwarna (diset dinamis oleh openAksesDetail) -->
+  <div id="akd-header">
+    <div id="akd-topbar" style="background:#1a237e;">
+      <button id="akd-back" onclick="closeAksesDetail()">‹</button>
+      <div id="akd-title">—</div>
+      <button id="akd-save-btn" onclick="saveAksesDetail()" disabled>Simpan</button>
+    </div>
+    <div id="akd-strip"></div>
+    <div id="akd-meta" style="background:#1a237e;">
+      <div id="akd-meta-avatar"></div>
+      <div id="akd-meta-text"></div>
+    </div>
+  </div>
+
+  <!-- Banner perubahan belum disimpan -->
+  <div id="akd-dirty-banner">✏️ Ada perubahan yang belum disimpan</div>
+
+  <!-- Body scroll -->
+  <div id="akd-body">
+    <!-- diisi oleh renderAksesDetail() -->
+  </div>
+
+</div>
+
+<!-- ============ OVERLAY MODAL ACCORDION GRUP (dipertahankan agar JS lama tidak error) ============ -->
 <div id="group-overlay" onclick="_groupOverlayBgClick(event)">
   <div id="group-overlay-sheet">
     <div id="group-overlay-handle"></div>
