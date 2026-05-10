@@ -3371,10 +3371,11 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   const user  = req._requester;
   const today = todayLocal();
 
-  // Validasi: user harus sedang clock in
+  // Validasi: user harus sedang clock in (cari record aktif = belum clock out)
+  // Pakai !d.jamKeluar agar konsisten dengan /absen-status dan tidak salah tangkap record lama
   const data = load(F.data, []);
-  const rec  = data.find(d => d.user === user && d.date === today);
-  if (!rec || rec.jamKeluar) {
+  const rec  = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  if (!rec) {
     return res.status(403).json({ status: "NOT_WORKING", msg: "Hanya bisa kirim screenshot saat sedang bekerja" });
   }
 
