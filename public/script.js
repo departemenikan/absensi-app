@@ -9955,7 +9955,8 @@ async function ssLoadDateChips() {
     const isToday = date === today;
     const label = isToday ? "Hari ini" : new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"});
     return `<button onclick="ssSetDate('${date}')" id="ss-chip-${date}"
-      style="padding:4px 10px;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;
+      style="padding:6px 12px;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;
+             white-space:nowrap;flex-shrink:0;
              background:${isToday?'var(--primary)':'#e8ecf0'};color:${isToday?'white':'var(--text)'};
              transition:.15s;" data-date="${date}">${label}</button>`;
   }).join("");
@@ -10246,7 +10247,8 @@ async function wpLoadDateChips() {
     const isToday = date === today;
     const label = isToday ? "Hari ini" : new Date(date).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"});
     return `<button onclick="wpSetDate('${date}')" id="wp-chip-${date}"
-      style="padding:4px 10px;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;
+      style="padding:6px 12px;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;
+             white-space:nowrap;flex-shrink:0;
              background:${isToday?'#8e44ad':'#e8ecf0'};color:${isToday?'white':'var(--text)'};
              transition:.15s;" data-date="${date}">${label}</button>`;
   }).join("");
