@@ -954,18 +954,30 @@ async function sendAbsen(type, label) {
     const photo = takePhoto();
 
     // ── Screen share: wajib jika fitur aktif & browser support & desktop ───
-    if (type === "IN" && _ssFeatureEnabled && ssIsSupported()) {
-      const ssOk = await ssRequestScreen();
-      if (!ssOk) {
-        showToast("❌ Clock In dibatalkan. Izin berbagi layar diperlukan.", "error", 6000);
-        [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
-        setTimeout(async () => { await ssRequestScreen(); }, 1200);
-        return;
+    if (type === "IN") {
+      if (window.__ELECTRON_APP__) {
+        // ✅ Desktop App: screenshot otomatis via Electron, tanpa popup share layar
+        window.electronAPI.clockIn({ username: user, cookie: document.cookie });
+      } else if (_ssFeatureEnabled && ssIsSupported()) {
+        // 🌐 Browser biasa: pakai getDisplayMedia (muncul popup izin)
+        const ssOk = await ssRequestScreen();
+        if (!ssOk) {
+          showToast("❌ Clock In dibatalkan. Izin berbagi layar diperlukan.", "error", 6000);
+          [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+          setTimeout(async () => { await ssRequestScreen(); }, 1200);
+          return;
+        }
       }
     }
 
     // Hentikan screenshot saat Clock Out
-    if (type === "OUT") ssStop();
+    if (type === "OUT") {
+      if (window.__ELECTRON_APP__) {
+        window.electronAPI.clockOut();
+      } else {
+        ssStop();
+      }
+    }
 
     // Ambil nilai aktivitas
     const selAktFinal = document.getElementById("home-aktivitas-select");
@@ -996,7 +1008,7 @@ async function sendAbsen(type, label) {
       if (type === "OUT") loadWeeklyInfo();
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
-      if (type === "IN" && _ssFeatureEnabled) ssStart();
+      if (type === "IN" && _ssFeatureEnabled && !window.__ELECTRON_APP__) ssStart();
     } else if (d.status === "OUT_OF_AREA") {
       const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ ${_actionLabel} gagal! Anda berada ${d.distance}m dari ${d.area||"kantor"}. Harus berada dalam radius area. Jika sedang Tugas Luar, minta admin ubah status kerja Anda.`, "error", 7000);
