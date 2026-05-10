@@ -956,8 +956,7 @@ async function sendAbsen(type, label) {
     // ── Screen share: wajib jika fitur aktif & browser support & desktop ───
     if (type === "IN") {
       if (window.__ELECTRON_APP__) {
-        // ✅ Desktop App: screenshot otomatis via Electron, tanpa popup share layar
-        window.electronAPI.clockIn({ username: user, cookie: document.cookie });
+        // Electron: clockIn IPC dikirim SETELAH server konfirmasi OK (lihat bawah)
       } else if (_ssFeatureEnabled && ssIsSupported()) {
         // 🌐 Browser biasa: pakai getDisplayMedia (muncul popup izin)
         const ssOk = await ssRequestScreen();
@@ -1009,6 +1008,10 @@ async function sendAbsen(type, label) {
       if (type === "IN" || type === "BREAK_END") startTrackingPing();
       if (type === "OUT") stopTrackingPing();
       if (type === "IN" && _ssFeatureEnabled && !window.__ELECTRON_APP__) ssStart();
+      // Electron: mulai screenshot SETELAH server konfirmasi Clock In OK
+      if (type === "IN" && window.__ELECTRON_APP__) {
+        window.electronAPI.clockIn({ username: user, cookie: document.cookie });
+      }
     } else if (d.status === "OUT_OF_AREA") {
       const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ ${_actionLabel} gagal! Anda berada ${d.distance}m dari ${d.area||"kantor"}. Harus berada dalam radius area. Jika sedang Tugas Luar, minta admin ubah status kerja Anda.`, "error", 7000);
