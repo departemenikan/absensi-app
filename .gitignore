@@ -3,3 +3,5 @@ data.json
 users.json
 config.json
 *.log
+electron/dist/
+electron/node_modules/
