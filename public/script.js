@@ -2732,11 +2732,16 @@ function renderAnggotaTable(list) {
           border-radius:50px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px 2px 1px 0;">${d}</span>`).join('')
       : '<span style="color:#ccc;">—</span>';
 
+    // Warna nama & avatar selaras GROUP_META
+    const _GC = { owner:"#e8541e", admin:"#1a6ac7", manager:"#00796b", koordinator:"#5c35c9", anggota:"#546e7a" };
+    const namaColor = _GC[m.group] || "#2c3e50";
+    const avatarBg  = m.groupColor || _GC[m.group] || "#546e7a";
+
     // Avatar: foto atau inisial
     const avStyle = `width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
     const avatar  = m.photo
       ? `<img src="${m.photo}" style="${avStyle}">`
-      : `<div style="${avStyle}background:${m.groupColor||'#7f8c8d'};color:white;
+      : `<div style="${avStyle}background:${avatarBg};color:white;
            display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
            ${nama.charAt(0).toUpperCase()}</div>`;
 
@@ -2756,7 +2761,7 @@ function renderAnggotaTable(list) {
         <div style="display:flex;align-items:center;gap:10px;min-width:0;">
           ${avatar}
           <div style="min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:#111;white-space:nowrap;
+            <div style="font-size:13px;font-weight:700;color:${namaColor};white-space:nowrap;
                         overflow:hidden;text-overflow:ellipsis;">${nama}${tlBadge}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px;">${jabatan}</div>
           </div>
@@ -3683,16 +3688,24 @@ function switchAksesTab(tab) {
     btnAkses.style.background = "transparent";
     btnAkses.style.color      = "var(--muted)";
     btnAkses.style.boxShadow  = "none";
-    // Tampilkan panel Pengaturan Sistem langsung (tanpa akordion)
+    // Tampilkan akordion Pengaturan Sistem hanya untuk Owner/Admin
     const akordionSistem = document.getElementById("akordion-sistem");
     if (akordionSistem) {
-      akordionSistem.style.display = userLevel <= 2 ? "" : "none";
-    }
-    if (userLevel <= 2) {
-      loadSistemSettings();
-      loadScreenshotToggle();
-      loadWorkPhotoToggle();
-      loadAutoTutupOvertimeToggle();
+      if (userLevel <= 2) {
+        akordionSistem.style.display = "";
+        const gbody = document.getElementById("gbody-sistem");
+        const chev  = document.getElementById("chev-sistem");
+        if (gbody && !gbody.classList.contains("open")) {
+          gbody.classList.add("open");
+          if (chev) chev.style.transform = "rotate(90deg)";
+        }
+        loadSistemSettings();
+        loadScreenshotToggle();
+        loadWorkPhotoToggle();
+        loadAutoTutupOvertimeToggle();
+      } else {
+        akordionSistem.style.display = "none";
+      }
     }
   }
 }
