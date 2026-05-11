@@ -3340,11 +3340,15 @@
       btn.classList.add('spinning');
       setTimeout(() => btn.classList.remove('spinning'), 650);
     }
-    triggerRefresh();
+    if (typeof window._ptrTriggerRefresh === 'function') {
+      window._ptrTriggerRefresh();
+    }
   }
 
   // ─── Fungsi refresh per halaman ─────────────────────────────
   // [v5] Tampilkan spinner selama refresh, tutup setelah selesai
+  // Expose ke global agar bisa dipanggil dari tombol desktop
+  window._ptrTriggerRefresh = function() { triggerRefresh(); };
   function triggerRefresh() {
     const activeView = document.querySelector('.view.active');
     if (!activeView) { _ptrClose(); return; }
