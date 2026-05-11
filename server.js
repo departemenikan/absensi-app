@@ -1047,7 +1047,10 @@ app.get("/admin/today", requireLevel(3), (req, res) => {
     let status = "OUT";
     if (rec && !rec.jamKeluar) { const lb = rec.breaks.at(-1); status = (lb && !lb.end) ? "BREAK" : "IN"; }
     else if (rec && rec.jamKeluar) status = "DONE";
-    return { user: username, jamMasuk: rec?.jamMasuk||null, jamKeluar: rec?.jamKeluar||null, status };
+    const sessions  = load(F.sessions, {});
+    const sess      = sessions[username] || {};
+    return { user: username, jamMasuk: rec?.jamMasuk||null, jamKeluar: rec?.jamKeluar||null, status,
+             deviceType: sess.deviceType || "unknown", namaLengkap: users[username]?.namaLengkap || username };
   });
   records.sort((a, b) => {
     const na = (users[a.user]?.namaLengkap || a.user || '');

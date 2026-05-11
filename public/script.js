@@ -6331,13 +6331,19 @@ async function loadMonitorKehadiran() {
         const dotColor  = isBreak ? "#f39c12" : "#27ae60";
         const statusTxt = isBreak ? "Sedang Istirahat" : "Sedang Berlangsung";
         const masukTxt  = x.jamMasuk ? " · Masuk " + new Date(x.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false}) : "";
+        const devIcon  = {"mobile":"📱","desktop":"🖥","desktop-app":"🖥✅","unknown":""}[x.deviceType||"unknown"]||"";
+        const devLabel = {"mobile":"Mobile","desktop":"Browser","desktop-app":"Desktop App","unknown":""}[x.deviceType||"unknown"]||"";
+        const devColor = {"mobile":"#3498db","desktop":"#8e44ad","desktop-app":"#27ae60","unknown":"#ccc"}[x.deviceType||"unknown"]||"#ccc";
+        const devBadge = devLabel ? `<span style="margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;
+          font-weight:700;background:${devColor}22;color:${devColor};">${devIcon} ${devLabel}</span>` : "";
+        const namaDisplay = x.namaLengkap || x.user;
         return `<div style="display:flex;align-items:center;justify-content:space-between;
           padding:10px 0;border-bottom:1px solid #f5f5f5;">
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};
               display:inline-block;flex-shrink:0;box-shadow:0 0 0 3px ${dotColor}33;"></span>
             <div>
-              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${x.user}</div>
+              <div style="font-size:14px;font-weight:700;color:#2c3e50;">${namaDisplay}${devBadge}</div>
               <div style="font-size:11px;color:${dotColor};font-weight:600;">${statusTxt}${masukTxt}</div>
             </div>
           </div>
@@ -6357,12 +6363,18 @@ async function loadMonitorKehadiran() {
         const subTxt   = isDone
           ? "Selesai · Keluar " + new Date(x.jamKeluar).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",hour12:false})
           : "Belum Absen";
+        const devIcon2  = {"mobile":"📱","desktop":"🖥","desktop-app":"🖥✅","unknown":""}[x.deviceType||"unknown"]||"";
+        const devLabel2 = {"mobile":"Mobile","desktop":"Browser","desktop-app":"Desktop App","unknown":""}[x.deviceType||"unknown"]||"";
+        const devColor2 = {"mobile":"#3498db","desktop":"#8e44ad","desktop-app":"#27ae60","unknown":"#ccc"}[x.deviceType||"unknown"]||"#ccc";
+        const devBadge2 = devLabel2 ? `<span style="margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;
+          font-weight:700;background:${devColor2}22;color:${devColor2};">${devIcon2} ${devLabel2}</span>` : "";
+        const namaDisplay2 = x.namaLengkap || x.user;
         return `<div style="display:flex;align-items:center;gap:10px;
           padding:10px 0;border-bottom:1px solid #f5f5f5;">
           <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};
             display:inline-block;flex-shrink:0;"></span>
           <div>
-            <div style="font-size:14px;font-weight:600;color:#7f8c8d;">${x.user}</div>
+            <div style="font-size:14px;font-weight:600;color:#7f8c8d;">${namaDisplay2}${devBadge2}</div>
             <div style="font-size:11px;color:${dotColor};">${subTxt}</div>
           </div>
         </div>`;
