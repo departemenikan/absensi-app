@@ -27,7 +27,7 @@ const { dbLoad, dbSave, migrateFromTmp } = require("./db");
 const { sendWA, waStatus, getWAQR, logoutWA } = require("./wa");
 
 // ── Fonnte WA API — hanya untuk notif penting (cuti) ─────────────────────────
-const FONNTE_TOKEN = process.env.FONNTE_TOKEN || "jGuCsXaWAkPvmbKrg9mt";
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN || ""; // wajib set FONNTE_TOKEN di env var Render
 async function sendFonnte(nomor, pesan) {
   if (!nomor) return;
   try {
@@ -66,8 +66,8 @@ async function sendFonnte(nomor, pesan) {
 const BCRYPT_ROUNDS = 10;
 
 const PORT     = process.env.PORT || 3000;
-const IS_CLOUD = process.env.RAILWAY_ENVIRONMENT !== undefined;
-const DATA_DIR = IS_CLOUD ? "/tmp" : ".";
+// App berjalan di Render — Supabase sebagai storage utama, /tmp hanya untuk migrasi data lama
+const DATA_DIR = "/tmp";
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("public"));
@@ -974,7 +974,6 @@ app.post("/absen", requireLevel(99), (req, res) => {
   sendPushToUser(user, "Absensi Smart", `${labelPush[type] || type} — ${jamFmt}`).catch(() => {});
   // WA — konfirmasi absen ke user
   const labelWA = { IN: "Clock In berhasil ✅", OUT: "Clock Out berhasil ✅", BREAK_START: "Mulai Istirahat ☕", BREAK_END: "Selesai Istirahat 💪" };
-  console.log(`[WA-DEBUG] type=${type} user=${user} noHp=${userData.noHp || "KOSONG"} namaLengkap=${userData.namaLengkap || "KOSONG"}`);
   // WA Clock In/Out/Istirahat dihapus — sudah pakai Web Push
 
   res.send({ status: "OK" });
@@ -3952,7 +3951,7 @@ app.get("/wa/status", requireLevel(2), (req, res) => {
 });
 
 // GET: tampilkan QR dalam bentuk HTML (scan dari browser)
-app.get("/wa/qr", async (req, res) => {
+app.get("/wa/qr", requireLevel(2), async (req, res) => {
   const qr = getWAQR();
   if (!qr) {
     return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px">
@@ -3984,7 +3983,7 @@ app.get("/wa/qr", async (req, res) => {
 });
 
 // POST: logout WA dan scan ulang
-app.get("/wa/logout", async (req, res) => {
+app.get("/wa/logout", requireLevel(2), async (req, res) => {
   await logoutWA();
   res.send({ status: "OK", msg: "Logout berhasil. Buka /wa/qr untuk scan ulang." });
 });
