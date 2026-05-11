@@ -95,6 +95,7 @@ const F = {
   pushSubs:        "push_subscriptions",
   appSettings:     "app_settings",
   screenshots:     "screenshots",
+  sessions:         "sessions",        // track device login per user
   workPhotos:      "work_photos",
 };
 
@@ -849,7 +850,22 @@ app.post("/login", async (req, res) => {
   if (!valid) return res.send({ status: "FAIL" });
   const groups = load(F.groups, []);
   const group  = groups.find(g => g.id === (user.group || "anggota")) || groups[groups.length-1];
-  res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level });
+
+  // ── Simpan info device saat login ──────────────────────────
+  const ua         = req.headers["user-agent"] || "";
+  const isMobile   = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+  const isElectron = /Electron/i.test(ua);
+  const deviceType = isElectron ? "desktop-app" : isMobile ? "mobile" : "desktop";
+  const sessions   = load(F.sessions, {});
+  sessions[username] = {
+    deviceType,
+    userAgent:  ua,
+    loginAt:    new Date().toISOString(),
+    ip:         req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
+  };
+  save(F.sessions, sessions);
+
+  res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level, deviceType });
 });
 
 app.get("/check-user/:username", (req, res) => {
@@ -3506,6 +3522,8 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         status   = (lb && !lb.end) ? "BREAK" : "IN";
       } else if (rec && rec.jamKeluar) status = "DONE";
       const shots = todayData[username] || [];
+      const sessions   = load(F.sessions, {});
+      const sess       = sessions[username] || {};
       return {
         username,
         namaLengkap:      users[username]?.namaLengkap || username,
@@ -3513,6 +3531,8 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         status,
         totalScreenshots: shots.length,
         lastScreenshot:   shots.length ? shots[shots.length - 1].ts : null,
+        deviceType:       sess.deviceType || "unknown",
+        loginAt:          sess.loginAt    || null,
       };
     })
     .filter(u => u.status !== "OUT")

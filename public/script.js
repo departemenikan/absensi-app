@@ -279,6 +279,8 @@ async function doLogin(u, p) {
       localStorage.setItem("menus", JSON.stringify(d.menus || []));
       localStorage.setItem("group", d.group || "anggota");
       localStorage.setItem("level", d.level || 99);
+      // Simpan device type dari server (mobile / desktop / desktop-app)
+      localStorage.setItem("deviceType", d.deviceType || detectDeviceType());
       enterApp(d.menus || [], d.group, d.level);
       // Daftarkan push subscription setelah login berhasil
       subscribePushNotification().catch(() => {});
@@ -286,6 +288,35 @@ async function doLogin(u, p) {
       showToast("❌ Username atau password salah!", "error");
     }
   } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// Deteksi tipe device secara lokal (fallback jika server tidak kirim)
+function detectDeviceType() {
+  if (window.__ELECTRON_APP__) return "desktop-app";
+  const ua = navigator.userAgent || "";
+  if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
+// Icon device untuk ditampilkan di UI
+function deviceIcon(type) {
+  const icons = {
+    "mobile":      "📱",
+    "desktop":     "🖥",
+    "desktop-app": "🖥✅",
+    "unknown":     "❓",
+  };
+  return icons[type] || "❓";
+}
+
+function deviceLabel(type) {
+  const labels = {
+    "mobile":      "Mobile (HP)",
+    "desktop":     "Desktop (Browser)",
+    "desktop-app": "Desktop (App)",
+    "unknown":     "Tidak diketahui",
+  };
+  return labels[type] || type;
 }
 
 async function doSignUp(u, p) {
@@ -10237,6 +10268,21 @@ async function loadScreenshotActiveList(silent = false) {
         ? new Date(u.lastScreenshot).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
         : "--:--";
       const total = u.totalScreenshots || u.totalPhotos || 0;
+
+      // ── Device badge ──────────────────────────────────────────
+      const devIcon  = { "mobile": "📱", "desktop": "🖥", "desktop-app": "🖥✅", "unknown": "❓" };
+      const devLabel = { "mobile": "Mobile", "desktop": "Browser", "desktop-app": "Desktop App", "unknown": "" };
+      const devColor = { "mobile": "#3498db", "desktop": "#8e44ad", "desktop-app": "#27ae60", "unknown": "#95a5a6" };
+      const dtype    = u.deviceType || "unknown";
+      const deviceBadge = dtype !== "unknown" ? `
+        <span title="Login via ${devLabel[dtype]||dtype}" style="
+          display:inline-flex;align-items:center;gap:3px;
+          padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;
+          background:${devColor[dtype]}22;color:${devColor[dtype]};
+          margin-left:4px;vertical-align:middle;">
+          ${devIcon[dtype]||"❓"} ${devLabel[dtype]||dtype}
+        </span>` : "";
+
       return `
         <div onclick="ssSelectUser('${u.username}')"
           style="display:flex;align-items:center;gap:12px;padding:10px 12px;
@@ -10247,7 +10293,7 @@ async function loadScreenshotActiveList(silent = false) {
             ${(u.namaLengkap||u.username).charAt(0).toUpperCase()}
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}</div>
+            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}${deviceBadge}</div>
             <div style="font-size:11px;color:var(--muted);">${u.jabatan||""}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;">
@@ -10256,7 +10302,7 @@ async function loadScreenshotActiveList(silent = false) {
               ${statusLabel[u.status]||u.status}
             </div>` : ""}
             <div style="font-size:11px;color:var(--muted);margin-top:3px;">
-              ${total > 0 ? `🖥️ ${total} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
+              ${total > 0 ? `📸 ${total} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
             </div>
           </div>
         </div>`;
