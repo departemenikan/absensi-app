@@ -628,13 +628,13 @@ function autoTutupKekuranganOvertime() {
       `🔔 *Rekap Kekurangan Jam — ${blnStr}*\nHai *${namaUser}*,\n${msgUser}`
     );
 
-    // Notifikasi ke admin & owner
+    // Notifikasi ke admin saja (owner tidak perlu, hemat notif)
     const msgAdmin = `👤 ${namaUser} — kekurangan jam bulan ${blnStr}: ${totalKurang} jam, ditutupi OT: ${jamDiambil} jam${sisaPotongan > 0 ? `, sisa potongan gaji: ${sisaPotongan} jam` : " (lunas ✅)"}`;
     Object.keys(usersData).forEach(adm => {
       const grpId  = usersData[adm].group || "anggota";
       const grp    = groups.find(g => g.id === grpId);
       const level  = grp ? (grp.level || 99) : 99;
-      if (level <= 2) { // owner (1) dan admin (2)
+      if (level === 2) { // admin saja (level 2), owner (level 1) tidak perlu
         sendPushToUser(adm, "Auto Tutup Kekurangan Jam", msgAdmin).catch(() => {});
       }
     });
@@ -3089,12 +3089,16 @@ app.post("/pengajuan-cuti", requireLevel(99), (req, res) => {
     "Pengajuan Cuti Baru 📋",
     `${namaUser} mengajukan ${kebijakanNama}${tglLabel ? " — " + tglLabel : ""}`
   ).catch(() => {});
-  // WA — kirim ke semua admin/owner/manager yang punya noHp
-  const allUsers = load(F.users, {});
-  const groups   = load(F.groups, {});
+  // WA — bertingkat sesuai jabatan pengaju (hemat kuota)
+  //   Anggota / koordinator → notif ke Manager saja
+  //   Manager / admin / owner → notif ke Owner saja
+  const allUsers    = load(F.users, {});
+  const pengajuGrp  = getUserGroup(username);
+  const isAnggota   = ["anggota", "koordinator"].includes(pengajuGrp);
+  const targetGrps  = isAnggota ? ["manager"] : ["owner"];
   Object.entries(allUsers).forEach(([uname, udata]) => {
-    const grp = (groups[uname] || {}).group || udata.group || "";
-    if (["owner","admin","manager"].includes(grp) && udata.noHp) {
+    const grp = udata.group || "anggota";
+    if (targetGrps.includes(grp) && udata.noHp) {
       sendFonnte(udata.noHp, `📋 *Pengajuan Cuti Baru*\n*${namaUser}* mengajukan *${kebijakanNama}*${tglLabel ? " — " + tglLabel : ""}\n\nSilakan buka aplikasi untuk menyetujui/menolak.`);
     }
   });
@@ -3120,9 +3124,10 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
 
   let canApprove = false;
   if (approverGroup === "owner" || approverGroup === "admin") {
+    // Owner & admin bisa approve semua orang (admin sebagai backup jika owner tidak sempat)
     canApprove = true;
   } else if (approverGroup === "manager") {
-    // Manager hanya bisa approve anggota/koordinator (bukan manager/admin/owner)
+    // Manager hanya bisa approve anggota & koordinator
     if (targetGroup === "anggota" || targetGroup === "koordinator") canApprove = true;
   }
   if (!canApprove) return res.send({ status: "FORBIDDEN", msg: "Tidak memiliki hak approve" });
@@ -3164,8 +3169,13 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const targetGroup   = getUserGroup(p.username);
 
   let canReject = false;
-  if (approverGroup === "owner" || approverGroup === "admin") canReject = true;
-  else if (approverGroup === "manager" && (targetGroup === "anggota" || targetGroup === "koordinator")) canReject = true;
+  if (approverGroup === "owner" || approverGroup === "admin") {
+    // Owner & admin bisa reject semua orang (admin sebagai backup jika owner tidak sempat)
+    canReject = true;
+  } else if (approverGroup === "manager") {
+    // Manager hanya bisa reject anggota & koordinator
+    if (targetGroup === "anggota" || targetGroup === "koordinator") canReject = true;
+  }
   if (!canReject) return res.send({ status: "FORBIDDEN" });
 
   // Kembalikan saldo
