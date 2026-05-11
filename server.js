@@ -500,17 +500,22 @@ setInterval(() => {
     }
   }
 
-  // ── AUTO OVERTIME SERVER-SIDE — Minggu jam 23:59 ─────────────────────────
-  // Berjalan di server sehingga tidak perlu browser terbuka
-  if (hour === 23 && min === 59 && dow === 0) {
+  // ── AUTO OVERTIME SERVER-SIDE ─────────────────────────────────────────────
+  // Jalan di 2 waktu:
+  //   1) Senin 01:00 — utama, midnight-split sudah selesai & jam sudah final
+  //   2) Senin 06:00 — backup, jika server restart antara 00:00–05:59
+  const isOvertimeTime = (hour === 1 && min === 0 && dow === 1) ||
+                         (hour === 6 && min === 0 && dow === 1);
+  if (isOvertimeTime) {
     const usersOT = load(F.users, {});
-    console.log("[AUTO-OT-SERVER] Memproses overtime semua user (Minggu 23:59)...");
+    const triggerLabel = (hour === 1) ? "Senin 01:00 (utama)" : "Senin 06:00 (backup)";
+    console.log(`[AUTO-OT-SERVER] Memproses overtime semua user (${triggerLabel})...`);
     Object.keys(usersOT).forEach(username => {
       try { hitungOvertimeBackground(username); } catch(e) {
         console.error(`[AUTO-OT-SERVER] Gagal proses ${username}:`, e.message);
       }
     });
-    console.log("[AUTO-OT-SERVER] Selesai.");
+    console.log(`[AUTO-OT-SERVER] Selesai (${triggerLabel}).`);
   }
 
   // ── AUTO RESET CUTI TAHUNAN — 1 Januari jam 00:01 ────────────────────────
