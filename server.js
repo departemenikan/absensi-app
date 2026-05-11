@@ -855,7 +855,13 @@ app.post("/login", async (req, res) => {
   const ua         = req.headers["user-agent"] || "";
   const isMobile   = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
   const isElectron = /Electron/i.test(ua);
-  const deviceType = isElectron ? "desktop-app" : isMobile ? "mobile" : "desktop";
+  // isPWA dikirim dari client via body (karena server tidak bisa deteksi sendiri)
+  const isPWA      = req.body.isPWA === true;
+  let deviceType   = "desktop";
+  if (isElectron)        deviceType = "desktop-app";
+  else if (isPWA && isMobile) deviceType = "pwa";
+  else if (isPWA)        deviceType = "pwa-desktop";
+  else if (isMobile)     deviceType = "mobile";
   const sessions   = load(F.sessions, {});
   sessions[username] = {
     deviceType,

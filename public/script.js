@@ -272,7 +272,8 @@ async function handleAuth() {
 
 async function doLogin(u, p) {
   try {
-    const r = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p}) });
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    const r = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, isPWA}) });
     const d = await r.json();
     if (d.status === "OK") {
       localStorage.setItem("user", u);
@@ -293,28 +294,37 @@ async function doLogin(u, p) {
 // Deteksi tipe device secara lokal (fallback jika server tidak kirim)
 function detectDeviceType() {
   if (window.__ELECTRON_APP__) return "desktop-app";
-  const ua = navigator.userAgent || "";
-  if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua)) return "mobile";
+  const ua       = navigator.userAgent || "";
+  const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+  const isPWA    = window.matchMedia("(display-mode: standalone)").matches
+                   || window.navigator.standalone === true; // iOS Safari
+  if (isMobile && isPWA) return "pwa";
+  if (isMobile)          return "mobile";
+  if (isPWA)             return "pwa-desktop"; // jarang, PWA di desktop browser
   return "desktop";
 }
 
 // Icon device untuk ditampilkan di UI
 function deviceIcon(type) {
   const icons = {
-    "mobile":      "📱",
-    "desktop":     "🖥",
-    "desktop-app": "🖥✅",
-    "unknown":     "❓",
+    "mobile":       "📱",
+    "pwa":          "📱🔖",
+    "pwa-desktop":  "🖥🔖",
+    "desktop":      "🖥",
+    "desktop-app":  "🖥✅",
+    "unknown":      "❓",
   };
   return icons[type] || "❓";
 }
 
 function deviceLabel(type) {
   const labels = {
-    "mobile":      "Mobile (HP)",
-    "desktop":     "Desktop (Browser)",
-    "desktop-app": "Desktop (App)",
-    "unknown":     "Tidak diketahui",
+    "mobile":       "Mobile",
+    "pwa":          "PWA",
+    "pwa-desktop":  "PWA Desktop",
+    "desktop":      "Browser",
+    "desktop-app":  "Desktop App",
+    "unknown":      "Tidak diketahui",
   };
   return labels[type] || type;
 }
