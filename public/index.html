@@ -3334,21 +3334,17 @@
     setTimeout(() => { ptrEl.style.transition = 'height .15s ease'; }, 300);
   }
 
-  // ─── Tombol refresh desktop ─────────────────────────────────
-  function desktopRefresh(btn) {
+  // ─── Tombol refresh desktop — expose ke global agar onclick HTML bisa panggil ──
+  window.desktopRefresh = function(btn) {
     if (btn) {
       btn.classList.add('spinning');
       setTimeout(() => btn.classList.remove('spinning'), 650);
     }
-    if (typeof window._ptrTriggerRefresh === 'function') {
-      window._ptrTriggerRefresh();
-    }
-  }
+    triggerRefresh();
+  };
 
   // ─── Fungsi refresh per halaman ─────────────────────────────
   // [v5] Tampilkan spinner selama refresh, tutup setelah selesai
-  // Expose ke global agar bisa dipanggil dari tombol desktop
-  window._ptrTriggerRefresh = function() { triggerRefresh(); };
   function triggerRefresh() {
     const activeView = document.querySelector('.view.active');
     if (!activeView) { _ptrClose(); return; }
