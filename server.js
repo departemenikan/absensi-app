@@ -504,6 +504,7 @@ setInterval(() => {
   // Jalan di 2 waktu:
   //   1) Senin 01:00 — utama, midnight-split sudah selesai & jam sudah final
   //   2) Senin 06:00 — backup, jika server restart antara 00:00–05:59
+  //      Urutan aman: overtime 06:00 → autoTutupKekurangan 07:00 (jarak 1 jam)
   const isOvertimeTime = (hour === 1 && min === 0 && dow === 1) ||
                          (hour === 6 && min === 0 && dow === 1);
   if (isOvertimeTime) {
@@ -535,7 +536,7 @@ setInterval(() => {
 
 // ========================
 // AUTO TUTUP KEKURANGAN JAM DARI SALDO OVERTIME
-// Berjalan setiap menit, eksekusi hanya tanggal 1 jam 06:00
+// Berjalan setiap menit, eksekusi hanya tanggal 1 jam 07:00
 // ========================
 
 // Fungsi utama: evaluasi kekurangan jam bulan lalu per user, tutup dari saldo overtime
@@ -645,10 +646,11 @@ function autoTutupKekuranganOvertime() {
   console.log(`[AUTO-TUTUP-OT] Selesai proses bulan ${blnStr}.`);
 }
 
-// Scheduler: tanggal 1 jam 06:00
+// Scheduler: tanggal 1 jam 07:00
+// Sengaja 07:00 agar tidak bertabrakan dengan auto overtime backup (Senin 06:00)
 setInterval(() => {
   const now = new Date();
-  if (now.getDate() !== 1 || now.getHours() !== 6 || now.getMinutes() !== 0) return;
+  if (now.getDate() !== 1 || now.getHours() !== 7 || now.getMinutes() !== 0) return;
   autoTutupKekuranganOvertime();
 }, 60000);
 
