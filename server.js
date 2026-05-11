@@ -3638,7 +3638,7 @@ app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
 });
 
 // Toggle fitur foto kegiatan — hanya Owner (level 1)
-app.post("/app-settings/work-photo-toggle", requireLevel(1), (req, res) => {
+app.post("/app-settings/work-photo-toggle", requireLevel(2), (req, res) => {
   const { enabled } = req.body;
   if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
   const current = load(F.appSettings, { timezone: "Asia/Makassar" });
@@ -3899,7 +3899,7 @@ app.post("/app-settings", (req, res) => {
 });
 
 // Toggle fitur screenshot — hanya Owner (level 1)
-app.post("/app-settings/screenshot-toggle", requireLevel(1), (req, res) => {
+app.post("/app-settings/screenshot-toggle", requireLevel(2), (req, res) => {
   const { enabled } = req.body;
   if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
   const current = load(F.appSettings, { timezone: "Asia/Makassar" });
@@ -3911,7 +3911,7 @@ app.post("/app-settings/screenshot-toggle", requireLevel(1), (req, res) => {
 
 // Toggle auto tutup kekurangan jam dari saldo overtime — hanya Owner (level 1)
 // Lokasi tampil: Aksesibilitas → Kontrol Akses → Pengaturan Sistem
-app.post("/app-settings/auto-tutup-overtime-toggle", requireLevel(1), (req, res) => {
+app.post("/app-settings/auto-tutup-overtime-toggle", requireLevel(2), (req, res) => {
   const { enabled } = req.body;
   if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
   const current = load(F.appSettings, { timezone: "Asia/Makassar" });
