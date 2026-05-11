@@ -3140,13 +3140,20 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
 
   // Push ke pengaju — cutinya disetujui
   const tglLabel = p.tanggalMulai ? (p.tanggalAkhir && p.tanggalAkhir !== p.tanggalMulai ? `${p.tanggalMulai} s/d ${p.tanggalAkhir}` : p.tanggalMulai) : "";
+  const usersAll = load(F.users, {});
+  const namaApprover = usersAll[approver]?.namaLengkap || usersAll[approver]?.nama || approver;
+  const namaPengaju  = usersAll[p.username]?.namaLengkap || usersAll[p.username]?.nama || p.username;
   sendPushToUser(p.username,
     "Cuti Disetujui ✅",
-    `${p.kebijakanNama} kamu${tglLabel ? " (" + tglLabel + ")" : ""} telah disetujui`
+    `${p.kebijakanNama} kamu${tglLabel ? " (" + tglLabel + ")" : ""} telah disetujui oleh ${namaApprover}`
+  ).catch(() => {});
+  // Push ke owner & admin — audit trail siapa yang approve
+  sendPushToGroups(["owner", "admin"],
+    "Cuti Disetujui ✅",
+    `Pengajuan cuti ${namaPengaju} (${p.kebijakanNama}${tglLabel ? " — " + tglLabel : ""}) telah di-approve oleh ${namaApprover}`
   ).catch(() => {});
   // WA ke pengaju — disetujui
-  const usersAll = load(F.users, {});
-  if (usersAll[p.username]?.noHp) sendFonnte(usersAll[p.username].noHp, `✅ *Cuti Disetujui*\nHai *${usersAll[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabel ? " (" + tglLabel + ")" : ""} telah *disetujui* oleh ${approver}.`);
+  if (usersAll[p.username]?.noHp) sendFonnte(usersAll[p.username].noHp, `✅ *Cuti Disetujui*\nHai *${usersAll[p.username]?.nama || p.username}*, pengajuan *${p.kebijakanNama}*${tglLabel ? " (" + tglLabel + ")" : ""} telah *disetujui* oleh ${namaApprover}.`);
 
   res.send({ status: "OK" });
 });
