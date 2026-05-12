@@ -8167,8 +8167,8 @@ function switchProfilTab(tab) {
     document.getElementById("profil-face-cam-wrap").classList.add("hidden");
     _profilNewFaceDesc = null;
   } else {
-    // Tab Keamanan dibuka — inisialisasi toggle biometrik
-    initBiometricToggle();
+    // Tab Keamanan dibuka — init toggle biometrik
+    setTimeout(initBiometricToggle, 50);
   }
 }
 
@@ -11031,7 +11031,7 @@ async function registerFingerprint(username) {
     // 3. Kirim ke server
     const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
                           .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-    // Fix: getPublicKey() bisa return null di sebagian browser — handle dengan benar
+    // Fix: getPublicKey() bisa return null di sebagian browser
     let _pkBytes = new ArrayBuffer(0);
     try {
       if (credential.response.getPublicKey) {
@@ -11210,29 +11210,30 @@ window.removeFingerprint            = removeFingerprint;
 window.renderFingerprintButton      = renderFingerprintButton;
 window.offerFingerprintRegistration = offerFingerprintRegistration;
 
-// ── BIOMETRIC TOGGLE — diakses dari Profil > tab Keamanan ────────────────────
+// ── BIOMETRIC TOGGLE — Profil > tab Keamanan ─────────────────────────────────
 function initBiometricToggle() {
   const card   = document.getElementById("biometric-card");
   const toggle = document.getElementById("biometric-toggle");
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
 
-  // Sembunyikan card jika browser/device tidak support WebAuthn sama sekali
+  // Kalau WebAuthn tidak didukung sama sekali, sembunyikan card
   if (!isWebAuthnSupported()) {
     card.style.display = "none";
     return;
   }
-  card.style.display = "";
+  card.style.display = ""; // pastikan selalu terlihat kalau support
 
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
 
-  // Toggle aktif hanya jika credential di device ini milik user yang sedang login
+  // Aktif hanya jika credential tersimpan UNTUK user yang sedang login
   const isActive = !!(credId && savedU === me);
-  toggle.checked = isActive;
+  toggle.checked  = isActive;
+  toggle.disabled = false;
   if (sub) sub.textContent = isActive
-    ? "✅ Aktif di device ini — ketuk untuk menonaktifkan"
+    ? "✅ Aktif — ketuk toggle untuk menonaktifkan"
     : "Belum aktif di device ini";
 }
 
@@ -11241,34 +11242,36 @@ async function handleBiometricToggle(el) {
   const me  = localStorage.getItem("user") || "";
 
   if (el.checked) {
-    // User ingin AKTIFKAN — sensor HP muncul sekali untuk pairing
-    el.checked = false; // reset sementara, akan di-set true kalau berhasil
+    // ── AKTIFKAN: sensor HP muncul sekali untuk pairing ──
+    el.checked  = false;
     el.disabled = true;
-    if (sub) sub.textContent = "⏳ Menunggu verifikasi biometrik...";
+    if (sub) sub.textContent = "⏳ Menunggu verifikasi biometrik HP...";
 
     try {
       await registerFingerprint(me);
       const ok = !!(localStorage.getItem("fingerprintCredId") &&
                     localStorage.getItem("fingerprintUser") === me);
-      el.checked = ok;
+      el.checked  = ok;
+      el.disabled = false;
       if (sub) sub.textContent = ok
-        ? "✅ Aktif di device ini — ketuk untuk menonaktifkan"
+        ? "✅ Aktif — ketuk toggle untuk menonaktifkan"
         : "Belum aktif di device ini";
     } catch(e) {
-      el.checked = false;
-      if (sub) sub.textContent = "Belum aktif di device ini";
-    } finally {
+      el.checked  = false;
       el.disabled = false;
+      if (sub) sub.textContent = "Belum aktif di device ini";
     }
+
   } else {
-    // User ingin NONAKTIFKAN
+    // ── NONAKTIFKAN: hapus credential dari device ──
     if (!confirm("Nonaktifkan login biometrik di device ini?")) {
-      el.checked = true; // batalkan
+      el.checked = true; // batalkan toggle
       return;
     }
     await removeFingerprint();
     el.checked = false;
     if (sub) sub.textContent = "Belum aktif di device ini";
+    showToast("🔐 Login biometrik dinonaktifkan", "warning");
   }
 }
 
