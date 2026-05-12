@@ -8168,7 +8168,8 @@ function switchProfilTab(tab) {
     _profilNewFaceDesc = null;
   } else {
     // Tab Keamanan dibuka — init toggle biometrik
-    setTimeout(initBiometricToggle, 50);
+    // Delay 300ms agar plugin Capacitor sudah siap (terutama saat server.url eksternal)
+    setTimeout(initBiometricToggle, 300);
   }
 }
 
@@ -10989,6 +10990,20 @@ function isCapacitorNative() {
             window.Capacitor.isNativePlatform());
 }
 
+// Tunggu plugin tersedia (maks timeoutMs ms) — penting saat server.url eksternal
+function waitForBiometricPlugin(timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    function check() {
+      const p = window.Capacitor?.Plugins?.BiometricAuth;
+      if (p) return resolve(p);
+      if (Date.now() - start > timeoutMs) return resolve(null);
+      setTimeout(check, 100);
+    }
+    check();
+  });
+}
+
 // Ambil plugin BiometricAuth dari Capacitor bridge
 function getBiometricPlugin() {
   return (window.Capacitor &&
@@ -11013,10 +11028,15 @@ function isWebAuthnSupported() {
 // Cek apakah biometrik tersedia (native atau browser)
 async function isBiometricAvailable() {
   if (isCapacitorNative()) {
-    const plugin = getBiometricPlugin();
-    if (!plugin) return false;
+    // Tunggu plugin siap (diperlukan saat pakai server.url eksternal)
+    const plugin = getBiometricPlugin() || await waitForBiometricPlugin(4000);
+    if (!plugin) {
+      console.warn("[Biometric] Plugin BiometricAuth tidak ditemukan setelah menunggu");
+      return false;
+    }
     try {
       const result = await plugin.checkBiometry();
+      console.log("[Biometric] checkBiometry:", JSON.stringify(result));
       return result && result.isAvailable === true;
     } catch(e) {
       console.warn("[Biometric] checkBiometry error:", e);
@@ -11312,9 +11332,22 @@ async function initBiometricToggle() {
   const toggle = document.getElementById("biometric-toggle");
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
-  const available = await isBiometricAvailable();
-  if (!available) { card.style.display = "none"; return; }
+
+  // Tampilkan card dulu, baru cek availability
   card.style.display = "";
+  toggle.disabled = true;
+  if (sub) sub.textContent = "⏳ Memeriksa dukungan biometrik...";
+
+  const available = await isBiometricAvailable();
+
+  if (!available) {
+    // Jangan sembunyikan — tampilkan keterangan agar user tahu fitur ini ada
+    toggle.disabled = true;
+    toggle.checked  = false;
+    if (sub) sub.textContent = "⚠️ Device atau browser ini tidak mendukung biometrik";
+    return;
+  }
+
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
