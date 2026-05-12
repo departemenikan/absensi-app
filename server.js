@@ -855,23 +855,26 @@ app.post("/login", async (req, res) => {
   const ua         = req.headers["user-agent"] || "";
   const isMobile   = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
   const isElectron = /Electron/i.test(ua);
-  // isPWA dikirim dari client via body (karena server tidak bisa deteksi sendiri)
   const isPWA      = req.body.isPWA === true;
   let deviceType   = "desktop";
-  if (isElectron)        deviceType = "desktop-app";
+  if (isElectron)             deviceType = "desktop-app";
   else if (isPWA && isMobile) deviceType = "pwa";
-  else if (isPWA)        deviceType = "pwa-desktop";
-  else if (isMobile)     deviceType = "mobile";
+  else if (isPWA)             deviceType = "pwa-desktop";
+  else if (isMobile)          deviceType = "mobile";
+
+  // Generate sessionId unik — dipakai untuk deteksi login di device lain
+  const sessionId  = require("crypto").randomBytes(24).toString("hex");
   const sessions   = load(F.sessions, {});
   sessions[username] = {
     deviceType,
+    sessionId,
     userAgent:  ua,
     loginAt:    new Date().toISOString(),
     ip:         req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
   };
   save(F.sessions, sessions);
 
-  res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level, deviceType });
+  res.send({ status: "OK", group: group.id, menus: group.menus, level: group.level, deviceType, sessionId });
 });
 
 app.get("/check-user/:username", (req, res) => {
@@ -3935,6 +3938,36 @@ app.post("/app-settings/screenshot-toggle", requireLevel(2), (req, res) => {
   save(F.appSettings, updated);
   console.log(`[SETTING] Fitur screenshot ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
   res.json({ status: "OK", screenshotEnabled: enabled });
+});
+
+// Toggle fitur single-session (auto logout jika login di device lain) — hanya Owner
+app.post("/app-settings/single-session-toggle", requireLevel(2), (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") return res.status(400).json({ status: "INVALID" });
+  const current = load(F.appSettings, { timezone: "Asia/Makassar" });
+  const updated  = { ...current, singleSessionEnabled: enabled };
+  save(F.appSettings, updated);
+  console.log(`[SETTING] Fitur Single Session ${enabled ? "DIAKTIFKAN" : "DINONAKTIFKAN"} oleh ${req._requester}`);
+  res.json({ status: "OK", singleSessionEnabled: enabled });
+});
+
+// GET /session/check — cek apakah session user masih valid (dipanggil tiap 30 detik dari client)
+app.get("/session/check", requireLevel(99), (req, res) => {
+  const user     = req._requester;
+  const settings = load(F.appSettings, {});
+  // Jika fitur nonaktif, selalu valid
+  if (!settings.singleSessionEnabled) return res.json({ valid: true });
+
+  const sessions = load(F.sessions, {});
+  const sess     = sessions[user];
+  if (!sess) return res.json({ valid: true }); // belum ada session → anggap valid
+
+  // Bandingkan sessionId yang dikirim client dengan yang tersimpan di server
+  const clientSessionId = req.headers["x-session-id"] || req.query.sessionId || "";
+  if (!clientSessionId || clientSessionId !== sess.sessionId) {
+    return res.json({ valid: false, reason: "LOGIN_OTHER_DEVICE", deviceType: sess.deviceType });
+  }
+  res.json({ valid: true });
 });
 
 // Toggle auto tutup kekurangan jam dari saldo overtime — hanya Owner (level 1)

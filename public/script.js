@@ -85,7 +85,8 @@ function toggleEye(inputId, btnId) {
 // ============================================================
 function authFetch(url, options = {}) {
   const user = localStorage.getItem("user") || "";
-  options.headers = Object.assign({}, options.headers || {}, { "X-User": user });
+  const sessionId = localStorage.getItem("sessionId") || "";
+  options.headers = Object.assign({}, options.headers || {}, { "X-User": user, "X-Session-Id": sessionId });
   return fetch(url, options);
 }
 
@@ -280,11 +281,14 @@ async function doLogin(u, p) {
       localStorage.setItem("menus", JSON.stringify(d.menus || []));
       localStorage.setItem("group", d.group || "anggota");
       localStorage.setItem("level", d.level || 99);
-      // Simpan device type dari server (mobile / desktop / desktop-app)
       localStorage.setItem("deviceType", d.deviceType || detectDeviceType());
+      // Simpan sessionId — dipakai untuk deteksi login di device lain
+      if (d.sessionId) localStorage.setItem("sessionId", d.sessionId);
       enterApp(d.menus || [], d.group, d.level);
       // Daftarkan push subscription setelah login berhasil
       subscribePushNotification().catch(() => {});
+      // Mulai cek session (auto logout jika login di device lain)
+      startSessionChecker();
     } else {
       showToast("❌ Username atau password salah!", "error");
     }
@@ -3947,6 +3951,7 @@ function switchAksesTab(tab) {
         loadScreenshotToggle();
         loadWorkPhotoToggle();
         loadAutoTutupOvertimeToggle();
+        loadSingleSessionToggle();
       } else {
         akordionSistem.style.display = "none";
       }
@@ -10864,3 +10869,102 @@ async function toggleAutoTutupOvertime() {
 window.loadAutoTutupOvertimeToggle    = loadAutoTutupOvertimeToggle;
 window.renderAutoTutupOvertimeToggle  = renderAutoTutupOvertimeToggle;
 window.toggleAutoTutupOvertime        = toggleAutoTutupOvertime;
+
+// ============================================================
+// SINGLE SESSION — Auto Logout jika Login di Device Lain
+// ============================================================
+let _singleSessionEnabled = false;
+let _sessionCheckInterval = null;
+
+async function loadSingleSessionToggle() {
+  try {
+    const r = await authFetch("/app-settings");
+    if (!r.ok) return;
+    const d = await r.json();
+    _singleSessionEnabled = d.singleSessionEnabled === true;
+    renderSingleSessionToggle(_singleSessionEnabled);
+  } catch {}
+}
+
+function renderSingleSessionToggle(enabled) {
+  const label = document.getElementById("ss2-toggle-label");
+  const sub   = document.getElementById("ss2-toggle-sub");
+  const sw    = document.getElementById("ss2-toggle-switch");
+  const knob  = document.getElementById("ss2-toggle-knob");
+  if (!label || !sw || !knob) return;
+  if (enabled) {
+    label.textContent   = "✅ Fitur Aktif";
+    label.style.color   = "#27ae60";
+    sub.textContent     = "Karyawan otomatis logout jika login di device lain";
+    sw.style.background = "#27ae60";
+    knob.style.left     = "27px";
+  } else {
+    label.textContent   = "⛔ Fitur Nonaktif";
+    label.style.color   = "#95a5a6";
+    sub.textContent     = "Karyawan bisa login di banyak device sekaligus";
+    sw.style.background = "#ccc";
+    knob.style.left     = "3px";
+  }
+}
+
+async function toggleSingleSession() {
+  if (userLevel > 1) { showToast("⛔ Hanya Owner yang dapat mengubah pengaturan ini", "error"); return; }
+  const newState = !_singleSessionEnabled;
+  try {
+    const r = await authFetch("/app-settings/single-session-toggle", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: newState }),
+    });
+    if (!r.ok) { showToast("❌ Gagal menyimpan", "error"); return; }
+    _singleSessionEnabled = newState;
+    renderSingleSessionToggle(newState);
+    showToast(newState ? "✅ Single Session diaktifkan" : "🔕 Single Session dinonaktifkan");
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+// Cek session tiap 30 detik — jika tidak valid, paksa logout
+async function checkSessionValidity() {
+  const sessionId = localStorage.getItem("sessionId");
+  const user      = localStorage.getItem("user");
+  if (!user || !sessionId) return;
+  try {
+    const r = await authFetch("/session/check", {
+      headers: { "X-Session-Id": sessionId }
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.valid) {
+      // Session tidak valid — ada login di device lain
+      stopSessionChecker();
+      const devLabel = { "mobile": "HP (Mobile)", "pwa": "HP (PWA)", "desktop": "Komputer (Browser)", "desktop-app": "Komputer (Desktop App)" };
+      const otherDev = devLabel[d.deviceType] || "device lain";
+      // Paksa logout dengan pesan jelas
+      showToast(`⚠️ Sesi Anda diakhiri karena login dari ${otherDev}`, "warning", 8000);
+      setTimeout(() => {
+        localStorage.clear();
+        location.reload();
+      }, 3000);
+    }
+  } catch {}
+}
+
+function startSessionChecker() {
+  stopSessionChecker();
+  const sessionId = localStorage.getItem("sessionId");
+  if (!sessionId) return;
+  // Cek pertama setelah 10 detik, lalu tiap 30 detik
+  setTimeout(() => {
+    checkSessionValidity();
+    _sessionCheckInterval = setInterval(checkSessionValidity, 30000);
+  }, 10000);
+}
+
+function stopSessionChecker() {
+  if (_sessionCheckInterval) { clearInterval(_sessionCheckInterval); _sessionCheckInterval = null; }
+}
+
+window.loadSingleSessionToggle   = loadSingleSessionToggle;
+window.renderSingleSessionToggle = renderSingleSessionToggle;
+window.toggleSingleSession       = toggleSingleSession;
+window.startSessionChecker       = startSessionChecker;
+window.stopSessionChecker        = stopSessionChecker;

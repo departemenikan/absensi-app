@@ -1200,6 +1200,36 @@
                 </div>
               </div>
 
+              <!-- Divider -->
+              <div style="height:1px;background:#eee;margin:18px 0;"></div>
+
+              <!-- Toggle Single Session (Auto Logout) -->
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
+                  🔐 Single Session (Auto Logout Lintas Device)
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+                  Jika diaktifkan, karyawan yang login di device baru akan otomatis me-logout device lama. Mencegah satu akun dipakai di banyak device sekaligus.
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            background:#f8f9ff;border-radius:12px;padding:12px 14px;
+                            border:1px solid #e8ecf0;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;" id="ss2-toggle-label">Memuat...</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="ss2-toggle-sub"></div>
+                  </div>
+                  <div onclick="toggleSingleSession()"
+                    id="ss2-toggle-switch"
+                    style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                           cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                    <div id="ss2-toggle-knob"
+                      style="width:22px;height:22px;border-radius:50%;background:white;
+                             position:absolute;top:3px;left:3px;
+                             transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                  </div>
+                </div>
+              </div>
+
               <div style="height:16px;"></div>
           </div>
         </div>
