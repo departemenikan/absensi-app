@@ -6,19 +6,18 @@
 <title>Debug Biometric</title>
 <style>
 body { font-family: monospace; padding: 20px; background: #111; color: #0f0; font-size: 13px; }
-.ok  { color: #2ecc71; }
-.err { color: #e74c3c; }
-.warn{ color: #f39c12; }
+.ok  { color: #2ecc71; } .err { color: #e74c3c; } .warn{ color: #f39c12; }
 h2   { color: #4f8ef7; }
-pre  { background: #1a1a1a; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+pre  { background: #1a1a1a; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 4px 0; }
 button { padding: 12px 20px; background: #4f8ef7; color: white; border: none; border-radius: 8px; font-size: 15px; margin: 8px 4px; cursor: pointer; }
 </style>
 </head>
 <body>
-<h2>🔐 Debug Biometric</h2>
+<h2>🔐 Debug Biometric v2</h2>
 <div id="out"></div>
 <button onclick="runCheck()">▶ Jalankan Cek</button>
-<button onclick="testCheckBiometry()">🧪 Test checkBiometry()</button>
+<button onclick="testPlugin('BiometricAuthNative')">🧪 Test BiometricAuthNative</button>
+<button onclick="testPlugin('BiometricAuth')">🧪 Test BiometricAuth</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@capacitor/core@8/dist/capacitor.js"></script>
 <script src="capacitor-bridge.js"></script>
@@ -35,63 +34,49 @@ async function runCheck() {
   out.innerHTML = "";
   log("=== CAPACITOR ===");
   log("window.Capacitor: " + !!window.Capacitor, window.Capacitor ? "ok" : "err");
-  
-  if (!window.Capacitor) { log("❌ Capacitor tidak tersedia sama sekali", "err"); return; }
+  if (!window.Capacitor) return;
 
-  log("isNativePlatform(): " + window.Capacitor.isNativePlatform?.(), 
-      window.Capacitor.isNativePlatform?.() ? "ok" : "err");
+  log("isNativePlatform(): " + window.Capacitor.isNativePlatform?.(), window.Capacitor.isNativePlatform?.() ? "ok" : "err");
   log("getPlatform(): " + window.Capacitor.getPlatform?.());
-  log("isPluginAvailable('BiometricAuth'): " + window.Capacitor.isPluginAvailable?.("BiometricAuth"),
-      window.Capacitor.isPluginAvailable?.("BiometricAuth") ? "ok" : "err");
+  log("isPluginAvailable('BiometricAuth'): " + window.Capacitor.isPluginAvailable?.("BiometricAuth"));
+  log("isPluginAvailable('BiometricAuthNative'): " + window.Capacitor.isPluginAvailable?.("BiometricAuthNative"));
 
   log("\n=== PLUGINS ===");
-  const plugins = window.Capacitor.Plugins || {};
-  log("Plugin list: " + Object.keys(plugins).join(", "));
-  log("BiometricAuth ada: " + !!plugins.BiometricAuth, plugins.BiometricAuth ? "ok" : "err");
+  const P = window.Capacitor.Plugins || {};
+  log("Semua plugin: " + Object.keys(P).join(", "));
+  log("BiometricAuth ada: "       + !!P.BiometricAuth,       P.BiometricAuth       ? "ok" : "err");
+  log("BiometricAuthNative ada: " + !!P.BiometricAuthNative, P.BiometricAuthNative ? "ok" : "err");
 
-  log("\n=== WEBAUTHN ===");
-  log("navigator.credentials: " + !!navigator.credentials, navigator.credentials ? "ok" : "warn");
-  log("credentials.create: " + !!(navigator.credentials && navigator.credentials.create),
-      (navigator.credentials && navigator.credentials.create) ? "ok" : "warn");
-  log("isSecureContext: " + window.isSecureContext, window.isSecureContext ? "ok" : "err");
-  log("protocol: " + location.protocol, location.protocol === "https:" ? "ok" : "err");
-  log("hostname: " + location.hostname);
-
-  log("\n=== USER AGENT ===");
-  log(navigator.userAgent);
-
-  log("\n=== BIOMETRIC VERDICT ===");
-  const isNative = !!(window.Capacitor?.isNativePlatform?.());
-  const hasPlugin = !!(window.Capacitor?.Plugins?.BiometricAuth);
-  const hasWebAuthn = !!(navigator.credentials?.create && window.isSecureContext);
-  
-  if (isNative && hasPlugin) {
-    log("✅ Native + Plugin tersedia → akan pakai checkBiometry()", "ok");
-  } else if (isNative && !hasPlugin) {
-    log("⚠️ Native tapi Plugin TIDAK ADA → biometrik tidak akan jalan", "err");
-    log("   → Kemungkinan: npx cap sync belum dijalankan, atau capacitor-bridge.js belum update", "warn");
-  } else if (!isNative && hasWebAuthn) {
-    log("✅ Browser/PWA + WebAuthn tersedia", "ok");
+  log("\n=== VERDICT ===");
+  const isNative = !!window.Capacitor.isNativePlatform?.();
+  const plugin = P.BiometricAuthNative || P.BiometricAuth;
+  if (isNative && plugin) {
+    log("✅ Native + plugin tersedia → siap test checkBiometry()", "ok");
+    log("   Plugin yang dipakai: " + (P.BiometricAuthNative ? "BiometricAuthNative" : "BiometricAuth"), "ok");
+  } else if (isNative && !plugin) {
+    log("❌ Native tapi tidak ada plugin sama sekali", "err");
   } else {
-    log("❌ Tidak ada jalur biometrik yang tersedia", "err");
-    log("   isNative=" + isNative + " hasPlugin=" + hasPlugin + " hasWebAuthn=" + hasWebAuthn, "warn");
+    log("⚠️ Bukan native (platform: " + window.Capacitor.getPlatform?.() + ")", "warn");
   }
 }
 
-async function testCheckBiometry() {
-  const plugin = window.Capacitor?.Plugins?.BiometricAuth;
-  if (!plugin) { log("❌ Plugin tidak ada, tidak bisa test", "err"); return; }
-  log("\n=== TEST checkBiometry() ===");
+async function testPlugin(name) {
+  const plugin = window.Capacitor?.Plugins?.[name];
+  if (!plugin) { log("\n❌ Plugin '" + name + "' tidak ada", "err"); return; }
+  log("\n=== TEST " + name + ".checkBiometry() ===");
   try {
     const result = await plugin.checkBiometry();
     log("Hasil: " + JSON.stringify(result, null, 2), result.isAvailable ? "ok" : "err");
+    if (!result.isAvailable) {
+      log("reason: " + (result.reason || result.errorCode || result.code || "?"), "warn");
+    }
   } catch(e) {
-    log("Error: " + e.message + " (code:" + e.code + ")", "err");
+    log("Error: " + e.message, "err");
+    log("code: " + (e.code || "?"), "warn");
   }
 }
 
-// Auto-run setelah 500ms agar bridge siap
-setTimeout(runCheck, 500);
+setTimeout(runCheck, 600);
 </script>
 </body>
 </html>

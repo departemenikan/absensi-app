@@ -8168,8 +8168,7 @@ function switchProfilTab(tab) {
     _profilNewFaceDesc = null;
   } else {
     // Tab Keamanan dibuka — init toggle biometrik
-    // Delay 300ms agar plugin Capacitor sudah siap (terutama saat server.url eksternal)
-    setTimeout(initBiometricToggle, 300);
+    setTimeout(initBiometricToggle, 50);
   }
 }
 
@@ -10990,27 +10989,16 @@ function isCapacitorNative() {
             window.Capacitor.isNativePlatform());
 }
 
-// Tunggu plugin tersedia (maks timeoutMs ms) — penting saat server.url eksternal
-function waitForBiometricPlugin(timeoutMs = 4000) {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    function check() {
-      const p = window.Capacitor?.Plugins?.BiometricAuth;
-      if (p) return resolve(p);
-      if (Date.now() - start > timeoutMs) return resolve(null);
-      setTimeout(check, 100);
-    }
-    check();
-  });
-}
-
 // Ambil plugin BiometricAuth dari Capacitor bridge
+// @aparajita/capacitor-biometric-auth mendaftarkan dua nama:
+//   - "BiometricAuthNative" → native Android (prioritas utama)
+//   - "BiometricAuth"       → bisa jadi web shim
 function getBiometricPlugin() {
-  return (window.Capacitor &&
-          window.Capacitor.Plugins &&
-          window.Capacitor.Plugins.BiometricAuth)
-          ? window.Capacitor.Plugins.BiometricAuth
-          : null;
+  const P = window.Capacitor && window.Capacitor.Plugins;
+  if (!P) return null;
+  if (P.BiometricAuthNative) return P.BiometricAuthNative;
+  if (P.BiometricAuth)       return P.BiometricAuth;
+  return null;
 }
 
 // Cek WebAuthn — hanya untuk browser/PWA, bukan Capacitor native
@@ -11028,15 +11016,15 @@ function isWebAuthnSupported() {
 // Cek apakah biometrik tersedia (native atau browser)
 async function isBiometricAvailable() {
   if (isCapacitorNative()) {
-    // Tunggu plugin siap (diperlukan saat pakai server.url eksternal)
-    const plugin = getBiometricPlugin() || await waitForBiometricPlugin(4000);
+    const plugin = getBiometricPlugin();
     if (!plugin) {
-      console.warn("[Biometric] Plugin BiometricAuth tidak ditemukan setelah menunggu");
+      console.warn("[Biometric] Tidak ada plugin (BiometricAuthNative maupun BiometricAuth)");
       return false;
     }
+    console.log("[Biometric] Menggunakan plugin:", plugin);
     try {
       const result = await plugin.checkBiometry();
-      console.log("[Biometric] checkBiometry:", JSON.stringify(result));
+      console.log("[Biometric] checkBiometry result:", JSON.stringify(result));
       return result && result.isAvailable === true;
     } catch(e) {
       console.warn("[Biometric] checkBiometry error:", e);
@@ -11332,22 +11320,9 @@ async function initBiometricToggle() {
   const toggle = document.getElementById("biometric-toggle");
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
-
-  // Tampilkan card dulu, baru cek availability
-  card.style.display = "";
-  toggle.disabled = true;
-  if (sub) sub.textContent = "⏳ Memeriksa dukungan biometrik...";
-
   const available = await isBiometricAvailable();
-
-  if (!available) {
-    // Jangan sembunyikan — tampilkan keterangan agar user tahu fitur ini ada
-    toggle.disabled = true;
-    toggle.checked  = false;
-    if (sub) sub.textContent = "⚠️ Device atau browser ini tidak mendukung biometrik";
-    return;
-  }
-
+  if (!available) { card.style.display = "none"; return; }
+  card.style.display = "";
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
