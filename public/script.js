@@ -11217,29 +11217,38 @@ function initBiometricToggle() {
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
 
-  // Kalau WebAuthn tidak didukung sama sekali, sembunyikan card
+  // Card SELALU tampil — hanya disable toggle jika WebAuthn tidak tersedia
+  card.style.display = "";
+
   if (!isWebAuthnSupported()) {
-    card.style.display = "none";
+    toggle.checked  = false;
+    toggle.disabled = true;
+    if (sub) sub.textContent = "\u26a0\ufe0f Butuh HTTPS untuk menggunakan fitur ini";
     return;
   }
-  card.style.display = ""; // pastikan selalu terlihat kalau support
 
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
 
-  // Aktif hanya jika credential tersimpan UNTUK user yang sedang login
   const isActive = !!(credId && savedU === me);
   toggle.checked  = isActive;
   toggle.disabled = false;
   if (sub) sub.textContent = isActive
-    ? "✅ Aktif — ketuk toggle untuk menonaktifkan"
+    ? "\u2705 Aktif \u2014 ketuk toggle untuk menonaktifkan"
     : "Belum aktif di device ini";
 }
 
 async function handleBiometricToggle(el) {
   const sub = document.getElementById("biometric-sub");
   const me  = localStorage.getItem("user") || "";
+
+  // Jika WebAuthn tidak support (HTTP), tolak dan beri info
+  if (!isWebAuthnSupported()) {
+    el.checked = false;
+    showToast("\u26a0\ufe0f Fitur ini butuh koneksi HTTPS", "error");
+    return;
+  }
 
   if (el.checked) {
     // ── AKTIFKAN: sensor HP muncul sekali untuk pairing ──
