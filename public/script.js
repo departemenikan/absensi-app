@@ -436,6 +436,8 @@ async function checkLoginStatus() {
       enterApp(d.menus || [], d.group, d.level);
       // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
       subscribePushNotification().catch(() => {});
+      // Mulai cek session jika sessionId sudah ada di localStorage
+      startSessionChecker();
     } else {
       localStorage.clear(); showAuthPage();
     }
@@ -10928,9 +10930,8 @@ async function checkSessionValidity() {
   const user      = localStorage.getItem("user");
   if (!user || !sessionId) return;
   try {
-    const r = await authFetch("/session/check", {
-      headers: { "X-Session-Id": sessionId }
-    });
+    // X-Session-Id otomatis disertakan oleh authFetch dari localStorage
+    const r = await authFetch("/session/check");
     if (!r.ok) return;
     const d = await r.json();
     if (!d.valid) {

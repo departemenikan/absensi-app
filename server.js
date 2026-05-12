@@ -3955,18 +3955,34 @@ app.post("/app-settings/single-session-toggle", requireLevel(2), (req, res) => {
 app.get("/session/check", requireLevel(99), (req, res) => {
   const user     = req._requester;
   const settings = load(F.appSettings, {});
+
   // Jika fitur nonaktif, selalu valid
   if (!settings.singleSessionEnabled) return res.json({ valid: true });
 
   const sessions = load(F.sessions, {});
   const sess     = sessions[user];
-  if (!sess) return res.json({ valid: true }); // belum ada session → anggap valid
 
-  // Bandingkan sessionId yang dikirim client dengan yang tersimpan di server
-  const clientSessionId = req.headers["x-session-id"] || req.query.sessionId || "";
-  if (!clientSessionId || clientSessionId !== sess.sessionId) {
+  // Belum pernah login setelah fitur aktif → anggap valid, paksa login ulang tidak perlu
+  if (!sess || !sess.sessionId) return res.json({ valid: true });
+
+  // Baca sessionId dari header (case-insensitive di Express) atau query param
+  const clientSessionId = req.headers["x-session-id"]
+                       || req.headers["X-Session-Id"]
+                       || req.query.sessionId
+                       || "";
+
+  console.log(`[SESSION] check user=${user} client=${clientSessionId?.slice(0,8)}... server=${sess.sessionId?.slice(0,8)}...`);
+
+  if (!clientSessionId) {
+    // Client belum punya sessionId (login lama sebelum fitur) → suruh login ulang
+    return res.json({ valid: false, reason: "NO_SESSION_ID", deviceType: sess.deviceType });
+  }
+
+  if (clientSessionId !== sess.sessionId) {
+    console.log(`[SESSION] MISMATCH — user ${user} terdeteksi login di device lain (${sess.deviceType})`);
     return res.json({ valid: false, reason: "LOGIN_OTHER_DEVICE", deviceType: sess.deviceType });
   }
+
   res.json({ valid: true });
 });
 
