@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Debug Biometric</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #111; color: #0f0; font-size: 13px; }
+.ok  { color: #2ecc71; }
+.err { color: #e74c3c; }
+.warn{ color: #f39c12; }
+h2   { color: #4f8ef7; }
+pre  { background: #1a1a1a; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+button { padding: 12px 20px; background: #4f8ef7; color: white; border: none; border-radius: 8px; font-size: 15px; margin: 8px 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h2>🔐 Debug Biometric</h2>
+<div id="out"></div>
+<button onclick="runCheck()">▶ Jalankan Cek</button>
+<button onclick="testCheckBiometry()">🧪 Test checkBiometry()</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@capacitor/core@8/dist/capacitor.js"></script>
+<script src="capacitor-bridge.js"></script>
+<script>
+const out = document.getElementById("out");
+function log(msg, cls) {
+  const d = document.createElement("pre");
+  d.className = cls || "";
+  d.textContent = msg;
+  out.appendChild(d);
+}
+
+async function runCheck() {
+  out.innerHTML = "";
+  log("=== CAPACITOR ===");
+  log("window.Capacitor: " + !!window.Capacitor, window.Capacitor ? "ok" : "err");
+  
+  if (!window.Capacitor) { log("❌ Capacitor tidak tersedia sama sekali", "err"); return; }
+
+  log("isNativePlatform(): " + window.Capacitor.isNativePlatform?.(), 
+      window.Capacitor.isNativePlatform?.() ? "ok" : "err");
+  log("getPlatform(): " + window.Capacitor.getPlatform?.());
+  log("isPluginAvailable('BiometricAuth'): " + window.Capacitor.isPluginAvailable?.("BiometricAuth"),
+      window.Capacitor.isPluginAvailable?.("BiometricAuth") ? "ok" : "err");
+
+  log("\n=== PLUGINS ===");
+  const plugins = window.Capacitor.Plugins || {};
+  log("Plugin list: " + Object.keys(plugins).join(", "));
+  log("BiometricAuth ada: " + !!plugins.BiometricAuth, plugins.BiometricAuth ? "ok" : "err");
+
+  log("\n=== WEBAUTHN ===");
+  log("navigator.credentials: " + !!navigator.credentials, navigator.credentials ? "ok" : "warn");
+  log("credentials.create: " + !!(navigator.credentials && navigator.credentials.create),
+      (navigator.credentials && navigator.credentials.create) ? "ok" : "warn");
+  log("isSecureContext: " + window.isSecureContext, window.isSecureContext ? "ok" : "err");
+  log("protocol: " + location.protocol, location.protocol === "https:" ? "ok" : "err");
+  log("hostname: " + location.hostname);
+
+  log("\n=== USER AGENT ===");
+  log(navigator.userAgent);
+
+  log("\n=== BIOMETRIC VERDICT ===");
+  const isNative = !!(window.Capacitor?.isNativePlatform?.());
+  const hasPlugin = !!(window.Capacitor?.Plugins?.BiometricAuth);
+  const hasWebAuthn = !!(navigator.credentials?.create && window.isSecureContext);
+  
+  if (isNative && hasPlugin) {
+    log("✅ Native + Plugin tersedia → akan pakai checkBiometry()", "ok");
+  } else if (isNative && !hasPlugin) {
+    log("⚠️ Native tapi Plugin TIDAK ADA → biometrik tidak akan jalan", "err");
+    log("   → Kemungkinan: npx cap sync belum dijalankan, atau capacitor-bridge.js belum update", "warn");
+  } else if (!isNative && hasWebAuthn) {
+    log("✅ Browser/PWA + WebAuthn tersedia", "ok");
+  } else {
+    log("❌ Tidak ada jalur biometrik yang tersedia", "err");
+    log("   isNative=" + isNative + " hasPlugin=" + hasPlugin + " hasWebAuthn=" + hasWebAuthn, "warn");
+  }
+}
+
+async function testCheckBiometry() {
+  const plugin = window.Capacitor?.Plugins?.BiometricAuth;
+  if (!plugin) { log("❌ Plugin tidak ada, tidak bisa test", "err"); return; }
+  log("\n=== TEST checkBiometry() ===");
+  try {
+    const result = await plugin.checkBiometry();
+    log("Hasil: " + JSON.stringify(result, null, 2), result.isAvailable ? "ok" : "err");
+  } catch(e) {
+    log("Error: " + e.message + " (code:" + e.code + ")", "err");
+  }
+}
+
+// Auto-run setelah 500ms agar bridge siap
+setTimeout(runCheck, 500);
+</script>
+</body>
+</html>
