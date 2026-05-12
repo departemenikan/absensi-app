@@ -3991,7 +3991,7 @@ app.post("/webauthn/register", async (req, res) => {
 
 // POST /webauthn/login — verifikasi fingerprint & login
 app.post("/webauthn/login", async (req, res) => {
-  const { username, credentialId, clientDataJSON, authenticatorData, signature } = req.body;
+  const { username, credentialId, clientDataJSON, authenticatorData, signature, nativeAuth } = req.body;
   if (!username || !credentialId) return res.status(400).json({ status: "INVALID" });
 
   const users = load(F.users, {});
@@ -4000,13 +4000,32 @@ app.post("/webauthn/login", async (req, res) => {
 
   const webauthn = load(F.webauthn, {});
   const creds    = webauthn[username] || [];
-  const cred     = creds.find(c => c.credentialId === credentialId);
+  let cred       = creds.find(c => c.credentialId === credentialId);
+
+  // Native biometric: auto-register credential jika belum ada
+  // (verifikasi sudah dilakukan OS Android, server cukup percaya)
+  if (!cred && nativeAuth === true && credentialId.startsWith("native-")) {
+    const newCred = {
+      credentialId,
+      publicKey:  "native",
+      deviceName: "Android Native Biometric",
+      createdAt:  new Date().toISOString(),
+      counter:    0,
+    };
+    if (!webauthn[username]) webauthn[username] = [];
+    webauthn[username].push(newCred);
+    save(F.webauthn, webauthn);
+    cred = newCred;
+  }
+
   if (!cred) return res.status(401).json({ status: "CREDENTIAL_NOT_FOUND" });
 
-  // Verifikasi challenge
-  const ch = (global._wauthChallenges || {})[username];
-  if (!ch || Date.now() > ch.exp) return res.status(400).json({ status: "CHALLENGE_EXPIRED" });
-  delete global._wauthChallenges[username];
+  // Skip challenge untuk native biometric (OS Android sudah verifikasi)
+  if (!nativeAuth) {
+    const ch = (global._wauthChallenges || {})[username];
+    if (!ch || Date.now() > ch.exp) return res.status(400).json({ status: "CHALLENGE_EXPIRED" });
+    delete global._wauthChallenges[username];
+  }
 
   // Untuk implementasi sederhana tanpa library: verifikasi keberadaan credential sudah cukup
   // (browser sudah handle verifikasi crypto di sisi client via authenticator)
