@@ -1,0 +1,33 @@
+{
+  "name": "absensi-smart-desktop",
+  "version": "1.0.0",
+  "description": "Absensi Smart — Desktop App dengan Screenshot Otomatis",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.absensismart.desktop",
+    "productName": "Absensi Smart",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Absensi Smart"
+    }
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}

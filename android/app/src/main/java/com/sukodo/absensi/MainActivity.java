@@ -5,6 +5,7 @@ import android.webkit.WebView;
 import android.view.ViewGroup;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.getcapacitor.BridgeActivity;
+import com.aparajita.capacitor.biometricauth.BiometricAuthNative;
 
 public class MainActivity extends BridgeActivity {
 
@@ -12,6 +13,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Daftarkan plugin BiometricAuth SEBELUM super.onCreate()
+        registerPlugin(BiometricAuthNative.class);
+
         super.onCreate(savedInstanceState); // Capacitor setup jalan dulu
 
         // Ambil WebView dari Capacitor Bridge
