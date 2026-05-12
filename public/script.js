@@ -289,6 +289,8 @@ async function doLogin(u, p) {
       subscribePushNotification().catch(() => {});
       // Mulai cek session (auto logout jika login di device lain)
       startSessionChecker();
+      // Tawari registrasi fingerprint jika belum terdaftar
+      setTimeout(() => offerFingerprintRegistration(u), 2000);
     } else {
       showToast("❌ Username atau password salah!", "error");
     }
@@ -451,6 +453,8 @@ function showAuthPage() {
   document.getElementById("auth-page").classList.remove("hidden");
   document.getElementById("main-nav").classList.add("hidden");
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  // Tampilkan tombol fingerprint jika sudah terdaftar
+  setTimeout(renderFingerprintButton, 100);
 }
 
 function enterApp(menus, group, level) {
@@ -10969,3 +10973,230 @@ window.renderSingleSessionToggle = renderSingleSessionToggle;
 window.toggleSingleSession       = toggleSingleSession;
 window.startSessionChecker       = startSessionChecker;
 window.stopSessionChecker        = stopSessionChecker;
+
+// ============================================================
+// WEBAUTHN — Login Fingerprint / Face ID
+// ============================================================
+
+// Cek apakah device support WebAuthn
+function isWebAuthnSupported() {
+  return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
+}
+
+// Ambil username yang tersimpan untuk fingerprint login
+function getSavedFingerprintUser() {
+  return localStorage.getItem("fingerprintUser") || "";
+}
+
+// ── REGISTER fingerprint (dipanggil setelah login biasa berhasil) ──
+async function registerFingerprint(username) {
+  if (!isWebAuthnSupported()) {
+    showToast("❌ Device ini tidak mendukung fingerprint login", "error"); return;
+  }
+  try {
+    // 1. Ambil challenge dari server
+    const cr = await fetch(`/webauthn/challenge?username=${encodeURIComponent(username)}`);
+    const { challenge } = await cr.json();
+
+    // 2. Buat credential baru (trigger fingerprint/Face ID)
+    const publicKeyOptions = {
+      challenge:  Uint8Array.from(atob(challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
+      rp: {
+        name: "Absensi Smart",
+        id:   location.hostname,
+      },
+      user: {
+        id:          Uint8Array.from(username, c => c.charCodeAt(0)),
+        name:        username,
+        displayName: username,
+      },
+      pubKeyCredParams: [
+        { alg: -7,   type: "public-key" }, // ES256
+        { alg: -257, type: "public-key" }, // RS256
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: "platform",   // pakai sensor bawaan device (fingerprint/Face ID)
+        userVerification:        "required",   // wajib verifikasi biometrik
+        residentKey:             "preferred",
+      },
+      timeout:     60000,
+      attestation: "none",
+    };
+
+    const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+    if (!credential) { showToast("❌ Pendaftaran dibatalkan", "error"); return; }
+
+    // 3. Kirim ke server
+    const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
+                          .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    const publicKey    = btoa(String.fromCharCode(...new Uint8Array(
+                          credential.response.getPublicKey ? credential.response.getPublicKey() : new ArrayBuffer(0)
+                        ))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+
+    const deviceName = `${navigator.platform || "Device"} — ${new Date().toLocaleDateString("id-ID")}`;
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+    const r = await fetch("/webauthn/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User": username },
+      body: JSON.stringify({ username, credentialId, publicKey, deviceName, isPWA }),
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      // Simpan credentialId & username di localStorage untuk login berikutnya
+      localStorage.setItem("fingerprintUser",      username);
+      localStorage.setItem("fingerprintCredId",    credentialId);
+      showToast("✅ Fingerprint berhasil didaftarkan! Login berikutnya bisa pakai fingerprint.", "success", 5000);
+      renderFingerprintButton();
+    } else {
+      showToast("❌ Gagal mendaftarkan fingerprint: " + d.status, "error");
+    }
+  } catch (e) {
+    if (e.name === "NotAllowedError") showToast("❌ Pendaftaran fingerprint dibatalkan", "error");
+    else showToast("❌ Error: " + e.message, "error");
+    console.error("[WebAuthn register]", e);
+  }
+}
+
+// ── LOGIN dengan fingerprint ──
+async function loginWithFingerprint() {
+  if (!isWebAuthnSupported()) {
+    showToast("❌ Device ini tidak mendukung fingerprint", "error"); return;
+  }
+  const username   = getSavedFingerprintUser();
+  const credId     = localStorage.getItem("fingerprintCredId");
+  if (!username || !credId) {
+    showToast("⚠️ Belum ada fingerprint terdaftar di device ini", "warning"); return;
+  }
+
+  try {
+    // 1. Ambil challenge
+    const cr = await fetch(`/webauthn/challenge?username=${encodeURIComponent(username)}`);
+    const { challenge } = await cr.json();
+
+    // 2. Verifikasi fingerprint
+    const credentialIdBytes = Uint8Array.from(atob(credId.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge:        Uint8Array.from(atob(challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
+        allowCredentials: [{ id: credentialIdBytes, type: "public-key" }],
+        userVerification: "required",
+        timeout:          60000,
+      }
+    });
+    if (!assertion) { showToast("❌ Verifikasi dibatalkan", "error"); return; }
+
+    // 3. Kirim ke server untuk login
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const r = await fetch("/webauthn/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username,
+        credentialId: credId,
+        clientDataJSON:    btoa(String.fromCharCode(...new Uint8Array(assertion.response.clientDataJSON))),
+        authenticatorData: btoa(String.fromCharCode(...new Uint8Array(assertion.response.authenticatorData))),
+        signature:         btoa(String.fromCharCode(...new Uint8Array(assertion.response.signature))),
+        isPWA,
+      }),
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      localStorage.setItem("user",       username);
+      localStorage.setItem("menus",      JSON.stringify(d.menus || []));
+      localStorage.setItem("group",      d.group || "anggota");
+      localStorage.setItem("level",      d.level || 99);
+      localStorage.setItem("deviceType", d.deviceType || detectDeviceType());
+      if (d.sessionId) localStorage.setItem("sessionId", d.sessionId);
+      enterApp(d.menus || [], d.group, d.level);
+      subscribePushNotification().catch(() => {});
+      startSessionChecker();
+      showToast("✅ Login dengan fingerprint berhasil!", "success");
+    } else {
+      showToast("❌ Gagal login: " + d.status, "error");
+    }
+  } catch (e) {
+    if (e.name === "NotAllowedError") showToast("❌ Verifikasi fingerprint dibatalkan", "warning");
+    else showToast("❌ Error: " + e.message, "error");
+    console.error("[WebAuthn login]", e);
+  }
+}
+
+// Hapus fingerprint dari device ini
+async function removeFingerprint() {
+  const username = getSavedFingerprintUser();
+  const credId   = localStorage.getItem("fingerprintCredId");
+  if (!username || !credId) return;
+  if (!confirm("Hapus fingerprint login dari device ini?")) return;
+  try {
+    await fetch(`/webauthn/credentials/${encodeURIComponent(username)}/${encodeURIComponent(credId)}`, {
+      method: "DELETE", headers: { "X-User": username }
+    });
+  } catch {}
+  localStorage.removeItem("fingerprintUser");
+  localStorage.removeItem("fingerprintCredId");
+  renderFingerprintButton();
+  showToast("🗑 Fingerprint dihapus dari device ini");
+}
+
+// Render tombol fingerprint di halaman login
+function renderFingerprintButton() {
+  const wrap = document.getElementById("fingerprint-btn-wrap");
+  if (!wrap) return;
+
+  if (!isWebAuthnSupported()) { wrap.innerHTML = ""; return; }
+
+  const saved = getSavedFingerprintUser();
+  if (saved && localStorage.getItem("fingerprintCredId")) {
+    // Ada credential tersimpan — tampilkan tombol fingerprint
+    wrap.innerHTML = `
+      <button onclick="loginWithFingerprint()"
+        style="width:100%;padding:13px;margin-top:8px;border:2px solid #4f8ef7;border-radius:10px;
+               background:white;color:#4f8ef7;font-weight:700;font-size:15px;cursor:pointer;
+               display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span style="font-size:22px;">🔐</span>
+        <span>Login dengan Fingerprint</span>
+      </button>
+      <p style="font-size:11px;color:#95a5a6;text-align:center;margin:6px 0 0;">
+        Akun: <b>${saved}</b> &nbsp;·&nbsp;
+        <a href="#" onclick="removeFingerprint();return false;" style="color:#e74c3c;">Hapus</a>
+      </p>`;
+  } else {
+    wrap.innerHTML = ""; // Tidak tampilkan apa-apa — registrasi dilakukan setelah login biasa
+  }
+}
+
+// Tawari registrasi fingerprint setelah login berhasil
+async function offerFingerprintRegistration(username) {
+  if (!isWebAuthnSupported()) return;
+  if (getSavedFingerprintUser() === username && localStorage.getItem("fingerprintCredId")) return; // sudah terdaftar
+
+  // Tampilkan toast dengan tombol daftar
+  const toast = document.createElement("div");
+  toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:#1a237e;color:white;padding:14px 18px;border-radius:14px;z-index:9999;
+    box-shadow:0 4px 20px rgba(0,0,0,.25);max-width:320px;text-align:center;font-size:13px;`;
+  toast.innerHTML = `
+    <div style="font-size:20px;margin-bottom:6px;">🔐</div>
+    <div style="font-weight:700;margin-bottom:4px;">Aktifkan Login Fingerprint?</div>
+    <div style="font-size:12px;color:#aac4ff;margin-bottom:12px;">Login lebih cepat tanpa ketik password</div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button onclick="registerFingerprint('${username}');this.closest('[data-fpreg]').remove();"
+        style="padding:8px 16px;background:#4f8ef7;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">
+        Ya, Aktifkan
+      </button>
+      <button onclick="this.closest('[data-fpreg]').remove();"
+        style="padding:8px 16px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;">
+        Nanti
+      </button>
+    </div>`;
+  toast.setAttribute("data-fpreg", "1");
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 15000);
+}
+
+window.loginWithFingerprint      = loginWithFingerprint;
+window.registerFingerprint       = registerFingerprint;
+window.removeFingerprint         = removeFingerprint;
+window.renderFingerprintButton   = renderFingerprintButton;
+window.offerFingerprintRegistration = offerFingerprintRegistration;
