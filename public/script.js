@@ -440,9 +440,21 @@ async function checkLoginStatus() {
       // Mulai cek session jika sessionId sudah ada di localStorage
       startSessionChecker();
     } else {
-      localStorage.clear(); showAuthPage();
+      const fpUser   = localStorage.getItem("fingerprintUser");
+      const fpCredId = localStorage.getItem("fingerprintCredId");
+      localStorage.clear();
+      if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
+      if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
+      showAuthPage();
     }
-  } catch { localStorage.clear(); showAuthPage(); }
+  } catch {
+    const fpUser   = localStorage.getItem("fingerprintUser");
+    const fpCredId = localStorage.getItem("fingerprintCredId");
+    localStorage.clear();
+    if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
+    if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
+    showAuthPage();
+  }
 }
 
 function showAuthPage() {
@@ -592,7 +604,15 @@ function logout() {
     title: "Keluar Aplikasi",
     msg: "Yakin ingin logout dari akun ini?",
     btnOk: "Ya, Keluar", btnOkClass: "danger",
-    onOk: () => { localStorage.clear(); location.reload(); }
+    onOk: () => {
+      // Simpan data fingerprint sebelum clear agar tetap aktif setelah logout
+      const fpUser   = localStorage.getItem("fingerprintUser");
+      const fpCredId = localStorage.getItem("fingerprintCredId");
+      localStorage.clear();
+      if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
+      if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
+      location.reload();
+    }
   });
 }
 
@@ -10948,7 +10968,11 @@ async function checkSessionValidity() {
       // Paksa logout dengan pesan jelas
       showToast(`⚠️ Sesi Anda diakhiri karena login dari ${otherDev}`, "warning", 8000);
       setTimeout(() => {
+        const fpUser   = localStorage.getItem("fingerprintUser");
+        const fpCredId = localStorage.getItem("fingerprintCredId");
         localStorage.clear();
+        if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
+        if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
         location.reload();
       }, 3000);
     }
