@@ -10994,15 +10994,7 @@ function isCapacitorNative() {
 //   - "BiometricAuthNative" → native Android (prioritas utama)
 //   - "BiometricAuth"       → bisa jadi web shim
 function getBiometricPlugin() {
-  if (!window.Capacitor) return null;
-  // Gunakan registerPlugin untuk mendapat proxy JS yang benar
-  // dengan semua method (checkBiometry, authenticate, dll)
-  try {
-    const plugin = window.Capacitor.registerPlugin("BiometricAuth");
-    if (plugin) return plugin;
-  } catch(e) {}
-  // Fallback ke Plugins object
-  const P = window.Capacitor.Plugins;
+  const P = window.Capacitor && window.Capacitor.Plugins;
   if (!P) return null;
   if (P.BiometricAuthNative) return P.BiometricAuthNative;
   if (P.BiometricAuth)       return P.BiometricAuth;
@@ -11066,7 +11058,7 @@ async function registerFingerprint(username) {
         showToast("❌ Fingerprint tidak tersedia: " + reason, "error"); return;
       }
       // Minta verifikasi ke OS Android — sensor fingerprint muncul
-      await plugin.authenticate({
+      await plugin.internalAuthenticate({
         reason:                "Daftarkan fingerprint untuk login Absensi Smart",
         cancelTitle:           "Batal",
         allowDeviceCredential: false,
@@ -11163,7 +11155,7 @@ async function loginWithFingerprint() {
     const plugin = getBiometricPlugin();
     if (!plugin) { showToast("❌ Plugin biometrik tidak ditemukan", "error"); return; }
     try {
-      await plugin.authenticate({
+      await plugin.internalAuthenticate({
         reason:                "Verifikasi identitas untuk login",
         cancelTitle:           "Batal",
         allowDeviceCredential: false,
@@ -11328,9 +11320,15 @@ async function initBiometricToggle() {
   const toggle = document.getElementById("biometric-toggle");
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
-  const available = await isBiometricAvailable();
-  if (!available) { card.style.display = "none"; return; }
   card.style.display = "";
+  toggle.disabled = true;
+  if (sub) sub.textContent = "⏳ Memeriksa...";
+  const available = await isBiometricAvailable();
+  if (!available) {
+    toggle.disabled = true; toggle.checked = false;
+    if (sub) sub.textContent = "⚠️ Device ini tidak mendukung biometrik";
+    return;
+  }
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
