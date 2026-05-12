@@ -10988,6 +10988,7 @@ function isWebAuthnSupported() {
   const isSecure = window.isSecureContext === true ||
                    location.protocol === 'https:' ||
                    location.hostname === 'localhost' ||
+                   location.hostname === '' ||           // Capacitor WebView sering kosong
                    location.hostname.endsWith('.onrender.com');
   return hasCredentials && isSecure;
 }
@@ -11012,7 +11013,7 @@ async function registerFingerprint(username) {
       challenge:  Uint8Array.from(atob(challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
       rp: {
         name: "Absensi Smart",
-        id:   location.hostname,
+        id:   "absensi-app.onrender.com",   // hardcode domain asli agar valid di Capacitor/TWA
       },
       user: {
         id:          Uint8Array.from(username, c => c.charCodeAt(0)),
@@ -11095,6 +11096,7 @@ async function loginWithFingerprint() {
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge:        Uint8Array.from(atob(challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
+        rpId:             "absensi-app.onrender.com",   // harus cocok dengan rpId saat register
         allowCredentials: [{ id: credentialIdBytes, type: "public-key" }],
         userVerification: "required",
         timeout:          60000,
