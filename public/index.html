@@ -1232,6 +1232,116 @@
                 </div>
               </div>
 
+              <!-- Divider -->
+              <div style="height:1px;background:#eee;margin:18px 0;"></div>
+
+              <!-- ── AUTO CLOCK-OUT RULES ────────────────────────── -->
+              <div>
+                <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:4px;">
+                  ⏰ Auto Clock-Out Rules
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+                  Atur rule otomatis mana yang aktif. Setiap toggle dapat dimatikan secara independen.
+                </div>
+
+                <!-- Rule 1: Karyawan Mess -->
+                <div style="background:#f8f9ff;border-radius:12px;padding:12px 14px;border:1px solid #e8ecf0;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;min-width:0;padding-right:12px;">
+                      <div style="font-size:13px;font-weight:700;color:var(--text);">🏠 Karyawan Mess — Clock Out Jam 17:00</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">Karyawan dalam daftar mess di-clock out tepat pukul 17:00 + notif Push & WA</div>
+                    </div>
+                    <div onclick="toggleAutoClockOutRule('toggleMess')"
+                      id="act-mess-switch"
+                      style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                             cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                      <div id="act-mess-knob"
+                        style="width:22px;height:22px;border-radius:50%;background:white;
+                               position:absolute;top:3px;left:3px;
+                               transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rule 2: Luar Radius -->
+                <div style="background:#f8f9ff;border-radius:12px;padding:12px 14px;border:1px solid #e8ecf0;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;min-width:0;padding-right:12px;">
+                      <div style="font-size:13px;font-weight:700;color:var(--text);">📍 Luar Radius Setelah 17:00</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">Karyawan non-mess yang posisi GPS-nya di luar radius area setelah jam 17:00 + notif Push</div>
+                    </div>
+                    <div onclick="toggleAutoClockOutRule('toggleLuarRadius')"
+                      id="act-radius-switch"
+                      style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                             cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                      <div id="act-radius-knob"
+                        style="width:22px;height:22px;border-radius:50%;background:white;
+                               position:absolute;top:3px;left:3px;
+                               transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rule 3: Tidak Ada GPS -->
+                <div style="background:#f8f9ff;border-radius:12px;padding:12px 14px;border:1px solid #e8ecf0;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;min-width:0;padding-right:12px;">
+                      <div style="font-size:13px;font-weight:700;color:var(--text);">📵 Tidak Ada GPS Setelah 17:00</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">Karyawan non-mess yang tidak ada data GPS sama sekali setelah jam 17:00 + notif Push</div>
+                    </div>
+                    <div onclick="toggleAutoClockOutRule('toggleTidakAdaGPS')"
+                      id="act-nogps-switch"
+                      style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                             cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                      <div id="act-nogps-knob"
+                        style="width:22px;height:22px;border-radius:50%;background:white;
+                               position:absolute;top:3px;left:3px;
+                               transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rule 4: Midnight Split -->
+                <div style="background:#f8f9ff;border-radius:12px;padding:12px 14px;border:1px solid #e8ecf0;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;min-width:0;padding-right:12px;">
+                      <div style="font-size:13px;font-weight:700;color:var(--text);">🌙 Midnight Split (23:59)</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">Semua sesi aktif ditutup jam 23:59 dan dilanjut otomatis di hari berikutnya (shift malam)</div>
+                    </div>
+                    <div onclick="toggleAutoClockOutRule('toggleMidnightSplit')"
+                      id="act-midnight-switch"
+                      style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                             cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                      <div id="act-midnight-knob"
+                        style="width:22px;height:22px;border-radius:50%;background:white;
+                               position:absolute;top:3px;left:3px;
+                               transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rule 5: Tugas Luar (pengecualian global) -->
+                <div style="background:#fff8e1;border-radius:12px;padding:12px 14px;border:1px solid #ffe082;margin-bottom:0;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;min-width:0;padding-right:12px;">
+                      <div style="font-size:13px;font-weight:700;color:#e65100;">🧳 Tugas Luar — Kecualikan dari Semua Rule</div>
+                      <div style="font-size:11px;color:#a0522d;margin-top:3px;line-height:1.4;">Jika ON, karyawan berstatus "tugas luar" tidak kena auto clock-out. Jika OFF, mereka tetap kena rule 1–4.</div>
+                    </div>
+                    <div onclick="toggleAutoClockOutRule('toggleTugasLuar')"
+                      id="act-tugasluar-switch"
+                      style="width:52px;height:28px;border-radius:14px;background:#ccc;
+                             cursor:pointer;position:relative;transition:background .25s;flex-shrink:0;">
+                      <div id="act-tugasluar-knob"
+                        style="width:22px;height:22px;border-radius:50%;background:white;
+                               position:absolute;top:3px;left:3px;
+                               transition:left .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              <!-- ── END AUTO CLOCK-OUT RULES ────────────────────── -->
+
               <div style="height:16px;"></div>
           </div>
         </div>

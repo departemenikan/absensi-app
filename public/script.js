@@ -10072,6 +10072,9 @@ async function loadSistemSettings() {
   } catch (e) {
     console.warn("loadSistemSettings gagal:", e);
   }
+
+  // Load auto clock-out toggles
+  if (typeof loadActToggles === "function") loadActToggles();
 }
 
 function _updateTzInfo(tz) {
@@ -10999,6 +11002,81 @@ window.renderSingleSessionToggle = renderSingleSessionToggle;
 window.toggleSingleSession       = toggleSingleSession;
 window.startSessionChecker       = startSessionChecker;
 window.stopSessionChecker        = stopSessionChecker;
+
+// ============================================================
+// AUTO CLOCK-OUT TOGGLES (Rule 1–5)
+// ============================================================
+
+// State lokal untuk 5 toggle
+let _actToggles = {
+  toggleMess:          true,
+  toggleLuarRadius:    true,
+  toggleTidakAdaGPS:   true,
+  toggleMidnightSplit: true,
+  toggleTugasLuar:     true,
+};
+
+// Konfigurasi tampilan per toggle
+const _ACT_CONFIG = {
+  toggleMess:          { switchId: "act-mess-switch",       knobId: "act-mess-knob"       },
+  toggleLuarRadius:    { switchId: "act-radius-switch",     knobId: "act-radius-knob"     },
+  toggleTidakAdaGPS:   { switchId: "act-nogps-switch",      knobId: "act-nogps-knob"      },
+  toggleMidnightSplit: { switchId: "act-midnight-switch",   knobId: "act-midnight-knob"   },
+  toggleTugasLuar:     { switchId: "act-tugasluar-switch",  knobId: "act-tugasluar-knob"  },
+};
+
+const _ACT_LABEL = {
+  toggleMess:          "🏠 Karyawan Mess",
+  toggleLuarRadius:    "📍 Luar Radius",
+  toggleTidakAdaGPS:   "📵 Tidak Ada GPS",
+  toggleMidnightSplit: "🌙 Midnight Split",
+  toggleTugasLuar:     "🧳 Tugas Luar",
+};
+
+function _renderActToggle(key, value) {
+  const cfg = _ACT_CONFIG[key];
+  if (!cfg) return;
+  const sw   = document.getElementById(cfg.switchId);
+  const knob = document.getElementById(cfg.knobId);
+  if (!sw || !knob) return;
+  // Warna khusus: rule 5 (Tugas Luar) pakai oranye, lainnya biru
+  const onColor = (key === "toggleTugasLuar") ? "#e65100" : "#4f8ef7";
+  sw.style.background   = value ? onColor : "#ccc";
+  knob.style.left       = value ? "27px" : "3px";
+}
+
+async function loadActToggles() {
+  try {
+    const r = await authFetch("/rules/toggles");
+    if (!r.ok) return;
+    const d = await r.json();
+    _actToggles = { ..._actToggles, ...d };
+    Object.keys(_ACT_CONFIG).forEach(k => _renderActToggle(k, _actToggles[k] !== false));
+  } catch (e) {
+    console.warn("loadActToggles gagal:", e);
+  }
+}
+
+async function toggleAutoClockOutRule(key) {
+  if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang dapat mengubah pengaturan ini", "error"); return; }
+  const newState = !(_actToggles[key] !== false);
+  try {
+    const r = await authFetch("/rules/toggles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: newState }),
+    });
+    if (!r.ok) { showToast("❌ Gagal menyimpan", "error"); return; }
+    const d = await r.json();
+    _actToggles = { ..._actToggles, ...d };
+    _renderActToggle(key, newState);
+    const label = _ACT_LABEL[key] || key;
+    showToast(newState ? `✅ ${label} diaktifkan` : `🔕 ${label} dinonaktifkan`);
+  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
+}
+
+window.loadActToggles          = loadActToggles;
+window.toggleAutoClockOutRule  = toggleAutoClockOutRule;
 
 // ============================================================
 // BIOMETRIK — Login Fingerprint / Face ID

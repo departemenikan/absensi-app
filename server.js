@@ -295,8 +295,19 @@ function logAktivitas(user, type, time) {
 // ========================
 // RULES HELPERS
 // ========================
+const RULES_DEFAULT = {
+  messList:            [],
+  toggleMess:          true,  // Rule 1: Karyawan Mess clock out jam 17:00
+  toggleLuarRadius:    true,  // Rule 2: Non-mess luar radius setelah 17:00
+  toggleTidakAdaGPS:   true,  // Rule 3: Non-mess tidak ada GPS setelah 17:00
+  toggleMidnightSplit: true,  // Rule 4: Midnight split 23:59
+  toggleTugasLuar:     true,  // Rule 5: Kecualikan karyawan "tugas luar" dari semua rule
+};
+
 function getRules() {
-  return load(F.rules, { messList: [] });
+  const saved = load(F.rules, RULES_DEFAULT);
+  // Merge dengan default agar field baru selalu ada meski data lama belum punya
+  return { ...RULES_DEFAULT, ...saved };
 }
 
 function isUserMess(username) {
@@ -347,6 +358,17 @@ setInterval(() => {
   const rules    = getRules();
   const messList = rules.messList || [];
 
+  // Baca semua toggle — default true jika belum tersimpan
+  const toggleMess        = rules.toggleMess        !== false;
+  const toggleLuarRadius  = rules.toggleLuarRadius  !== false;
+  const toggleTidakAdaGPS = rules.toggleTidakAdaGPS !== false;
+  const toggleTugasLuar   = rules.toggleTugasLuar   !== false;
+
+  // Jika semua toggle rule 1-3 OFF, tidak perlu loop sama sekali
+  if (!toggleMess && !toggleLuarRadius && !toggleTidakAdaGPS) {
+    // lanjut ke midnight split di bawah
+  } else {
+
   let changed = false;
 
   data.forEach(rec => {
@@ -357,15 +379,16 @@ setInterval(() => {
     const user     = users[username];
     if (!user) return;
 
-    // Skip jika Tugas Luar
-    if ((user.statusKerja || "").toLowerCase().includes("tugas luar")) return;
+    // Skip jika Tugas Luar — hanya jika toggle 5 ON
+    if (toggleTugasLuar && (user.statusKerja || "").toLowerCase().includes("tugas luar")) return;
 
     const isMess = messList.includes(username);
     const clockOutTime = new Date().toISOString();
     const jamFmt = new Date(clockOutTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 
     if (isMess) {
-      // Karyawan mess: auto clock-out tepat jam 17:00 (run saat 17:00 - 17:01)
+      // Rule 1: Karyawan mess — clock out tepat jam 17:00
+      if (!toggleMess) return; // toggle 1 OFF → skip
       if (hour === 17 && min === 0) {
         rec.jamKeluar = clockOutTime;
         rec.autoClockOut = true;
@@ -384,12 +407,12 @@ setInterval(() => {
         );
       }
     } else {
-      // Karyawan luar mess: auto clock-out jika sudah jam 17:00+ DAN di luar radius
-      // ATAU tidak ada data GPS sama sekali (dianggap di luar area / GPS dimatikan)
+      // Karyawan non-mess
       const todayPoints = (tracking[today] || {})[username] || [];
 
       if (!todayPoints.length) {
-        // Tidak ada data GPS → dianggap di luar area, clock out otomatis
+        // Rule 3: Tidak ada data GPS → clock out otomatis
+        if (!toggleTidakAdaGPS) return; // toggle 3 OFF → skip
         rec.jamKeluar = clockOutTime;
         rec.autoClockOut = true;
         rec.autoClockOutReason = "no-gps-after-17:00";
@@ -400,7 +423,6 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} karena data lokasi tidak tersedia setelah jam 17:00`
         ).catch(() => {});
-        // WA Fonnte untuk no-GPS dihapus — sudah pakai Web Push
         return;
       }
 
@@ -413,6 +435,8 @@ setInterval(() => {
       );
 
       if (!inRadius) {
+        // Rule 2: Di luar radius setelah 17:00
+        if (!toggleLuarRadius) return; // toggle 2 OFF → skip
         rec.jamKeluar = clockOutTime;
         rec.autoClockOut = true;
         rec.autoClockOutReason = "luar-radius-after-17:00";
@@ -424,7 +448,6 @@ setInterval(() => {
           "Clock Out Otomatis 🔴",
           `Kamu otomatis di-Clock Out pukul ${jamFmt} karena berada di luar radius area kantor`
         ).catch(() => {});
-        // WA Clock Out Otomatis luar area dihapus — sudah pakai Web Push
       }
     }
   });
@@ -434,8 +457,15 @@ setInterval(() => {
     // Overtime tidak dihitung realtime — hanya diakumulasi setiap Minggu 23:59
   }
 
+  } // end if any toggle active
+
   // ── MIDNIGHT SPLIT — jam 23:59, split semua sesi yang masih aktif ──────────
   if (hour === 23 && min === 59) {
+    // Rule 4: Midnight Split — cek toggle
+    const rulesMid = getRules();
+    if (rulesMid.toggleMidnightSplit === false) {
+      console.log("[MIDNIGHT] Toggle Midnight Split OFF — dilewati");
+    } else {
     const dataMid  = load(F.data, []);
     const usersMid = load(F.users, {});
     const todayMid = now.toLocaleDateString("sv-SE");
@@ -500,6 +530,7 @@ setInterval(() => {
       newRecords.forEach(r => dataMid.push(r));
       save(F.data, dataMid);
     }
+    } // end toggleMidnightSplit check
   }
 
   // ── AUTO OVERTIME SERVER-SIDE ─────────────────────────────────────────────
@@ -1406,6 +1437,42 @@ app.put("/rules/mess", requireLevel(2), (req, res) => {
   rules.messList = messList;
   save(F.rules, rules);
   res.send({ status: "OK" });
+});
+
+// GET /rules/toggles — ambil state semua toggle auto clock-out
+app.get("/rules/toggles", requireLevel(2), (req, res) => {
+  const rules = getRules();
+  res.json({
+    toggleMess:          rules.toggleMess          !== false,
+    toggleLuarRadius:    rules.toggleLuarRadius     !== false,
+    toggleTidakAdaGPS:   rules.toggleTidakAdaGPS    !== false,
+    toggleMidnightSplit: rules.toggleMidnightSplit  !== false,
+    toggleTugasLuar:     rules.toggleTugasLuar      !== false,
+  });
+});
+
+// POST /rules/toggles — update satu atau beberapa toggle
+app.post("/rules/toggles", requireLevel(2), (req, res) => {
+  const allowed = ["toggleMess", "toggleLuarRadius", "toggleTidakAdaGPS", "toggleMidnightSplit", "toggleTugasLuar"];
+  const rules = getRules();
+  let changed = false;
+  allowed.forEach(k => {
+    if (typeof req.body[k] === "boolean") {
+      rules[k] = req.body[k];
+      changed = true;
+      console.log(`[RULES] Toggle ${k} → ${req.body[k] ? "ON" : "OFF"} oleh ${req._requester}`);
+    }
+  });
+  if (!changed) return res.status(400).json({ status: "NO_CHANGE" });
+  save(F.rules, rules);
+  res.json({
+    status: "OK",
+    toggleMess:          rules.toggleMess          !== false,
+    toggleLuarRadius:    rules.toggleLuarRadius     !== false,
+    toggleTidakAdaGPS:   rules.toggleTidakAdaGPS    !== false,
+    toggleMidnightSplit: rules.toggleMidnightSplit  !== false,
+    toggleTugasLuar:     rules.toggleTugasLuar      !== false,
+  });
 });
 
 // ========================
