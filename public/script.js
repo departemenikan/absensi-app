@@ -10990,17 +10990,22 @@ function isCapacitorNative() {
 }
 
 // Ambil plugin BiometricAuth dari Capacitor bridge
-// BiometricAuth = nama proxy JS yang punya method authenticate
-// BiometricAuthNative = class Java, tidak bisa langsung dipanggil dari JS
+// @aparajita/capacitor-biometric-auth mendaftarkan dua nama:
+//   - "BiometricAuthNative" → native Android (prioritas utama)
+//   - "BiometricAuth"       → bisa jadi web shim
 function getBiometricPlugin() {
-  const P = window.Capacitor && window.Capacitor.Plugins;
+  if (!window.Capacitor) return null;
+  // Gunakan registerPlugin untuk mendapat proxy JS yang benar
+  // dengan semua method (checkBiometry, authenticate, dll)
+  try {
+    const plugin = window.Capacitor.registerPlugin("BiometricAuth");
+    if (plugin) return plugin;
+  } catch(e) {}
+  // Fallback ke Plugins object
+  const P = window.Capacitor.Plugins;
   if (!P) return null;
-  // Pakai BiometricAuth — proxy JS yang sudah terhubung ke native via registerPlugin
-  if (P.BiometricAuth && typeof P.BiometricAuth.checkBiometry === "function") return P.BiometricAuth;
-  // Fallback: register ulang
-  if (window.Capacitor.registerPlugin) {
-    try { return window.Capacitor.registerPlugin("BiometricAuth"); } catch(e) {}
-  }
+  if (P.BiometricAuthNative) return P.BiometricAuthNative;
+  if (P.BiometricAuth)       return P.BiometricAuth;
   return null;
 }
 
@@ -11323,18 +11328,9 @@ async function initBiometricToggle() {
   const toggle = document.getElementById("biometric-toggle");
   const sub    = document.getElementById("biometric-sub");
   if (!card || !toggle) return;
-
-  card.style.display = "";
-  toggle.disabled = true;
-  if (sub) sub.textContent = "⏳ Memeriksa dukungan biometrik...";
-
   const available = await isBiometricAvailable();
-  if (!available) {
-    toggle.disabled = true;
-    toggle.checked  = false;
-    if (sub) sub.textContent = "⚠️ Device ini tidak mendukung biometrik";
-    return;
-  }
+  if (!available) { card.style.display = "none"; return; }
+  card.style.display = "";
   const me     = localStorage.getItem("user") || "";
   const savedU = localStorage.getItem("fingerprintUser") || "";
   const credId = localStorage.getItem("fingerprintCredId") || "";
