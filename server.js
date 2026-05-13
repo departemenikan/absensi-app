@@ -3758,7 +3758,7 @@ app.get("/work-photos/:user", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/:user/:index — foto kegiatan dengan image, support ?date=YYYY-MM-DD
-app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
+app.get("/work-photos/:user/:index", requireLevel(99), (req, res) => {
   const { user, index } = req.params;
   const date    = req.query.date || todayLocal();
   const wpStore = load(F.workPhotos, {});

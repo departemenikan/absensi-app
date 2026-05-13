@@ -9962,6 +9962,7 @@ openView = function(viewId) {
   if (viewId === "view-home") {
     loadHomeAktivitasDropdown();
     startHomeLokasi();
+    setTimeout(() => { if(typeof checkAndShowLaporanBtn==="function") checkAndShowLaporanBtn(); }, 300);
   } else {
     stopHomeLokasi();
   }
@@ -9973,7 +9974,7 @@ if (_origNavTo) {
   navTo = window.navTo = function(page) {
     _origNavTo(page);
     if (page === "home") {
-      setTimeout(() => { loadHomeAktivitasDropdown(); startHomeLokasi(); checkAndShowLaporanBtn(); }, 200);
+      setTimeout(() => { loadHomeAktivitasDropdown(); startHomeLokasi(); if(typeof checkAndShowLaporanBtn==="function") checkAndShowLaporanBtn(); }, 300);
     } else {
       stopHomeLokasi();
     }
@@ -11426,3 +11427,169 @@ async function handleBiometricToggle(el) {
 
 window.initBiometricToggle   = initBiometricToggle;
 window.handleBiometricToggle = handleBiometricToggle;
+
+// ================================================================
+// LAPORAN KEGIATAN
+// ================================================================
+
+async function checkAndShowLaporanBtn() {
+  const wrap = document.getElementById("btn-laporan-wrap");
+  if (!wrap) return;
+  try {
+    const user = localStorage.getItem("user") || "";
+    const r = await authFetch("/status/" + user);
+    const d = await r.json();
+    wrap.style.display = (d.status === "IN" || d.status === "BREAK") ? "block" : "none";
+  } catch (e) {
+    wrap.style.display = "none";
+  }
+}
+
+async function showLaporanPopup() {
+  const old = document.getElementById("laporan-overlay");
+  if (old) old.remove();
+
+  let existing = { uraian: "", totalPhotos: 0, updatedAt: null };
+  try {
+    const r = await authFetch("/work-photos/report/me");
+    if (r.ok) existing = await r.json();
+  } catch (e) {}
+
+  const overlay = document.createElement("div");
+  overlay.id = "laporan-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.72);z-index:850;display:flex;align-items:flex-end;justify-content:center;";
+
+  const updatedNote = existing.updatedAt
+    ? `<span style="font-size:11px;color:#95a5a6;">Terakhir disimpan: ${new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</span>`
+    : "";
+
+  const fotoMaxed = existing.totalPhotos >= 5;
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:480px;padding:24px 20px 32px;max-height:90vh;overflow-y:auto;">
+      <div style="width:40px;height:4px;background:#ddd;border-radius:4px;margin:0 auto 20px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#2c3e50;">📋 Laporan Kegiatan</div>
+          ${updatedNote}
+        </div>
+        <button onclick="document.getElementById('laporan-overlay').remove()"
+          style="width:32px;height:32px;border-radius:50%;border:none;background:#f0f2f5;font-size:18px;cursor:pointer;color:#555;">✕</button>
+      </div>
+      <div style="margin:16px 0 8px;font-size:13px;font-weight:700;color:#2c3e50;">✏️ Uraian Kegiatan</div>
+      <textarea id="laporan-uraian" placeholder="Tulis uraian kegiatan hari ini..."
+        style="width:100%;height:110px;padding:12px;border:1.5px solid #e8ecf0;border-radius:12px;font-size:14px;resize:none;outline:none;box-sizing:border-box;color:#2c3e50;"
+        onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
+      >${existing.uraian || ""}</textarea>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;">
+        <div style="font-size:13px;font-weight:700;color:#2c3e50;">📸 Foto Kegiatan</div>
+        <span style="font-size:12px;color:#95a5a6;">${existing.totalPhotos}/5 foto</span>
+      </div>
+      <input type="file" id="laporan-file-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanPhoto(this)"/>
+      <button onclick="${fotoMaxed ? '' : "document.getElementById('laporan-file-input').click()"}"
+        ${fotoMaxed ? "disabled" : ""}
+        style="width:100%;padding:12px;border:1.5px dashed ${fotoMaxed ? "#ddd" : "#4f8ef7"};border-radius:12px;background:${fotoMaxed ? "#f9f9f9" : "#f0f6ff"};color:${fotoMaxed ? "#bbb" : "#4f8ef7"};font-weight:700;font-size:14px;cursor:${fotoMaxed ? "not-allowed" : "pointer"};margin-bottom:12px;">
+        ${fotoMaxed ? "🚫 Maksimal 5 foto tercapai" : "+ Tambah Foto"}
+      </button>
+      <div id="laporan-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+      <button onclick="_saveLaporan()"
+        style="width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;">
+        💾 Simpan Laporan
+      </button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  _loadLaporanThumbs(existing.totalPhotos);
+}
+
+async function _loadLaporanThumbs(totalPhotos) {
+  const wrap = document.getElementById("laporan-thumbs");
+  if (!wrap || totalPhotos === 0) return;
+  const user = localStorage.getItem("user") || "";
+  const today = new Date().toISOString().slice(0, 10);
+  wrap.innerHTML = "";
+  for (let i = 0; i < totalPhotos; i++) {
+    const thumbWrap = document.createElement("div");
+    thumbWrap.style.cssText = "position:relative;width:72px;height:72px;";
+    const img = document.createElement("img");
+    img.style.cssText = "width:72px;height:72px;object-fit:cover;border-radius:10px;border:2px solid #e8ecf0;";
+    img.alt = "Foto " + (i + 1);
+    (async function(idx) {
+      try {
+        const r = await authFetch(`/work-photos/${user}/${idx}?date=${today}`);
+        if (r.ok) { const d = await r.json(); if (d.image) img.src = d.image; }
+      } catch (e) {}
+    })(i);
+    const delBtn = document.createElement("button");
+    delBtn.innerHTML = "✕";
+    delBtn.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:11px;cursor:pointer;font-weight:700;";
+    const capturedIdx = i;
+    delBtn.onclick = async function() {
+      if (!confirm("Hapus foto ini?")) return;
+      try {
+        const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action: "deletePhoto", photoIndex: capturedIdx }) });
+        const d = await r.json();
+        if (d.status === "OK") { showToast("🗑 Foto dihapus"); showLaporanPopup(); }
+        else showToast("⚠️ Gagal hapus foto");
+      } catch(e) { showToast("❌ Gagal hapus foto"); }
+    };
+    thumbWrap.appendChild(img);
+    thumbWrap.appendChild(delBtn);
+    wrap.appendChild(thumbWrap);
+  }
+}
+
+async function _handleLaporanPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast("⚠️ File terlalu besar (maks 8MB)"); input.value = ""; return; }
+  showToast("⏳ Mengupload foto...", "info");
+  const base64 = await _compressLaporanPhoto(file);
+  if (!base64) { showToast("❌ Gagal memproses foto"); input.value = ""; return; }
+  try {
+    const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [base64] }) });
+    const d = await r.json();
+    if (d.status === "OK") { showToast(`✅ Foto ditambahkan (${d.totalPhotos}/5)`); showLaporanPopup(); }
+    else if (d.status === "MAX_PHOTOS") showToast("⚠️ Maksimal 5 foto per laporan");
+    else showToast("⚠️ " + (d.msg || "Gagal upload foto"));
+  } catch(err) { showToast("❌ Gagal upload foto"); }
+  input.value = "";
+}
+
+function _compressLaporanPhoto(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = function() {
+        const MAX = 900; let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h*MAX/w); w=MAX; } else { w=Math.round(w*MAX/h); h=MAX; } }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => resolve(null);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function _saveLaporan() {
+  const uraian = (document.getElementById("laporan-uraian")?.value || "").trim();
+  try {
+    const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ uraian }) });
+    const d = await r.json();
+    if (d.status === "OK") { document.getElementById("laporan-overlay")?.remove(); showToast("✅ Laporan berhasil disimpan"); }
+    else showToast("⚠️ " + (d.msg || "Gagal menyimpan laporan"));
+  } catch(err) { showToast("❌ Gagal menyimpan laporan"); }
+}
+
+window.checkAndShowLaporanBtn = checkAndShowLaporanBtn;
+window.showLaporanPopup       = showLaporanPopup;
+window._handleLaporanPhoto    = _handleLaporanPhoto;
+window._saveLaporan           = _saveLaporan;
+
