@@ -428,23 +428,22 @@ async function checkLoginStatus() {
   const u = localStorage.getItem("user");
   if (!u) { showAuthPage(); return; }
 
-  // Update teks splash saat menunggu server wake up (Render free tier)
+  // Splash tetap tampil, fetch ke server di background
+  // Tampilkan teks "menghubungkan" setelah 1.5 detik jika belum dapat response
   const splashSub = document.querySelector(".splash-sub");
   const originalSub = splashSub ? splashSub.textContent : "";
+  let slowTimer = setTimeout(() => {
+    if (splashSub) splashSub.textContent = "Menghubungkan ke server...";
+  }, 1500);
 
   const tryConnect = async (attempt) => {
-    if (splashSub && attempt > 1) {
-      splashSub.textContent = attempt <= 3
-        ? "Menghubungkan ke server..."
-        : "Server sedang bangun, mohon tunggu...";
-    }
     try {
       const r = await fetch("/check-user/" + u, { signal: AbortSignal.timeout(8000) });
       if (!r.ok) throw new Error("Server error");
       return await r.json();
     } catch {
       if (attempt < 6) {
-        // Tunggu 4 detik lalu coba lagi (total max ~24 detik)
+        if (splashSub) splashSub.textContent = "Server sedang bangun, mohon tunggu...";
         await new Promise(res => setTimeout(res, 4000));
         return tryConnect(attempt + 1);
       }
@@ -453,6 +452,7 @@ async function checkLoginStatus() {
   };
 
   const d = await tryConnect(1);
+  clearTimeout(slowTimer);
   if (splashSub) splashSub.textContent = originalSub;
 
   if (d && d.valid) {
@@ -460,9 +460,7 @@ async function checkLoginStatus() {
     localStorage.setItem("group", d.group || "anggota");
     localStorage.setItem("level", d.level || 99);
     enterApp(d.menus || [], d.group, d.level);
-    // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
     subscribePushNotification().catch(() => {});
-    // Mulai cek session jika sessionId sudah ada di localStorage
     startSessionChecker();
   } else {
     const fpUser   = localStorage.getItem("fingerprintUser");
