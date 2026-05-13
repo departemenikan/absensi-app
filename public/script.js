@@ -427,27 +427,44 @@ async function doSignUp(u, p) {
 async function checkLoginStatus() {
   const u = localStorage.getItem("user");
   if (!u) { showAuthPage(); return; }
-  try {
-    const r = await fetch("/check-user/" + u);
-    const d = await r.json();
-    if (d.valid) {
-      localStorage.setItem("menus", JSON.stringify(d.menus || []));
-      localStorage.setItem("group", d.group || "anggota");
-      localStorage.setItem("level", d.level || 99);
-      enterApp(d.menus || [], d.group, d.level);
-      // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
-      subscribePushNotification().catch(() => {});
-      // Mulai cek session jika sessionId sudah ada di localStorage
-      startSessionChecker();
-    } else {
-      const fpUser   = localStorage.getItem("fingerprintUser");
-      const fpCredId = localStorage.getItem("fingerprintCredId");
-      localStorage.clear();
-      if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
-      if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
-      showAuthPage();
+
+  // Update teks splash saat menunggu server wake up (Render free tier)
+  const splashSub = document.querySelector(".splash-sub");
+  const originalSub = splashSub ? splashSub.textContent : "";
+
+  const tryConnect = async (attempt) => {
+    if (splashSub && attempt > 1) {
+      splashSub.textContent = attempt <= 3
+        ? "Menghubungkan ke server..."
+        : "Server sedang bangun, mohon tunggu...";
     }
-  } catch {
+    try {
+      const r = await fetch("/check-user/" + u, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error("Server error");
+      return await r.json();
+    } catch {
+      if (attempt < 6) {
+        // Tunggu 4 detik lalu coba lagi (total max ~24 detik)
+        await new Promise(res => setTimeout(res, 4000));
+        return tryConnect(attempt + 1);
+      }
+      return null;
+    }
+  };
+
+  const d = await tryConnect(1);
+  if (splashSub) splashSub.textContent = originalSub;
+
+  if (d && d.valid) {
+    localStorage.setItem("menus", JSON.stringify(d.menus || []));
+    localStorage.setItem("group", d.group || "anggota");
+    localStorage.setItem("level", d.level || 99);
+    enterApp(d.menus || [], d.group, d.level);
+    // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
+    subscribePushNotification().catch(() => {});
+    // Mulai cek session jika sessionId sudah ada di localStorage
+    startSessionChecker();
+  } else {
     const fpUser   = localStorage.getItem("fingerprintUser");
     const fpCredId = localStorage.getItem("fingerprintCredId");
     localStorage.clear();
