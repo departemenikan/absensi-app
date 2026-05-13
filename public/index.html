@@ -716,6 +716,17 @@
         </select>
       </div>
     </div>
+    <!-- Tombol Laporan Kegiatan — hanya muncul saat shift aktif -->
+    <div id="btn-laporan-wrap" style="display:none;margin-top:12px;">
+      <button id="btn-laporan" onclick="showLaporanPopup()" style="
+        width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;
+        background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;
+        font-weight:700;font-size:15px;display:flex;align-items:center;
+        justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(79,142,247,.3);
+      ">
+        <span style="font-size:18px;">📋</span> Laporan Kegiatan
+      </button>
+    </div>
     <!-- TAB: Hari Ini / Minggu Ini (parallel) -->
     <div style="display:flex;gap:0;background:white;border-radius:12px 12px 0 0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:16px;">
       <button id="home-tab-hari" onclick="switchHomeTab('hari')"
@@ -3129,7 +3140,7 @@
           <div id="wp-date-chips" style="display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin-top:8px;
             padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;"></div>
           <p style="margin:6px 0 0;font-size:12px;color:var(--muted);">
-            Foto kegiatan/hasil kerja yang diunggah karyawan mobile saat Clock Out. Disimpan selama 1 minggu.
+            Laporan kegiatan harian karyawan: uraian + maks 5 foto. Disimpan selama 3 hari.
           </p>
         </div>
 
@@ -3145,9 +3156,11 @@
         <div id="wp-grid-wrap" style="display:none;">
           <div class="card" style="margin-top:12px;padding:14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-              <div style="font-size:14px;font-weight:700;" id="wp-grid-title">Foto Kegiatan</div>
+              <div style="font-size:14px;font-weight:700;" id="wp-grid-title">Laporan Kegiatan</div>
               <span id="wp-grid-count" style="font-size:12px;color:var(--muted);"></span>
             </div>
+            <!-- Uraian kegiatan (muncul jika ada) -->
+            <div id="wp-uraian-wrap" style="display:none;margin-bottom:12px;"></div>
             <div id="wp-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
             <p id="wp-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
               Belum ada foto kegiatan untuk karyawan ini hari ini.
