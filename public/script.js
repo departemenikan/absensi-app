@@ -427,42 +427,27 @@ async function doSignUp(u, p) {
 async function checkLoginStatus() {
   const u = localStorage.getItem("user");
   if (!u) { showAuthPage(); return; }
-
-  // Splash tetap tampil, fetch ke server di background
-  // Tampilkan teks "menghubungkan" setelah 1.5 detik jika belum dapat response
-  const splashSub = document.querySelector(".splash-sub");
-  const originalSub = splashSub ? splashSub.textContent : "";
-  let slowTimer = setTimeout(() => {
-    if (splashSub) splashSub.textContent = "Menghubungkan ke server...";
-  }, 1500);
-
-  const tryConnect = async (attempt) => {
-    try {
-      const r = await fetch("/check-user/" + u, { signal: AbortSignal.timeout(8000) });
-      if (!r.ok) throw new Error("Server error");
-      return await r.json();
-    } catch {
-      if (attempt < 6) {
-        if (splashSub) splashSub.textContent = "Server sedang bangun, mohon tunggu...";
-        await new Promise(res => setTimeout(res, 4000));
-        return tryConnect(attempt + 1);
-      }
-      return null;
+  try {
+    const r = await fetch("/check-user/" + u);
+    const d = await r.json();
+    if (d.valid) {
+      localStorage.setItem("menus", JSON.stringify(d.menus || []));
+      localStorage.setItem("group", d.group || "anggota");
+      localStorage.setItem("level", d.level || 99);
+      enterApp(d.menus || [], d.group, d.level);
+      // Auto-resubscribe push setiap app dibuka (subscription hilang saat server restart)
+      subscribePushNotification().catch(() => {});
+      // Mulai cek session jika sessionId sudah ada di localStorage
+      startSessionChecker();
+    } else {
+      const fpUser   = localStorage.getItem("fingerprintUser");
+      const fpCredId = localStorage.getItem("fingerprintCredId");
+      localStorage.clear();
+      if (fpUser)   localStorage.setItem("fingerprintUser",   fpUser);
+      if (fpCredId) localStorage.setItem("fingerprintCredId", fpCredId);
+      showAuthPage();
     }
-  };
-
-  const d = await tryConnect(1);
-  clearTimeout(slowTimer);
-  if (splashSub) splashSub.textContent = originalSub;
-
-  if (d && d.valid) {
-    localStorage.setItem("menus", JSON.stringify(d.menus || []));
-    localStorage.setItem("group", d.group || "anggota");
-    localStorage.setItem("level", d.level || 99);
-    enterApp(d.menus || [], d.group, d.level);
-    subscribePushNotification().catch(() => {});
-    startSessionChecker();
-  } else {
+  } catch {
     const fpUser   = localStorage.getItem("fingerprintUser");
     const fpCredId = localStorage.getItem("fingerprintCredId");
     localStorage.clear();
@@ -476,7 +461,6 @@ function showAuthPage() {
   // Sembunyikan splash screen sebelum tampil form login
   const splash = document.getElementById("splash-screen");
   if (splash) splash.classList.add("hide");
-  document.body.classList.add("app-ready");
   document.getElementById("auth-page").classList.remove("hidden");
   document.getElementById("main-nav").classList.add("hidden");
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -488,7 +472,6 @@ function enterApp(menus, group, level) {
   // Sembunyikan splash screen
   const splash = document.getElementById("splash-screen");
   if (splash) splash.classList.add("hide");
-  document.body.classList.add("app-ready");
 
   userMenus = menus || [];
   userGroup = group || "anggota";
@@ -8726,7 +8709,34 @@ async function loadRiwayatRute() {
 // INIT
 // ============================================================
 window.onload = async function () {
+  // Tampilkan splash minimal 1.5 detik agar tidak flicker abu-abu/putih
+  const splashStart = Date.now();
+  const MIN_SPLASH  = 1500; // ms
+
+  // Tunggu face models + Capacitor siap secara paralel
   await loadFaceModels();
+
+  // Pastikan Capacitor & BiometricAuthNative sudah siap sebelum lanjut
+  await new Promise(resolve => {
+    const deadline = Date.now() + 4000;
+    function check() {
+      if (
+        !window.Capacitor ||
+        !window.Capacitor.isNativePlatform ||
+        !window.Capacitor.isNativePlatform()
+      ) return resolve(); // bukan native, tidak perlu tunggu plugin
+      const P = window.Capacitor.Plugins || {};
+      if (P.BiometricAuthNative || P.BiometricAuth) return resolve();
+      if (Date.now() > deadline) return resolve();
+      setTimeout(check, 100);
+    }
+    check();
+  });
+
+  // Pastikan splash tampil minimal MIN_SPLASH ms
+  const elapsed = Date.now() - splashStart;
+  if (elapsed < MIN_SPLASH) await new Promise(r => setTimeout(r, MIN_SPLASH - elapsed));
+
   checkLoginStatus();
 };
 
@@ -10089,9 +10099,6 @@ async function loadSistemSettings() {
   } catch (e) {
     console.warn("loadSistemSettings gagal:", e);
   }
-
-  // Load auto clock-out toggles
-  if (typeof loadActToggles === "function") loadActToggles();
 }
 
 function _updateTzInfo(tz) {
@@ -11019,81 +11026,6 @@ window.renderSingleSessionToggle = renderSingleSessionToggle;
 window.toggleSingleSession       = toggleSingleSession;
 window.startSessionChecker       = startSessionChecker;
 window.stopSessionChecker        = stopSessionChecker;
-
-// ============================================================
-// AUTO CLOCK-OUT TOGGLES (Rule 1–5)
-// ============================================================
-
-// State lokal untuk 5 toggle
-let _actToggles = {
-  toggleMess:          true,
-  toggleLuarRadius:    true,
-  toggleTidakAdaGPS:   true,
-  toggleMidnightSplit: true,
-  toggleTugasLuar:     true,
-};
-
-// Konfigurasi tampilan per toggle
-const _ACT_CONFIG = {
-  toggleMess:          { switchId: "act-mess-switch",       knobId: "act-mess-knob"       },
-  toggleLuarRadius:    { switchId: "act-radius-switch",     knobId: "act-radius-knob"     },
-  toggleTidakAdaGPS:   { switchId: "act-nogps-switch",      knobId: "act-nogps-knob"      },
-  toggleMidnightSplit: { switchId: "act-midnight-switch",   knobId: "act-midnight-knob"   },
-  toggleTugasLuar:     { switchId: "act-tugasluar-switch",  knobId: "act-tugasluar-knob"  },
-};
-
-const _ACT_LABEL = {
-  toggleMess:          "🏠 Karyawan Mess",
-  toggleLuarRadius:    "📍 Luar Radius",
-  toggleTidakAdaGPS:   "📵 Tidak Ada GPS",
-  toggleMidnightSplit: "🌙 Midnight Split",
-  toggleTugasLuar:     "🧳 Tugas Luar",
-};
-
-function _renderActToggle(key, value) {
-  const cfg = _ACT_CONFIG[key];
-  if (!cfg) return;
-  const sw   = document.getElementById(cfg.switchId);
-  const knob = document.getElementById(cfg.knobId);
-  if (!sw || !knob) return;
-  // Warna khusus: rule 5 (Tugas Luar) pakai oranye, lainnya biru
-  const onColor = (key === "toggleTugasLuar") ? "#e65100" : "#4f8ef7";
-  sw.style.background   = value ? onColor : "#ccc";
-  knob.style.left       = value ? "27px" : "3px";
-}
-
-async function loadActToggles() {
-  try {
-    const r = await authFetch("/rules/toggles");
-    if (!r.ok) return;
-    const d = await r.json();
-    _actToggles = { ..._actToggles, ...d };
-    Object.keys(_ACT_CONFIG).forEach(k => _renderActToggle(k, _actToggles[k] !== false));
-  } catch (e) {
-    console.warn("loadActToggles gagal:", e);
-  }
-}
-
-async function toggleAutoClockOutRule(key) {
-  if (userLevel > 2) { showToast("⛔ Hanya Owner/Admin yang dapat mengubah pengaturan ini", "error"); return; }
-  const newState = !(_actToggles[key] !== false);
-  try {
-    const r = await authFetch("/rules/toggles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [key]: newState }),
-    });
-    if (!r.ok) { showToast("❌ Gagal menyimpan", "error"); return; }
-    const d = await r.json();
-    _actToggles = { ..._actToggles, ...d };
-    _renderActToggle(key, newState);
-    const label = _ACT_LABEL[key] || key;
-    showToast(newState ? `✅ ${label} diaktifkan` : `🔕 ${label} dinonaktifkan`);
-  } catch { showToast("❌ Gagal terhubung ke server", "error"); }
-}
-
-window.loadActToggles          = loadActToggles;
-window.toggleAutoClockOutRule  = toggleAutoClockOutRule;
 
 // ============================================================
 // BIOMETRIK — Login Fingerprint / Face ID
