@@ -478,6 +478,7 @@ function showAuthPage() {
   // Sembunyikan splash screen sebelum tampil form login
   const splash = document.getElementById("splash-screen");
   if (splash) splash.classList.add("hide");
+  document.body.classList.add("app-ready");
   document.getElementById("auth-page").classList.remove("hidden");
   document.getElementById("main-nav").classList.add("hidden");
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -489,6 +490,7 @@ function enterApp(menus, group, level) {
   // Sembunyikan splash screen
   const splash = document.getElementById("splash-screen");
   if (splash) splash.classList.add("hide");
+  document.body.classList.add("app-ready");
 
   userMenus = menus || [];
   userGroup = group || "anggota";

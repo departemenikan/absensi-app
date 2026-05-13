@@ -23,8 +23,8 @@
       --warning:#f39c12; --bg:#f0f2f5; --card:#fff; --text:#2c3e50; --muted:#95a5a6;
     }
     *{box-sizing:border-box;margin:0;padding:0;}
-    html{height:100%;}
-    body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px;
+    html{height:100%;background:#1a237e;}
+    body{font-family:'Segoe UI',sans-serif;background:#1a237e;color:var(--text);padding-bottom:80px;
       /* Scroll halus & momentum di iOS */
       -webkit-overflow-scrolling:touch;
       /* Cegah pull-to-refresh browser native yang bentrok dengan swipe */
@@ -81,6 +81,7 @@
     #auth-page{position:fixed;top:0;left:0;width:100%;height:100%;
       background:linear-gradient(135deg,#1a237e,#4f8ef7);z-index:1000;
       display:flex;align-items:center;justify-content:center;overflow-y:auto;}
+    body.app-ready{background:var(--bg);}
     .auth-card{background:white;padding:32px 28px;border-radius:20px;
       box-shadow:0 20px 60px rgba(0,0,0,.3);width:320px;text-align:center;margin:20px auto;}
     .auth-logo{font-size:40px;margin-bottom:4px;}
