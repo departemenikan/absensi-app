@@ -273,8 +273,9 @@ async function handleAuth() {
 
 async function doLogin(u, p) {
   try {
-    const isPWA = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-    const r = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, isPWA}) });
+    const isCapacitorNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    const isPWA = !isCapacitorNativeApp && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true);
+    const r = await fetch("/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:p, isPWA, isCapacitor: isCapacitorNativeApp}) });
     const d = await r.json();
     if (d.status === "OK") {
       localStorage.setItem("user", u);
@@ -302,7 +303,7 @@ function detectDeviceType() {
 
   // Capacitor native (APK Android/iOS) — prioritas tertinggi
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-    return "pwa"; // Capacitor diperlakukan sama dengan PWA mobile
+    return "mobile"; // APK native bukan PWA
   }
 
   const ua = navigator.userAgent || "";
@@ -10693,7 +10694,7 @@ async function wpLoadDateChips() {
   if (!chipsEl) return;
   const today = todayLocalStr();
   const chips = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 7; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     chips.push(d.toLocaleDateString("sv-SE"));

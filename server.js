@@ -885,11 +885,13 @@ app.post("/login", async (req, res) => {
 
   // ── Simpan info device saat login ──────────────────────────
   const ua         = req.headers["user-agent"] || "";
-  const isMobile   = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
-  const isElectron = /Electron/i.test(ua);
-  const isPWA      = req.body.isPWA === true;
-  let deviceType   = "desktop";
+  const isMobile      = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+  const isElectron    = /Electron/i.test(ua);
+  const isCapacitor   = req.body.isCapacitor === true; // APK native via Capacitor
+  const isPWA         = !isCapacitor && req.body.isPWA === true;
+  let deviceType      = "desktop";
   if (isElectron)             deviceType = "desktop-app";
+  else if (isCapacitor)       deviceType = "mobile"; // APK Capacitor → mobile, bukan pwa
   else if (isPWA && isMobile) deviceType = "pwa";
   else if (isPWA)             deviceType = "pwa-desktop";
   else if (isMobile)          deviceType = "mobile";
@@ -1073,7 +1075,7 @@ app.get("/admin/today", requireLevel(3), (req, res) => {
   const users = load(F.users, {});
   const date  = req.query.date || todayLocal(); // lokal WITA
   const records = Object.keys(users).map(username => {
-    const rec = data.slice().reverse().find(d => d.user === username && d.date === date);
+    const rec = data.find(d => d.user === username && d.date === date);
     let status = "OUT";
     if (rec && !rec.jamKeluar) { const lb = rec.breaks.at(-1); status = (lb && !lb.end) ? "BREAK" : "IN"; }
     else if (rec && rec.jamKeluar) status = "DONE";
@@ -3459,7 +3461,7 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
     .map(username => {
       const points  = todayData[username] || [];
       const last    = points.length ? points[points.length - 1] : null;
-      const rec     = data.slice().reverse().find(d => d.user === username && d.date === today);
+      const rec     = data.find(d => d.user === username && d.date === today);
       let status    = "OUT";
       if (rec && !rec.jamKeluar) {
         const lb = rec.breaks.at(-1);
@@ -3586,7 +3588,7 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec   = data.slice().reverse().find(d => d.user === username && d.date === today);
+      const rec   = data.find(d => d.user === username && d.date === today);
       let status  = "OUT";
       if (rec && !rec.jamKeluar) {
         const lb = rec.breaks?.at(-1);
@@ -3711,8 +3713,7 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      // Ambil record TERAKHIR hari ini (bisa ada multiple jika clock in/out berulang)
-      const rec = data.slice().reverse().find(d => d.user === username && d.date === today);
+      const rec = data.find(d => d.user === username && d.date === today);
       if (!rec) return null;
       // Deteksi platform — fallback dari UA jika record lama tidak punya platform
       let platform = rec.platform || "desktop";
@@ -4349,12 +4350,14 @@ app.post("/webauthn/login", async (req, res) => {
   const crypto   = require("crypto");
   const sessionId = crypto.randomBytes(24).toString("hex");
   const ua        = req.headers["user-agent"] || "";
-  const isMobile  = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
-  const isPWA     = req.body.isPWA === true;
-  let deviceType  = "desktop";
-  if (/Electron/i.test(ua))      deviceType = "desktop-app";
-  else if (isPWA && isMobile)    deviceType = "pwa";
-  else if (isMobile)             deviceType = "mobile";
+  const isMobile      = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+  const isCapacitor2  = req.body.isCapacitor === true;
+  const isPWA         = !isCapacitor2 && req.body.isPWA === true;
+  let deviceType      = "desktop";
+  if (/Electron/i.test(ua))         deviceType = "desktop-app";
+  else if (isCapacitor2)            deviceType = "mobile"; // APK Capacitor → mobile
+  else if (isPWA && isMobile)       deviceType = "pwa";
+  else if (isMobile)                deviceType = "mobile";
 
   const sessions = load(F.sessions, {});
   sessions[username] = { deviceType, sessionId, userAgent: ua, loginAt: new Date().toISOString() };
