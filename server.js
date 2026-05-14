@@ -1073,7 +1073,7 @@ app.get("/admin/today", requireLevel(3), (req, res) => {
   const users = load(F.users, {});
   const date  = req.query.date || todayLocal(); // lokal WITA
   const records = Object.keys(users).map(username => {
-    const rec = data.find(d => d.user === username && d.date === date);
+    const rec = data.slice().reverse().find(d => d.user === username && d.date === date);
     let status = "OUT";
     if (rec && !rec.jamKeluar) { const lb = rec.breaks.at(-1); status = (lb && !lb.end) ? "BREAK" : "IN"; }
     else if (rec && rec.jamKeluar) status = "DONE";
@@ -3459,7 +3459,7 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
     .map(username => {
       const points  = todayData[username] || [];
       const last    = points.length ? points[points.length - 1] : null;
-      const rec     = data.find(d => d.user === username && d.date === today);
+      const rec     = data.slice().reverse().find(d => d.user === username && d.date === today);
       let status    = "OUT";
       if (rec && !rec.jamKeluar) {
         const lb = rec.breaks.at(-1);
@@ -3586,7 +3586,7 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec   = data.find(d => d.user === username && d.date === today);
+      const rec   = data.slice().reverse().find(d => d.user === username && d.date === today);
       let status  = "OUT";
       if (rec && !rec.jamKeluar) {
         const lb = rec.breaks?.at(-1);
@@ -3711,7 +3711,8 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec = data.find(d => d.user === username && d.date === today);
+      // Ambil record TERAKHIR hari ini (bisa ada multiple jika clock in/out berulang)
+      const rec = data.slice().reverse().find(d => d.user === username && d.date === today);
       if (!rec) return null;
       // Deteksi platform — fallback dari UA jika record lama tidak punya platform
       let platform = rec.platform || "desktop";

@@ -10693,7 +10693,7 @@ async function wpLoadDateChips() {
   if (!chipsEl) return;
   const today = todayLocalStr();
   const chips = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 3; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     chips.push(d.toLocaleDateString("sv-SE"));
