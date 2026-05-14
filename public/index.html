@@ -3120,8 +3120,16 @@
       <!-- ===== PANEL: Foto Kerja ===== -->
       <div id="panel-foto-kerja" style="display:none;">
 
+        <!-- Karyawan Mobile Aktif Hari Ini -->
+        <div class="card" id="wp-active-mobile-card" style="margin-top:0;padding:14px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">📱 Karyawan Mobile Aktif</div>
+          <div id="wp-active-mobile-list">
+            <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
+          </div>
+        </div>
+
         <!-- Filter -->
-        <div class="card" style="margin-top:0;padding:14px;">
+        <div class="card" style="margin-top:12px;padding:14px;">
           <!-- 1 baris: Karyawan (flex) + Tanggal + Refresh -->
           <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;">
             <select id="wp-pilih-user" onchange="wpOnDateChange()"

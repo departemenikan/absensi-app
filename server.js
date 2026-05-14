@@ -988,7 +988,8 @@ app.post("/absen", requireLevel(99), (req, res) => {
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
     const aktivitas = req.body.aktivitas || "";
-    data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
+    const platform  = req.body.platform  || "desktop"; // "mobile","pwa","desktop","desktop-app"
+    data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, platform, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
     record.jamKeluar = timeNorm;
     const lb = record.breaks.at(-1);
@@ -3543,7 +3544,7 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   res.json({ status: "OK" });
 });
 
-// GET /screenshots/today — daftar user aktif + jumlah screenshot
+// GET /screenshots/today — daftar user aktif + jumlah screenshot (hanya desktop/browser)
 app.get("/screenshots/today", requireLevel(3), (req, res) => {
   const today       = todayLocal();
   const screenshots = load(F.screenshots, {});
@@ -3562,6 +3563,8 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
     ...Object.keys(todayData),
     ...data.filter(d => d.date === today && !d.jamKeluar).map(d => d.user),
   ]);
+
+  const MOBILE_PLATFORMS = ["mobile", "pwa"];
 
   const result = [...allUsers]
     .filter(username => {
@@ -3582,6 +3585,7 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         const lb = rec.breaks?.at(-1);
         status   = (lb && !lb.end) ? "BREAK" : "IN";
       } else if (rec && rec.jamKeluar) status = "DONE";
+      const platform = rec?.platform || "desktop";
       const shots = todayData[username] || [];
       const sessions   = load(F.sessions, {});
       const sess       = sessions[username] || {};
@@ -3590,13 +3594,15 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         namaLengkap:      users[username]?.namaLengkap || username,
         jabatan:          users[username]?.jabatan || "",
         status,
+        platform,
         totalScreenshots: shots.length,
         lastScreenshot:   shots.length ? shots[shots.length - 1].ts : null,
         deviceType:       sess.deviceType || "unknown",
         loginAt:          sess.loginAt    || null,
       };
     })
-    .filter(u => u.status !== "OUT")
+    // Hanya tampilkan yang bukan mobile/pwa di tab Screenshot
+    .filter(u => u.status !== "OUT" && !MOBILE_PLATFORMS.includes(u.platform))
     .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
 
   res.json(result);
@@ -3660,6 +3666,74 @@ app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
 // ========================
 // FOTO KEGIATAN KERJA (Mobile Clock Out)
 // ========================
+
+// GET /work-photos/active-mobile — user mobile/pwa yang sedang aktif hari ini (belum clock out)
+app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
+  const today     = todayLocal();
+  const wpStore   = load(F.workPhotos, {});
+  const users     = load(F.users, {});
+  const data      = load(F.data, []);
+  const todayData = wpStore[today] || {};
+
+  const requester       = req._requester;
+  const requesterGroup  = getUserGroup(requester);
+  const requesterUser   = users[requester];
+  const requesterDivisi = Array.isArray(requesterUser?.divisi)
+    ? requesterUser.divisi
+    : (requesterUser?.divisi ? [requesterUser.divisi] : []);
+
+  const MOBILE_PLATFORMS = ["mobile", "pwa"];
+
+  // Kumpulkan semua user yang clock in hari ini
+  const allUsers = new Set(data.filter(d => d.date === today).map(d => d.user));
+
+  const result = [...allUsers]
+    .filter(username => {
+      // Filter akses per role
+      if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+      if (requesterGroup === "manager") {
+        const tg = getUserGroup(username);
+        if (["owner","admin","manager"].includes(tg)) return false;
+        const tu = users[username];
+        const td = Array.isArray(tu?.divisi) ? tu.divisi : (tu?.divisi ? [tu.divisi] : []);
+        return requesterDivisi.some(d => td.includes(d));
+      }
+      return false;
+    })
+    .map(username => {
+      const rec = data.find(d => d.user === username && d.date === today);
+      if (!rec) return null;
+      const platform = rec.platform || "desktop";
+      // Hanya mobile/pwa
+      if (!MOBILE_PLATFORMS.includes(platform)) return null;
+      let status = "OUT";
+      if (!rec.jamKeluar) {
+        const lb = rec.breaks?.at(-1);
+        status = (lb && !lb.end) ? "BREAK" : "IN";
+      } else {
+        status = "DONE";
+      }
+      const lap = todayData[username];
+      const isNew = lap && !Array.isArray(lap);
+      const photos = isNew ? (lap?.photos || []) : (Array.isArray(lap) ? lap : []);
+      return {
+        username,
+        namaLengkap: users[username]?.namaLengkap || username,
+        jabatan:     users[username]?.jabatan || "",
+        status,
+        platform,
+        aktivitas:   rec.aktivitas || "",
+        totalPhotos: photos.length,
+        uraian:      isNew ? (lap?.uraian || "") : "",
+        lastPhoto:   photos.at(-1)?.ts || null,
+      };
+    })
+    .filter(Boolean)
+    .filter(u => u.status !== "OUT") // hanya yang masih aktif
+    .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
+
+  res.json(result);
+});
 
 // GET /work-photos/list-users?date=YYYY-MM-DD — daftar user yang punya foto pada tanggal tertentu
 app.get("/work-photos/list-users", requireLevel(3), (req, res) => {

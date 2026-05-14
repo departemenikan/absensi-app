@@ -1065,6 +1065,7 @@ async function sendAbsen(type, label) {
         accuracy: loc.accuracy || 0,  // ← kirim accuracy agar server toleran GPS lemah
         photo,
         aktivitas: type === "IN" ? aktivitas : undefined,  // hanya kirim saat Clock In
+        platform:  type === "IN" ? detectDeviceType() : undefined, // catat platform saat Clock In
         // workPhoto dikirim via POST /work-photos/report (terpisah dari clock out)
       })
     });
@@ -10343,7 +10344,7 @@ async function loadScreenshotActiveList(silent = false) {
     const r = await authFetch(endpoint);
     if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:12px;">Gagal memuat data</p>'; return; }
     const list = await r.json();
-    const emptyMsg = isToday ? "Tidak ada karyawan aktif hari ini" : "Tidak ada record screenshot pada tanggal ini";
+    const emptyMsg = isToday ? "Tidak ada karyawan aktif via desktop hari ini" : "Tidak ada record screenshot pada tanggal ini";
     if (!list.length) {
       el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:12px 0;">${emptyMsg}</p>`;
       return;
@@ -10354,21 +10355,20 @@ async function loadScreenshotActiveList(silent = false) {
       const lastFmt = u.lastScreenshot
         ? new Date(u.lastScreenshot).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
         : "--:--";
-      const total = u.totalScreenshots || u.totalPhotos || 0;
+      const total = u.totalScreenshots || 0;
 
-      // ── Device badge ──────────────────────────────────────────
-      const devIcon  = { "mobile": "📱", "desktop": "🖥", "desktop-app": "🖥✅", "unknown": "❓" };
-      const devLabel = { "mobile": "Mobile", "desktop": "Browser", "desktop-app": "Desktop App", "unknown": "" };
-      const devColor = { "mobile": "#3498db", "desktop": "#8e44ad", "desktop-app": "#27ae60", "unknown": "#95a5a6" };
-      const dtype    = u.deviceType || "unknown";
-      const deviceBadge = dtype !== "unknown" ? `
-        <span title="Login via ${devLabel[dtype]||dtype}" style="
-          display:inline-flex;align-items:center;gap:3px;
+      // ── Platform badge dari record absensi ──────────────────
+      const platIcon  = { "desktop":"🖥️", "desktop-app":"🖥️✅", "pwa-desktop":"🌐", "unknown":"❓" };
+      const platLabel = { "desktop":"Browser", "desktop-app":"Desktop App", "pwa-desktop":"PWA Desktop", "unknown":"" };
+      const platColor = { "desktop":"#8e44ad", "desktop-app":"#27ae60", "pwa-desktop":"#e67e22", "unknown":"#95a5a6" };
+      const plat = u.platform || u.deviceType || "unknown";
+      const platformBadge = `
+        <span style="display:inline-flex;align-items:center;gap:3px;
           padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;
-          background:${devColor[dtype]}22;color:${devColor[dtype]};
+          background:${(platColor[plat]||"#95a5a6")}22;color:${platColor[plat]||"#95a5a6"};
           margin-left:4px;vertical-align:middle;">
-          ${devIcon[dtype]||"❓"} ${devLabel[dtype]||dtype}
-        </span>` : "";
+          ${platIcon[plat]||"🖥️"} ${platLabel[plat]||plat}
+        </span>`;
 
       return `
         <div onclick="ssSelectUser('${u.username}')"
@@ -10380,7 +10380,7 @@ async function loadScreenshotActiveList(silent = false) {
             ${(u.namaLengkap||u.username).charAt(0).toUpperCase()}
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}${deviceBadge}</div>
+            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}${platformBadge}</div>
             <div style="font-size:11px;color:var(--muted);">${u.jabatan||""}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;">
@@ -10389,7 +10389,7 @@ async function loadScreenshotActiveList(silent = false) {
               ${statusLabel[u.status]||u.status}
             </div>` : ""}
             <div style="font-size:11px;color:var(--muted);margin-top:3px;">
-              ${total > 0 ? `📸 ${total} foto · terakhir ${lastFmt}` : "Belum ada screenshot"}
+              ${total > 0 ? `📸 ${total} screenshot · terakhir ${lastFmt}` : "Belum ada screenshot"}
             </div>
           </div>
         </div>`;
@@ -10547,6 +10547,7 @@ function switchMonitorTab(tab) {
     wpLoadDateChips();
     wpPopulateUserSelect();
     loadWorkPhotoList();
+    loadActiveMobileList();
   }
 }
 window.switchMonitorTab = switchMonitorTab;
@@ -10572,6 +10573,10 @@ function wpOnDateChange() {
       ? "📋 Foto Kegiatan Hari Ini"
       : `📋 Foto Kegiatan — ${new Date(date).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
   }
+  // Sembunyikan card mobile aktif jika bukan hari ini
+  const mobileCard = document.getElementById("wp-active-mobile-card");
+  if (mobileCard) mobileCard.style.display = isToday ? "block" : "none";
+  if (isToday) loadActiveMobileList();
   wpActiveUser = null;
   const wrap = document.getElementById("wp-grid-wrap");
   if (wrap) wrap.style.display = "none";
@@ -10580,9 +10585,87 @@ function wpOnDateChange() {
 }
 function wpRefreshAll() {
   loadWorkPhotoList(true);
+  loadActiveMobileList(true);
   wpPopulateUserSelect();
   wpLoadDateChips();
 }
+
+// ── Karyawan mobile aktif hari ini ───────────────────────────
+async function loadActiveMobileList(silent = false) {
+  const el = document.getElementById("wp-active-mobile-list");
+  const card = document.getElementById("wp-active-mobile-card");
+  if (!el) return;
+  // Hanya tampil jika hari ini
+  const isToday = wpGetDate() === todayLocalStr();
+  if (card) card.style.display = isToday ? "block" : "none";
+  if (!isToday) return;
+  if (!silent) el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:8px 0;font-size:13px;">Memuat...</p>';
+  try {
+    const r = await authFetch("/work-photos/active-mobile");
+    if (!r.ok) { el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:8px;font-size:13px;">Gagal memuat</p>'; return; }
+    const list = await r.json();
+    if (!list.length) {
+      el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:8px 0;font-size:13px;">Tidak ada karyawan mobile aktif saat ini</p>';
+      return;
+    }
+    const statusColor = { IN:"#27ae60", BREAK:"#f39c12" };
+    const statusLabel = { IN:"Sedang Bekerja", BREAK:"Istirahat" };
+    const platIcon = { mobile:"📱", pwa:"📱🔖" };
+    el.innerHTML = list.map(u => {
+      const platBadge = `<span style="display:inline-flex;align-items:center;gap:3px;
+        padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;
+        background:#3498db22;color:#3498db;margin-left:4px;vertical-align:middle;">
+        ${platIcon[u.platform]||"📱"} ${u.platform === "pwa" ? "PWA" : "Mobile"}
+      </span>`;
+      const aktivitasBadge = u.aktivitas ? `<span style="display:inline-flex;align-items:center;gap:3px;
+        padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;
+        background:#e3f2fd;color:#1976d2;margin-left:4px;vertical-align:middle;">
+        🏃 ${u.aktivitas}
+      </span>` : "";
+      const fotoInfo = u.totalPhotos > 0
+        ? `📸 ${u.totalPhotos} foto${u.lastPhoto ? ` · ${new Date(u.lastPhoto).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}` : ""}`
+        : "Belum ada foto";
+      return `
+        <div onclick="wpSelectMobileUser('${u.username}')"
+          style="display:flex;align-items:center;gap:12px;padding:10px 0;
+                 border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .15s;"
+          onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='white'">
+          <div style="width:36px;height:36px;border-radius:50%;background:#3498db;color:white;
+                      display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;">
+            ${(u.namaLengkap||u.username).charAt(0).toUpperCase()}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:13px;">${u.namaLengkap}${platBadge}${aktivitasBadge}</div>
+            <div style="font-size:11px;color:var(--muted);">${u.jabatan||""}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;
+              background:${(statusColor[u.status]||"#95a5a6")}22;color:${statusColor[u.status]||"#95a5a6"};">
+              ${statusLabel[u.status]||u.status}
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">${fotoInfo}</div>
+          </div>
+        </div>`;
+    }).join("");
+  } catch {
+    el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:8px;font-size:13px;">Terjadi kesalahan</p>';
+  }
+}
+
+function wpSelectMobileUser(username) {
+  // Set dropdown ke user ini lalu muat fotonya
+  const sel = document.getElementById("wp-pilih-user");
+  if (sel) { sel.value = username; _applySelectPlaceholderColor(sel); }
+  loadWorkPhotos();
+  // Scroll ke grid
+  setTimeout(() => {
+    const wrap = document.getElementById("wp-grid-wrap");
+    if (wrap) wrap.scrollIntoView({ behavior:"smooth", block:"start" });
+  }, 400);
+}
+
+window.loadActiveMobileList = loadActiveMobileList;
+window.wpSelectMobileUser   = wpSelectMobileUser;
 async function wpLoadDateChips() {
   const chipsEl = document.getElementById("wp-date-chips");
   if (!chipsEl) return;
