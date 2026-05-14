@@ -10900,7 +10900,7 @@ async function wpLoadUserDetail(username) {
       html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">`;
       photos.forEach((p, i) => {
         const waktu = new Date(p.ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
-        html += `<div onclick="wpOpenModal(${i},'${username}','${date}')"
+        html += `<div onclick="wpOpenModal(${p.index},'${username}','${date}')"
           style="aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:pointer;
                  background:#f0f2f5;position:relative;display:flex;align-items:center;justify-content:center;">
           <span style="font-size:22px;color:#bbb;" id="wpd-loading-${username}-${i}">⏳</span>
@@ -11001,7 +11001,7 @@ async function loadWorkPhotos(silent = false) {
     grid.innerHTML = photos.map((p, i) => {
       const waktu = new Date(p.ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
       return `
-        <div id="wp-thumb-${i}" onclick="wpOpenModal(${i},'${username}','${date}')"
+        <div id="wp-thumb-${i}" onclick="wpOpenModal(${p.index},'${username}','${date}')"
           style="border-radius:10px;overflow:hidden;background:#f0f2f5;cursor:pointer;
                  position:relative;aspect-ratio:4/3;display:flex;align-items:center;
                  justify-content:center;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.08);"
@@ -11011,20 +11011,21 @@ async function loadWorkPhotos(silent = false) {
           <span style="font-size:28px;color:#bbb;" id="wp-loading-${i}">⏳</span>
         </div>`;
     }).join("");
-    for (const p of photos) wpLoadThumb(p.index, username, date);
+    photos.forEach((p, i) => wpLoadThumb(p.index, username, date, i));
   } catch {
     grid.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:20px;grid-column:1/-1;">Terjadi kesalahan</p>';
   }
 }
 
-async function wpLoadThumb(index, username, date) {
+async function wpLoadThumb(index, username, date, domIdx) {
   date = date || wpGetDate();
+  const thumbId = domIdx !== undefined ? domIdx : index;
   try {
     const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) return;
     const d     = await r.json();
-    const thumb = document.getElementById(`wp-thumb-${index}`);
-    const load  = document.getElementById(`wp-loading-${index}`);
+    const thumb = document.getElementById(`wp-thumb-${thumbId}`);
+    const load  = document.getElementById(`wp-loading-${thumbId}`);
     if (!thumb || !d.image) return;
     if (load) load.remove();
     const img = document.createElement("img");
@@ -11680,11 +11681,23 @@ async function showLaporanPopup() {
   const old = document.getElementById("laporan-overlay");
   if (old) old.remove();
 
-  let existing = { uraian: "", totalPhotos: 0, updatedAt: null };
+  let existing = { uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "" };
   try {
     const r = await authFetch("/work-photos/report/me");
     if (r.ok) existing = await r.json();
   } catch (e) {}
+
+  // Fallback: ambil aktivitas dari clock-in status jika belum ada di laporan
+  if (!existing.aktivitas) {
+    try {
+      const user = localStorage.getItem("user") || "";
+      const rs = await authFetch("/status/" + user);
+      if (rs.ok) {
+        const ds = await rs.json();
+        if (ds.aktivitas) existing.aktivitas = ds.aktivitas;
+      }
+    } catch (e) {}
+  }
 
   const overlay = document.createElement("div");
   overlay.id = "laporan-overlay";
@@ -11723,7 +11736,7 @@ async function showLaporanPopup() {
         <div style="font-size:13px;font-weight:700;color:#2c3e50;">📸 Foto Kegiatan</div>
         <span style="font-size:12px;color:#95a5a6;">${existing.totalPhotos}/5 foto</span>
       </div>
-      <input type="file" id="laporan-file-input" accept="image/*" style="display:none" onchange="_handleLaporanPhoto(this)"/>
+      <input type="file" id="laporan-file-input" accept="image/*" multiple style="display:none" onchange="_handleLaporanPhoto(this)"/>
       <input type="file" id="laporan-camera-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanPhoto(this)"/>
       ${!fotoMaxed ? `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -11800,20 +11813,38 @@ async function _loadLaporanThumbs(totalPhotos) {
 }
 
 async function _handleLaporanPhoto(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 8 * 1024 * 1024) { showToast("⚠️ File terlalu besar (maks 8MB)"); input.value = ""; return; }
-  showToast("⏳ Mengupload foto...", "info");
-  const base64 = await _compressLaporanPhoto(file);
-  if (!base64) { showToast("❌ Gagal memproses foto"); input.value = ""; return; }
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+
+  // Ambil jumlah foto saat ini dulu
+  let currentTotal = 0;
   try {
-    const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [base64] }) });
-    const d = await r.json();
-    if (d.status === "OK") { showToast(`✅ Foto ditambahkan (${d.totalPhotos}/5)`); showLaporanPopup(); }
-    else if (d.status === "MAX_PHOTOS") showToast("⚠️ Maksimal 5 foto per laporan");
-    else showToast("⚠️ " + (d.msg || "Gagal upload foto"));
-  } catch(err) { showToast("❌ Gagal upload foto"); }
+    const rc = await authFetch("/work-photos/report/me");
+    if (rc.ok) { const dc = await rc.json(); currentTotal = dc.totalPhotos || 0; }
+  } catch(e) {}
+
+  const sisa = 5 - currentTotal;
+  if (sisa <= 0) { showToast("⚠️ Maksimal 5 foto per laporan"); input.value = ""; return; }
+
+  const filesToUpload = files.slice(0, sisa);
+  if (files.length > sisa) showToast(`⚠️ Hanya ${sisa} foto lagi yang bisa ditambahkan`, "warning");
+
+  let uploaded = 0;
+  for (const file of filesToUpload) {
+    if (file.size > 8 * 1024 * 1024) { showToast(`⚠️ ${file.name} terlalu besar (maks 8MB)`); continue; }
+    showToast(`⏳ Mengupload foto ${uploaded + 1}/${filesToUpload.length}...`, "info");
+    const base64 = await _compressLaporanPhoto(file);
+    if (!base64) { showToast("❌ Gagal memproses foto"); continue; }
+    try {
+      const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [base64] }) });
+      const d = await r.json();
+      if (d.status === "OK") { uploaded++; }
+      else if (d.status === "MAX_PHOTOS") { showToast("⚠️ Maksimal 5 foto per laporan"); break; }
+      else { showToast("⚠️ " + (d.msg || "Gagal upload foto")); }
+    } catch(err) { showToast("❌ Gagal upload foto"); }
+  }
   input.value = "";
+  if (uploaded > 0) { showToast(`✅ ${uploaded} foto berhasil ditambahkan`); showLaporanPopup(); }
 }
 
 function _compressLaporanPhoto(file) {
