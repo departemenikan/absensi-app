@@ -1038,8 +1038,8 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
 
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
-  if (lb && !lb.end) return res.send({ status: "BREAK" });
-  return res.send({ status: "IN" });
+  const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
+  return res.send({ status: statusStr, aktivitas: aktif.aktivitas || "" });
 });
 
 // ========================
@@ -3938,7 +3938,7 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
   if (Array.isArray(photos) && photos.length > 0) {
     for (const img of photos) {
       if (!img || typeof img !== "string" || !img.startsWith("data:image/")) continue;
-      if (img.length > 280000) { // ~200KB
+      if (img.length > 2000000) { // ~1.5MB actual image
         console.warn(`[LAPORAN] ${user} foto terlalu besar: ${Math.round(img.length/1000)}KB — dilewati`);
         continue;
       }
