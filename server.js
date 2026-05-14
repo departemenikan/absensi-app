@@ -989,6 +989,7 @@ app.post("/absen", requireLevel(99), (req, res) => {
     if (record) return res.send({ status: "ALREADY_IN" });
     const aktivitas = req.body.aktivitas || "";
     const platform  = req.body.platform  || "desktop"; // "mobile","pwa","desktop","desktop-app"
+    console.log(`[CLOCK-IN] ${user} | platform: "${platform}" | UA: ${(req.headers["user-agent"]||"").slice(0,80)} | w:${req.body.screenWidth||"?"}`);
     data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, platform, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
     record.jamKeluar = timeNorm;

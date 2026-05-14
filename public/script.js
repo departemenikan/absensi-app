@@ -296,16 +296,38 @@ async function doLogin(u, p) {
   } catch { showToast("❌ Gagal terhubung ke server", "error"); }
 }
 
-// Deteksi tipe device secara lokal (fallback jika server tidak kirim)
+// Deteksi tipe device secara lokal
 function detectDeviceType() {
   if (window.__ELECTRON_APP__) return "desktop-app";
-  const ua       = navigator.userAgent || "";
-  const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
-  const isPWA    = window.matchMedia("(display-mode: standalone)").matches
-                   || window.navigator.standalone === true; // iOS Safari
+
+  const ua = navigator.userAgent || "";
+
+  // Deteksi mobile — cek berbagai sinyal, tidak hanya UA
+  const uaMobile  = /Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|webOS|Windows Phone/i.test(ua);
+  const uaAndroid = /Android/i.test(ua);
+  const uaIOS     = /iPhone|iPad|iPod/i.test(ua);
+
+  // Cek lebar layar — layar sempit hampir pasti mobile/tablet
+  const narrowScreen = window.innerWidth <= 900 || screen.width <= 900;
+
+  // Cek touch support — desktop biasanya tidak punya touchscreen
+  const hasTouch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+
+  // Cek TWA (Trusted Web Activity) — Android app yang wrapping website
+  // TWA biasanya tidak ada "Mobile" di UA tapi tetap di HP
+  const isTWA = document.referrer.includes("android-app://")
+    || window.matchMedia("(display-mode: standalone)").matches && uaAndroid;
+
+  const isPWA = window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true; // iOS Safari standalone
+
+  // Kombinasi sinyal: jika 2+ sinyal mobile terpenuhi → mobile
+  const mobileSignals = [uaMobile, uaAndroid || uaIOS, narrowScreen && hasTouch, isTWA].filter(Boolean).length;
+  const isMobile = mobileSignals >= 1 || (narrowScreen && hasTouch && !window.__ELECTRON_APP__);
+
   if (isMobile && isPWA) return "pwa";
   if (isMobile)          return "mobile";
-  if (isPWA)             return "pwa-desktop"; // jarang, PWA di desktop browser
+  if (isPWA)             return "pwa-desktop";
   return "desktop";
 }
 
@@ -1065,7 +1087,8 @@ async function sendAbsen(type, label) {
         accuracy: loc.accuracy || 0,  // ← kirim accuracy agar server toleran GPS lemah
         photo,
         aktivitas: type === "IN" ? aktivitas : undefined,  // hanya kirim saat Clock In
-        platform:  type === "IN" ? detectDeviceType() : undefined, // catat platform saat Clock In
+        platform:    type === "IN" ? detectDeviceType() : undefined, // catat platform saat Clock In
+        screenWidth: type === "IN" ? window.innerWidth : undefined,  // untuk debug deteksi
         // workPhoto dikirim via POST /work-photos/report (terpisah dari clock out)
       })
     });
