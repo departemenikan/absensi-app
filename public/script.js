@@ -1386,12 +1386,9 @@ function updateBtns(status) {
     el.style.background="#f0f2f5"; el.style.color="#95a5a6";
     bIn.classList.remove("hidden");
   }
-  // Tombol laporan sync langsung saat status berubah — tanpa reload
+  // Tombol laporan: sync langsung dari status, aman tanpa dependency eksternal
   const laporanWrap = document.getElementById("btn-laporan-wrap");
-  if (laporanWrap) {
-    laporanWrap.style.display = aktif ? "block" : "none";
-    if (aktif) _loadLaporanStatus();
-  }
+  if (laporanWrap) laporanWrap.style.display = aktif ? "block" : "none";
 }
 
 // ─── REALTIME TICKER ───────────────────────────────────────
@@ -11587,7 +11584,6 @@ async function showLaporanPopup() {
     if (rLap.ok) existing = await rLap.json();
     if (rStatus.ok) {
       const ds = await rStatus.json();
-      // Merge aktivitas dari record clock in agar tampil di form
       if (ds.aktivitas && !existing.aktivitas) existing.aktivitas = ds.aktivitas;
     }
   } catch (e) {}
