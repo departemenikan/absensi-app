@@ -10768,24 +10768,55 @@ async function loadWorkPhotoList(silent = false) {
       return;
     }
     el.innerHTML = list.map(u => {
-      const fotoLabel = u.totalPhotos > 0 ? `<span style="background:#e8f5e9;color:#27ae60;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:700;">${u.totalPhotos} foto</span>` : `<span style="background:#fafafa;color:#aaa;font-size:11px;padding:2px 8px;border-radius:20px;">0 foto</span>`;
-      const aktivitasEl = u.aktivitas ? `<span style="background:#e3f2fd;color:#1976d2;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;">🏃 ${u.aktivitas}</span>` : "";
-      const uraianEl = u.uraian ? `<div style="font-size:12px;color:#555;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">"${u.uraian}"</div>` : "";
+      const totalFoto  = u.totalPhotos || 0;
+      const aktivitas  = u.aktivitas || "";
+      const uraian     = u.uraian || "";
+      const lastTime   = u.lastPhoto ? new Date(u.lastPhoto).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
+      const initial    = (u.namaLengkap || u.username).charAt(0).toUpperCase();
+
+      const fotoChip   = totalFoto > 0
+        ? `<span style="background:#e8f5e9;color:#27ae60;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:700;">📷 ${totalFoto} foto</span>`
+        : `<span style="background:#f5f5f5;color:#bbb;font-size:11px;padding:2px 8px;border-radius:20px;">Belum ada foto</span>`;
+      const aktChip    = aktivitas
+        ? `<span style="background:#e3f2fd;color:#1976d2;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;">🏃 ${aktivitas}</span>`
+        : "";
+      const uraianSnip = uraian
+        ? `<div style="font-size:12px;color:#555;margin-top:6px;padding:6px 10px;background:#f8f9ff;border-left:3px solid #4f8ef7;border-radius:4px;
+                       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+             "${uraian}"
+           </div>`
+        : "";
+
       return `
-        <div onclick="wpSelectUser('${u.username}')" style="
-          display:flex;align-items:center;gap:12px;padding:10px 0;
-          border-bottom:1px solid #f0f2f5;cursor:pointer;
-        ">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:14px;color:var(--text);">${u.namaLengkap}</div>
-            <div style="font-size:12px;color:var(--muted);">${u.jabatan || ""}</div>
-            ${aktivitasEl ? `<div style="margin-top:4px;">${aktivitasEl}</div>` : ""}
-            ${uraianEl}
+        <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:8px;overflow:hidden;
+          box-shadow:0 1px 6px rgba(0,0,0,.06);background:white;">
+
+          <!-- Header row — klik untuk expand/collapse -->
+          <div onclick="wpSelectUser('${u.username}')" style="
+            display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;">
+            <!-- Avatar -->
+            <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a237e,#4f8ef7);
+              color:white;display:flex;align-items:center;justify-content:center;
+              font-weight:700;font-size:17px;flex-shrink:0;">${initial}</div>
+            <!-- Info -->
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:14px;color:var(--text);">${u.namaLengkap || u.username}</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${u.jabatan || ""}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                ${fotoChip} ${aktChip}
+              </div>
+              ${uraianSnip}
+            </div>
+            <!-- Chevron + waktu -->
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+              ${lastTime ? `<div style="font-size:11px;color:#aaa;">${lastTime}</div>` : ""}
+              <span id="wp-chevron-${u.username}"
+                style="font-size:18px;color:#ccc;transition:transform .25s;">›</span>
+            </div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
-            ${fotoLabel}
-            <div style="font-size:11px;color:#bbb;">${u.lastPhoto ? new Date(u.lastPhoto).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "-"}</div>
-          </div>
+
+          <!-- Panel detail — ditampilkan oleh wpSelectUser + loadWorkPhotos -->
+          <div id="wp-detail-${u.username}" style="display:none;border-top:1px solid #f0f2f5;padding:0;"></div>
         </div>`;
     }).join("");
   } catch {
@@ -10796,38 +10827,94 @@ async function loadWorkPhotoList(silent = false) {
 let wpActiveUser = null; // track username yang sedang terbuka
 
 function wpSelectUser(username) {
-  const wrap = document.getElementById("wp-grid-wrap");
+  const detailPanel = document.getElementById(`wp-detail-${username}`);
+  const chev        = document.getElementById(`wp-chevron-${username}`);
+  const isOpen      = detailPanel && detailPanel.style.display !== "none";
 
-  // Jika klik user yang sama dan grid sedang tampil → tutup (toggle off)
-  if (wpActiveUser === username && wrap && wrap.style.display !== "none") {
-    wrap.style.display = "none";
-    // Reset highlight & chevron
-    const prevRow  = document.getElementById(`wp-row-${username}`);
-    const prevChev = document.getElementById(`wp-chevron-${username}`);
-    if (prevRow)  { prevRow.style.background = "white"; prevRow.onmouseout = function(){ this.style.background="white"; }; }
-    if (prevChev) { prevChev.style.transform = "rotate(0deg)"; prevChev.style.color = "#ccc"; }
+  // Tutup panel user sebelumnya
+  if (wpActiveUser && wpActiveUser !== username) {
+    const oldPanel = document.getElementById(`wp-detail-${wpActiveUser}`);
+    const oldChev  = document.getElementById(`wp-chevron-${wpActiveUser}`);
+    const oldRow   = document.getElementById(`wp-row-${wpActiveUser}`);
+    if (oldPanel) oldPanel.style.display = "none";
+    if (oldChev)  { oldChev.style.transform = "rotate(0deg)"; oldChev.style.color = "#ccc"; }
+    if (oldRow)   oldRow.style.boxShadow = "0 1px 6px rgba(0,0,0,.06)";
+  }
+
+  // Toggle panel user ini
+  if (isOpen) {
+    if (detailPanel) detailPanel.style.display = "none";
+    if (chev) { chev.style.transform = "rotate(0deg)"; chev.style.color = "#ccc"; }
+    const row = document.getElementById(`wp-row-${username}`);
+    if (row) row.style.boxShadow = "0 1px 6px rgba(0,0,0,.06)";
     wpActiveUser = null;
     return;
   }
 
-  // Tutup highlight user sebelumnya jika ada
-  if (wpActiveUser && wpActiveUser !== username) {
-    const oldRow  = document.getElementById(`wp-row-${wpActiveUser}`);
-    const oldChev = document.getElementById(`wp-chevron-${wpActiveUser}`);
-    if (oldRow)  { oldRow.style.background = "white"; oldRow.onmouseout = function(){ this.style.background="white"; }; }
-    if (oldChev) { oldChev.style.transform = "rotate(0deg)"; oldChev.style.color = "#ccc"; }
+  // Buka panel user ini
+  if (detailPanel) {
+    detailPanel.style.display = "block";
+    detailPanel.innerHTML = `<p style="color:var(--muted);text-align:center;padding:16px;font-size:13px;">Memuat...</p>`;
   }
-
-  // Set highlight & chevron user baru
-  const newRow  = document.getElementById(`wp-row-${username}`);
-  const newChev = document.getElementById(`wp-chevron-${username}`);
-  if (newRow)  { newRow.style.background = "#f3e5f5"; newRow.onmouseout = function(){}; }
-  if (newChev) { newChev.style.transform = "rotate(90deg)"; newChev.style.color = "#8e44ad"; }
+  if (chev) { chev.style.transform = "rotate(90deg)"; chev.style.color = "#4f8ef7"; }
+  const row = document.getElementById(`wp-row-${username}`);
+  if (row) row.style.boxShadow = "0 3px 14px rgba(79,142,247,.15)";
 
   wpActiveUser = username;
   const sel = document.getElementById("wp-pilih-user");
   if (sel) sel.value = username;
-  loadWorkPhotos();
+
+  // Load detail langsung ke panel
+  wpLoadUserDetail(username);
+}
+
+async function wpLoadUserDetail(username) {
+  const panel = document.getElementById(`wp-detail-${username}`);
+  if (!panel) return;
+  const date    = wpGetDate();
+  const dateFmt = new Date(date).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  try {
+    const r = await authFetch(`/work-photos/${username}?date=${date}`);
+    if (!r.ok) { panel.innerHTML = `<p style="color:#e74c3c;text-align:center;padding:16px;">Gagal memuat</p>`; return; }
+    const data     = await r.json();
+    const photos   = data.photos || (Array.isArray(data) ? data : []);
+    const uraian   = data.uraian   || "";
+    const aktivitas= data.aktivitas|| "";
+
+    let html = `<div style="padding:12px 14px;">`;
+
+    // Info laporan
+    if (aktivitas || uraian) {
+      html += `<div style="background:#f8f9ff;border-radius:10px;padding:12px;margin-bottom:12px;border:1px solid #e8ecff;">`;
+      if (aktivitas) html += `<div style="font-size:12px;font-weight:700;color:#1976d2;margin-bottom:4px;">🏃 ${aktivitas}</div>`;
+      if (uraian)    html += `<div style="font-size:13px;color:#2c3e50;line-height:1.5;">${uraian}</div>`;
+      html += `</div>`;
+    }
+
+    // Grid foto
+    if (photos.length > 0) {
+      html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:4px;">`;
+      photos.forEach((p, i) => {
+        const src = p.thumbnail || p.image || p.url || "";
+        html += `<div onclick="wpOpenPhoto('${username}',${i},'${date}')"
+          style="aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:pointer;background:#f0f2f5;position:relative;">
+          ${src
+            ? `<img src="${src}" style="width:100%;height:100%;object-fit:cover;">`
+            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;">📷</div>`}
+        </div>`;
+      });
+      html += `</div>`;
+      html += `<div style="font-size:11px;color:#aaa;text-align:right;margin-top:2px;">${photos.length} foto · ${dateFmt}</div>`;
+    } else {
+      html += `<p style="color:var(--muted);text-align:center;padding:8px 0;font-size:13px;">
+        ${uraian ? "Laporan tanpa foto" : "Belum ada laporan & foto"}</p>`;
+    }
+
+    html += `</div>`;
+    panel.innerHTML = html;
+  } catch {
+    panel.innerHTML = `<p style="color:#e74c3c;text-align:center;padding:16px;">Terjadi kesalahan</p>`;
+  }
 }
 
 async function loadWorkPhotos(silent = false) {
