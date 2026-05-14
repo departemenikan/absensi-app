@@ -300,28 +300,27 @@ async function doLogin(u, p) {
 function detectDeviceType() {
   if (window.__ELECTRON_APP__) return "desktop-app";
 
+  // Capacitor native (APK Android/iOS) — prioritas tertinggi
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    return "pwa"; // Capacitor diperlakukan sama dengan PWA mobile
+  }
+
   const ua = navigator.userAgent || "";
 
-  // Deteksi mobile — cek berbagai sinyal, tidak hanya UA
   const uaMobile  = /Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|webOS|Windows Phone/i.test(ua);
   const uaAndroid = /Android/i.test(ua);
   const uaIOS     = /iPhone|iPad|iPod/i.test(ua);
 
-  // Cek lebar layar — layar sempit hampir pasti mobile/tablet
   const narrowScreen = window.innerWidth <= 900 || screen.width <= 900;
+  const hasTouch     = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
 
-  // Cek touch support — desktop biasanya tidak punya touchscreen
-  const hasTouch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
-
-  // Cek TWA (Trusted Web Activity) — Android app yang wrapping website
-  // TWA biasanya tidak ada "Mobile" di UA tapi tetap di HP
+  // TWA: referrer android-app:// ATAU standalone + Android UA
   const isTWA = document.referrer.includes("android-app://")
-    || window.matchMedia("(display-mode: standalone)").matches && uaAndroid;
+    || (window.matchMedia("(display-mode: standalone)").matches && uaAndroid);
 
   const isPWA = window.matchMedia("(display-mode: standalone)").matches
-    || window.navigator.standalone === true; // iOS Safari standalone
+    || window.navigator.standalone === true;
 
-  // Kombinasi sinyal: jika 2+ sinyal mobile terpenuhi → mobile
   const mobileSignals = [uaMobile, uaAndroid || uaIOS, narrowScreen && hasTouch, isTWA].filter(Boolean).length;
   const isMobile = mobileSignals >= 1 || (narrowScreen && hasTouch && !window.__ELECTRON_APP__);
 
@@ -1371,7 +1370,6 @@ function updateBtns(status) {
   const bBS  = document.getElementById("btn-bs");
   const bBE  = document.getElementById("btn-be");
   [bIn,bOut,bBS,bBE].forEach(b => b.classList.add("hidden"));
-  const aktif = status === "IN" || status === "BREAK";
   if (status === "IN") {
     el.innerHTML = '<span class="status-dot" style="background:#27ae60"></span> Sedang Bekerja';
     el.style.background="#e8f5e9"; el.style.color="#27ae60";
@@ -1380,15 +1378,12 @@ function updateBtns(status) {
     el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Sedang Istirahat';
     el.style.background="#fff3e0"; el.style.color="#f39c12";
     bBE.classList.remove("hidden");
-    bOut.classList.remove("hidden");
+    bOut.classList.remove("hidden"); // FIX: tampilkan Clock Out saat istirahat
   } else {
     el.innerHTML = '<span class="status-dot" style="background:#95a5a6"></span> Belum Absen';
     el.style.background="#f0f2f5"; el.style.color="#95a5a6";
     bIn.classList.remove("hidden");
   }
-  // Tombol laporan: sync langsung dari status, aman tanpa dependency eksternal
-  const laporanWrap = document.getElementById("btn-laporan-wrap");
-  if (laporanWrap) laporanWrap.style.display = aktif ? "block" : "none";
 }
 
 // ─── REALTIME TICKER ───────────────────────────────────────
@@ -11576,16 +11571,8 @@ async function showLaporanPopup() {
 
   let existing = { uraian: "", totalPhotos: 0, updatedAt: null };
   try {
-    const user = localStorage.getItem("user") || "";
-    const [rLap, rStatus] = await Promise.all([
-      authFetch("/work-photos/report/me"),
-      authFetch("/status/" + user),
-    ]);
-    if (rLap.ok) existing = await rLap.json();
-    if (rStatus.ok) {
-      const ds = await rStatus.json();
-      if (ds.aktivitas && !existing.aktivitas) existing.aktivitas = ds.aktivitas;
-    }
+    const r = await authFetch("/work-photos/report/me");
+    if (r.ok) existing = await r.json();
   } catch (e) {}
 
   const overlay = document.createElement("div");

@@ -988,7 +988,13 @@ app.post("/absen", requireLevel(99), (req, res) => {
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
     const aktivitas = req.body.aktivitas || "";
-    const platform  = req.body.platform  || "desktop"; // "mobile","pwa","desktop","desktop-app"
+    // Deteksi platform: pakai nilai dari client, fallback ke UA jika tidak ada / "desktop"
+    let platform = req.body.platform || "desktop";
+    if (platform === "desktop" || !platform) {
+      const ua = req.headers["user-agent"] || "";
+      const uaMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+      if (uaMobile) platform = "mobile"; // fallback: UA mobile → catat sebagai mobile
+    }
     console.log(`[CLOCK-IN] ${user} | platform: "${platform}" | UA: ${(req.headers["user-agent"]||"").slice(0,80)} | w:${req.body.screenWidth||"?"}`);
     data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, platform, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
@@ -1030,8 +1036,8 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
 
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
-  const currentStatus = (lb && !lb.end) ? "BREAK" : "IN";
-  return res.send({ status: currentStatus, aktivitas: aktif.aktivitas || "" });
+  if (lb && !lb.end) return res.send({ status: "BREAK" });
+  return res.send({ status: "IN" });
 });
 
 // ========================
@@ -3686,7 +3692,7 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
     ? requesterUser.divisi
     : (requesterUser?.divisi ? [requesterUser.divisi] : []);
 
-  const MOBILE_PLATFORMS = ["mobile", "pwa"];
+  const MOBILE_PLATFORMS = ["mobile", "pwa", "pwa-desktop"]; // semua non-desktop
 
   // Kumpulkan semua user yang clock in hari ini
   const allUsers = new Set(data.filter(d => d.date === today).map(d => d.user));
@@ -3707,8 +3713,14 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
     .map(username => {
       const rec = data.find(d => d.user === username && d.date === today);
       if (!rec) return null;
-      const platform = rec.platform || "desktop";
-      // Hanya mobile/pwa
+      // Deteksi platform — fallback dari UA jika record lama tidak punya platform
+      let platform = rec.platform || "desktop";
+      if (platform === "desktop") {
+        // Cek session deviceType sebagai fallback
+        const sess = load(F.sessions, {})[username] || {};
+        if (sess.deviceType && sess.deviceType !== "desktop") platform = sess.deviceType;
+      }
+      // Hanya tampilkan non-desktop (mobile/pwa/pwa-desktop)
       if (!MOBILE_PLATFORMS.includes(platform)) return null;
       let status = "OUT";
       if (!rec.jamKeluar) {
