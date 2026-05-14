@@ -1229,9 +1229,10 @@ function showWorkPhotoPopup() {
         "></video>
         <div id="wpp-cam-status" style="font-size:12px;color:#888;margin:8px 0;"></div>
         <div style="display:flex;gap:10px;margin-top:4px;">
-          <button onclick="_captureWorkPhoto()" style="
+          <button id="wpp-capture-btn" onclick="_captureWorkPhoto()" style="
             flex:1;padding:12px;border:none;border-radius:10px;cursor:pointer;
             background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:700;font-size:14px;
+            transition:opacity .3s;
           ">📸 Ambil</button>
           <button onclick="_closeWorkPhotoCamera()" style="
             padding:12px 16px;border:none;border-radius:10px;cursor:pointer;
@@ -1312,7 +1313,19 @@ async function _openWorkPhotoCamera() {
       audio: false
     });
     video.srcObject = _wppStream;
-    await video.play();
+    // Tunggu video benar-benar siap (frame pertama sudah ada) sebelum boleh capture
+    const captureBtn = document.getElementById("wpp-capture-btn");
+    if (captureBtn) { captureBtn.disabled = true; captureBtn.style.opacity = "0.5"; }
+    if (status) status.innerText = "⏳ Menghidupkan kamera...";
+    await new Promise(resolve => {
+      video.onloadeddata = resolve;
+      video.play();
+      // Fallback: maks 3 detik
+      setTimeout(resolve, 3000);
+    });
+    // Tambah delay kecil agar frame tidak hitam (warm-up sensor kamera)
+    await new Promise(r => setTimeout(r, 600));
+    if (captureBtn) { captureBtn.disabled = false; captureBtn.style.opacity = "1"; }
     if (status) status.innerText = "✅ Kamera siap — arahkan ke kegiatan/hasil kerja";
   } catch (e) {
     if (status) status.innerText = "❌ Gagal membuka kamera: " + e.message;
@@ -10934,9 +10947,10 @@ async function wpLoadDetailThumb(index, username, date, i) {
     if (d.thumbnail || d.image) {
       const img = document.createElement("img");
       img.src = d.thumbnail || d.image;
-      img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;";
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:8px;";
+      img.onload = () => { el.style.display = "none"; }; // sembunyikan spinner SETELAH img loaded
+      img.onerror = () => {}; // jaga-jaga jika gagal load
       container.appendChild(img);
-      el.style.display = "none";
     }
   } catch {}
 }
@@ -11027,10 +11041,11 @@ async function wpLoadThumb(index, username, date, domIdx) {
     const thumb = document.getElementById(`wp-thumb-${thumbId}`);
     const load  = document.getElementById(`wp-loading-${thumbId}`);
     if (!thumb || !d.image) return;
-    if (load) load.remove();
     const img = document.createElement("img");
     img.src = d.image;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
+    img.onload = () => { if (load) load.remove(); }; // hapus spinner SETELAH img loaded
+    img.onerror = () => {};
     thumb.insertBefore(img, thumb.firstChild);
   } catch {}
 }
@@ -11671,7 +11686,30 @@ async function checkAndShowLaporanBtn() {
     const user = localStorage.getItem("user") || "";
     const r = await authFetch("/status/" + user);
     const d = await r.json();
-    wrap.style.display = (d.status === "IN" || d.status === "BREAK") ? "block" : "none";
+    const isActive = (d.status === "IN" || d.status === "BREAK");
+    wrap.style.display = isActive ? "block" : "none";
+    if (!isActive) return;
+    // Tampilkan info laporan di tombol jika sudah ada
+    try {
+      const rl = await authFetch("/work-photos/report/me");
+      if (rl.ok) {
+        const dl = await rl.json();
+        const btn = document.getElementById("btn-laporan");
+        if (!btn) return;
+        const total = dl.totalPhotos || 0;
+        const hasUraian = !!(dl.uraian && dl.uraian.trim());
+        if (total > 0 || hasUraian) {
+          btn.innerHTML = `<span style="font-size:18px;">📋</span>
+            <span>Laporan Kegiatan</span>
+            <span style="margin-left:auto;background:rgba(255,255,255,.25);border-radius:20px;
+              padding:2px 9px;font-size:12px;font-weight:700;">
+              ${total > 0 ? `📸 ${total} foto` : ""}${total > 0 && hasUraian ? " · " : ""}${hasUraian ? "✏️" : ""}
+            </span>`;
+        } else {
+          btn.innerHTML = `<span style="font-size:18px;">📋</span> Laporan Kegiatan`;
+        }
+      }
+    } catch(e) {}
   } catch (e) {
     wrap.style.display = "none";
   }
@@ -11734,10 +11772,11 @@ async function showLaporanPopup() {
       >${existing.uraian || ""}</textarea>
       <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;">
         <div style="font-size:13px;font-weight:700;color:#2c3e50;">📸 Foto Kegiatan</div>
-        <span style="font-size:12px;color:#95a5a6;">${existing.totalPhotos}/5 foto</span>
+        <span data-foto-count style="font-size:12px;color:#95a5a6;">${existing.totalPhotos}/5 foto</span>
       </div>
       <input type="file" id="laporan-file-input" accept="image/*" multiple style="display:none" onchange="_handleLaporanPhoto(this)"/>
       <input type="file" id="laporan-camera-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanPhoto(this)"/>
+      <div class="laporan-foto-btns">
       ${!fotoMaxed ? `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
         <button onclick="document.getElementById('laporan-camera-input').click()"
@@ -11759,6 +11798,7 @@ async function showLaporanPopup() {
         color:#bbb;font-weight:700;font-size:14px;text-align:center;margin-bottom:12px;">
         🚫 Maksimal 5 foto tercapai
       </div>`}
+      </div>
       <div id="laporan-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
       <button onclick="_saveLaporan()"
         style="width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;">
@@ -11830,11 +11870,16 @@ async function _handleLaporanPhoto(input) {
   if (files.length > sisa) showToast(`⚠️ Hanya ${sisa} foto lagi yang bisa ditambahkan`, "warning");
 
   let uploaded = 0;
+  // Tampilkan preview lokal sebelum upload selesai (instant preview)
+  const thumbWrap = document.getElementById("laporan-thumbs");
+  const previewImgs = []; // simpan base64 untuk preview
+
   for (const file of filesToUpload) {
     if (file.size > 8 * 1024 * 1024) { showToast(`⚠️ ${file.name} terlalu besar (maks 8MB)`); continue; }
     showToast(`⏳ Mengupload foto ${uploaded + 1}/${filesToUpload.length}...`, "info");
     const base64 = await _compressLaporanPhoto(file);
     if (!base64) { showToast("❌ Gagal memproses foto"); continue; }
+    previewImgs.push(base64);
     try {
       const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [base64] }) });
       const d = await r.json();
@@ -11844,7 +11889,30 @@ async function _handleLaporanPhoto(input) {
     } catch(err) { showToast("❌ Gagal upload foto"); }
   }
   input.value = "";
-  if (uploaded > 0) { showToast(`✅ ${uploaded} foto berhasil ditambahkan`); showLaporanPopup(); }
+  if (uploaded > 0) {
+    showToast(`✅ ${uploaded} foto berhasil ditambahkan`);
+    // Refresh thumb in-place tanpa tutup popup (menghindari flicker)
+    try {
+      const rc2 = await authFetch("/work-photos/report/me");
+      if (rc2.ok) {
+        const dc2 = await rc2.json();
+        const newTotal = dc2.totalPhotos || 0;
+        // Update counter di popup
+        const counterEl = document.querySelector("#laporan-overlay span[data-foto-count]");
+        if (counterEl) counterEl.textContent = `${newTotal}/5 foto`;
+        // Update tombol upload jika sudah maxed
+        if (newTotal >= 5) {
+          const btnGrid = document.querySelector("#laporan-overlay .laporan-foto-btns");
+          if (btnGrid) btnGrid.innerHTML = `<div style="width:100%;padding:12px;border:1.5px dashed #ddd;border-radius:12px;background:#f9f9f9;color:#bbb;font-weight:700;font-size:14px;text-align:center;margin-bottom:12px;">🚫 Maksimal 5 foto tercapai</div>`;
+        }
+        // Refresh thumbnails in-place
+        _loadLaporanThumbs(newTotal);
+      }
+    } catch(e) {
+      // Fallback: reload popup
+      showLaporanPopup();
+    }
+  }
 }
 
 function _compressLaporanPhoto(file) {
@@ -11870,12 +11938,24 @@ function _compressLaporanPhoto(file) {
 
 async function _saveLaporan() {
   const uraian = (document.getElementById("laporan-uraian")?.value || "").trim();
+  const btn = document.querySelector("#laporan-overlay button[onclick='_saveLaporan()']");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Menyimpan..."; }
   try {
     const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ uraian }) });
     const d = await r.json();
-    if (d.status === "OK") { document.getElementById("laporan-overlay")?.remove(); showToast("✅ Laporan berhasil disimpan"); }
-    else showToast("⚠️ " + (d.msg || "Gagal menyimpan laporan"));
-  } catch(err) { showToast("❌ Gagal menyimpan laporan"); }
+    if (d.status === "OK") {
+      showToast("✅ Laporan berhasil disimpan");
+      document.getElementById("laporan-overlay")?.remove();
+      // Refresh badge tombol laporan di home
+      if (typeof checkAndShowLaporanBtn === "function") checkAndShowLaporanBtn();
+    } else {
+      showToast("⚠️ " + (d.msg || "Gagal menyimpan laporan"));
+      if (btn) { btn.disabled = false; btn.innerHTML = "💾 Simpan Laporan"; }
+    }
+  } catch(err) {
+    showToast("❌ Gagal menyimpan laporan");
+    if (btn) { btn.disabled = false; btn.innerHTML = "💾 Simpan Laporan"; }
+  }
 }
 
 // ── Popup pilihan replace foto (kamera / galeri) ──
