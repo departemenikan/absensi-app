@@ -1030,8 +1030,8 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
 
   if (!aktif) return res.send({ status: "OUT" });
   const lb = aktif.breaks.at(-1);
-  if (lb && !lb.end) return res.send({ status: "BREAK" });
-  return res.send({ status: "IN" });
+  const currentStatus = (lb && !lb.end) ? "BREAK" : "IN";
+  return res.send({ status: currentStatus, aktivitas: aktif.aktivitas || "" });
 });
 
 // ========================

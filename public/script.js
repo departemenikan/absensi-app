@@ -1371,6 +1371,7 @@ function updateBtns(status) {
   const bBS  = document.getElementById("btn-bs");
   const bBE  = document.getElementById("btn-be");
   [bIn,bOut,bBS,bBE].forEach(b => b.classList.add("hidden"));
+  const aktif = status === "IN" || status === "BREAK";
   if (status === "IN") {
     el.innerHTML = '<span class="status-dot" style="background:#27ae60"></span> Sedang Bekerja';
     el.style.background="#e8f5e9"; el.style.color="#27ae60";
@@ -1379,11 +1380,17 @@ function updateBtns(status) {
     el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Sedang Istirahat';
     el.style.background="#fff3e0"; el.style.color="#f39c12";
     bBE.classList.remove("hidden");
-    bOut.classList.remove("hidden"); // FIX: tampilkan Clock Out saat istirahat
+    bOut.classList.remove("hidden");
   } else {
     el.innerHTML = '<span class="status-dot" style="background:#95a5a6"></span> Belum Absen';
     el.style.background="#f0f2f5"; el.style.color="#95a5a6";
     bIn.classList.remove("hidden");
+  }
+  // Tombol laporan sync langsung saat status berubah — tanpa reload
+  const laporanWrap = document.getElementById("btn-laporan-wrap");
+  if (laporanWrap) {
+    laporanWrap.style.display = aktif ? "block" : "none";
+    if (aktif) _loadLaporanStatus();
   }
 }
 
@@ -11572,8 +11579,17 @@ async function showLaporanPopup() {
 
   let existing = { uraian: "", totalPhotos: 0, updatedAt: null };
   try {
-    const r = await authFetch("/work-photos/report/me");
-    if (r.ok) existing = await r.json();
+    const user = localStorage.getItem("user") || "";
+    const [rLap, rStatus] = await Promise.all([
+      authFetch("/work-photos/report/me"),
+      authFetch("/status/" + user),
+    ]);
+    if (rLap.ok) existing = await rLap.json();
+    if (rStatus.ok) {
+      const ds = await rStatus.json();
+      // Merge aktivitas dari record clock in agar tampil di form
+      if (ds.aktivitas && !existing.aktivitas) existing.aktivitas = ds.aktivitas;
+    }
   } catch (e) {}
 
   const overlay = document.createElement("div");
