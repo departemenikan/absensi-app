@@ -3562,7 +3562,7 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
 
   const allUsers = new Set([
     ...Object.keys(todayData),
-    ...data.filter(d => d.date === today && !d.jamKeluar).map(d => d.user),
+    ...data.filter(d => d.date === today).map(d => d.user),
   ]);
 
   const MOBILE_PLATFORMS = ["mobile", "pwa"];
@@ -3586,7 +3586,10 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         const lb = rec.breaks?.at(-1);
         status   = (lb && !lb.end) ? "BREAK" : "IN";
       } else if (rec && rec.jamKeluar) status = "DONE";
-      const platform = rec?.platform || "desktop";
+      // Ambil platform dari record terbaru hari ini (bukan hanya yang aktif)
+      const allRecs   = data.filter(d => d.user === username && d.date === today);
+      const latestRec = allRecs.at(-1);
+      const platform  = latestRec?.platform || rec?.platform || "desktop";
       const shots = todayData[username] || [];
       const sessions   = load(F.sessions, {});
       const sess       = sessions[username] || {};
@@ -3602,8 +3605,8 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
         loginAt:          sess.loginAt    || null,
       };
     })
-    // Hanya tampilkan yang bukan mobile/pwa di tab Screenshot
-    .filter(u => u.status !== "OUT" && !MOBILE_PLATFORMS.includes(u.platform))
+    // Keluarkan user mobile/pwa dari tab Screenshot sama sekali
+    .filter(u => !MOBILE_PLATFORMS.includes(u.platform))
     .sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
 
   res.json(result);
