@@ -3679,6 +3679,47 @@ app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
 // FOTO KEGIATAN KERJA (Mobile Clock Out)
 // ========================
 
+// ── HELPER: normalisasi data laporan per-user per-date → array sesi ──────────────────────────
+// Format lama: { uraian, photos, updatedAt } atau array foto langsung
+// Format baru: [ { sesi, uraian, photos, updatedAt, jamMasuk, lockedAt } ]
+function wpGetSessions(wpStore, date, user) {
+  const raw = (wpStore[date] || {})[user];
+  if (!raw) return [];
+  // Format baru: array of sessions
+  if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0].sesi !== "undefined") return raw;
+  // Format lama: object {uraian, photos} atau array foto → wrap jadi 1 sesi
+  const isOldObj = raw && !Array.isArray(raw) && typeof raw === "object";
+  const isOldArr = Array.isArray(raw) && (raw.length === 0 || typeof raw[0].image !== "undefined");
+  if (isOldObj) return [{ sesi: 1, uraian: raw.uraian || "", photos: raw.photos || [], updatedAt: raw.updatedAt || null, jamMasuk: null, lockedAt: null }];
+  if (isOldArr) return [{ sesi: 1, uraian: "", photos: raw, updatedAt: null, jamMasuk: null, lockedAt: null }];
+  return [];
+}
+
+// Ambil sesi aktif (belum terkunci / clock out) untuk user tertentu hari ini
+function wpGetActiveSesi(data, user, today) {
+  // Cari record clock-in yang belum clock-out hari ini
+  const rec = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  return rec ? (rec.sesi || 1) : null;
+}
+
+// Cari laporan untuk sesi tertentu
+function wpFindSesiData(sessions, sesi) {
+  return sessions.find(s => s.sesi === sesi) || null;
+}
+
+// Merge semua foto dari semua sesi (untuk tampilan monitor — semua sesi tampil)
+function wpMergeAllSessions(sessions) {
+  const allPhotos = [];
+  let uraian = "", aktivitas = "", updatedAt = null;
+  sessions.forEach(s => {
+    s.photos.forEach(p => allPhotos.push({ ...p, sesi: s.sesi }));
+    if (s.uraian) uraian = s.uraian; // ambil uraian terbaru
+    if (s.updatedAt && (!updatedAt || s.updatedAt > updatedAt)) updatedAt = s.updatedAt;
+  });
+  return { photos: allPhotos, uraian, updatedAt };
+}
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
 // GET /work-photos/active-mobile — user mobile/pwa yang sedang aktif hari ini (belum clock out)
 app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
   const today     = todayLocal();
@@ -3731,9 +3772,8 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
       } else {
         status = "DONE";
       }
-      const lap = todayData[username];
-      const isNew = lap && !Array.isArray(lap);
-      const photos = isNew ? (lap?.photos || []) : (Array.isArray(lap) ? lap : []);
+      const sessions = wpGetSessions(wpStore, today, username);
+      const merged   = wpMergeAllSessions(sessions);
       return {
         username,
         namaLengkap: users[username]?.namaLengkap || username,
@@ -3741,9 +3781,9 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
         status,
         platform,
         aktivitas:   rec.aktivitas || "",
-        totalPhotos: photos.length,
-        uraian:      isNew ? (lap?.uraian || "") : "",
-        lastPhoto:   photos.at(-1)?.ts || null,
+        totalPhotos: merged.photos.length,
+        uraian:      merged.uraian,
+        lastPhoto:   merged.photos.at(-1)?.ts || null,
       };
     })
     .filter(Boolean)
@@ -3779,18 +3819,17 @@ app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
     const uDivisi = Array.isArray(u.divisi) ? u.divisi : (u.divisi ? [u.divisi] : []);
     return requesterDivisi.some(d => uDivisi.includes(d));
   }).map(username => {
-    const lap = dateData[username];
-    const isNew = lap && !Array.isArray(lap); // format baru: object {uraian, photos}
-    const photos = isNew ? (lap.photos || []) : (Array.isArray(lap) ? lap : []);
+    const sessions = wpGetSessions(wpStore, date, username);
+    const merged   = wpMergeAllSessions(sessions);
     const rec = data.slice().reverse().find(d => d.user === username && d.date === date);
     return {
       username,
       namaLengkap: users[username]?.namaLengkap || username,
       jabatan:     users[username]?.jabatan || "",
-      totalPhotos: photos.length,
-      uraian:      isNew ? (lap.uraian || "") : "",
+      totalPhotos: merged.photos.length,
+      uraian:      merged.uraian,
       aktivitas:   rec?.aktivitas || "",
-      lastPhoto:   photos.at(-1)?.ts || null,
+      lastPhoto:   merged.photos.at(-1)?.ts || null,
     };
   }).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
 
@@ -3822,18 +3861,17 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
     const uDivisi = Array.isArray(u.divisi) ? u.divisi : (u.divisi ? [u.divisi] : []);
     return requesterDivisi.some(d => uDivisi.includes(d));
   }).map(username => {
-    const lap = todayData[username];
-    const isNew = lap && !Array.isArray(lap);
-    const photos = isNew ? (lap.photos || []) : (Array.isArray(lap) ? lap : []);
+    const sessions = wpGetSessions(wpStore, today, username);
+    const merged   = wpMergeAllSessions(sessions);
     const rec = data.slice().reverse().find(d => d.user === username && d.date === today);
     return {
       username,
       namaLengkap: users[username]?.namaLengkap || username,
       jabatan:     users[username]?.jabatan || "",
-      totalPhotos: photos.length,
-      uraian:      isNew ? (lap.uraian || "") : "",
+      totalPhotos: merged.photos.length,
+      uraian:      merged.uraian,
       aktivitas:   rec?.aktivitas || "",
-      lastPhoto:   photos.at(-1)?.ts || null,
+      lastPhoto:   merged.photos.at(-1)?.ts || null,
     };
   }).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
 
@@ -3841,21 +3879,19 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/:user — list metadata foto kegiatan user (tanpa image), support ?date=YYYY-MM-DD
+// Menggabungkan semua sesi pada tanggal tersebut
 app.get("/work-photos/:user", requireLevel(3), (req, res) => {
   const { user } = req.params;
   const date    = req.query.date || todayLocal();
   const wpStore = load(F.workPhotos, {});
-  const lap     = (wpStore[date] || {})[user];
-  // Ambil aktivitas dari record absensi pada tanggal tersebut
   const data    = load(F.data, []);
-  const rec     = data.slice().reverse().find(d => d.user === user && d.date === date);
+  const sessions  = wpGetSessions(wpStore, date, user);
+  const merged    = wpMergeAllSessions(sessions);
+  const rec       = data.slice().reverse().find(d => d.user === user && d.date === date);
   const aktivitas = rec?.aktivitas || "";
-  if (!lap) return res.json({ uraian: "", photos: [], aktivitas });
-  const isNew = !Array.isArray(lap);
-  const photos = isNew ? (lap.photos || []) : lap;
   res.json({
-    uraian:    isNew ? (lap.uraian || "") : "",
-    photos:    photos.map((p, i) => ({ index: i, ts: p.ts, date })),
+    uraian:    merged.uraian,
+    photos:    merged.photos.map((p, i) => ({ index: i, ts: p.ts, date, sesi: p.sesi })),
     aktivitas,
   });
 });
@@ -3889,61 +3925,81 @@ app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
   }
 
   const wpStore = load(F.workPhotos, {});
-  const lap     = (wpStore[date] || {})[user];
-  if (!lap) return res.status(404).json({ status: "NOT_FOUND" });
-  const photos  = Array.isArray(lap) ? lap : (lap.photos || []);
-  const photo   = photos[parseInt(index)];
+  const sessions  = wpGetSessions(wpStore, date, user);
+  const merged    = wpMergeAllSessions(sessions);
+  const allPhotos = merged.photos;
+  const photo     = allPhotos[parseInt(index)];
   if (!photo) return res.status(404).json({ status: "NOT_FOUND" });
   res.json({ ts: photo.ts, image: photo.image, date });
 });
 
-// POST /work-photos/report — simpan/update laporan kegiatan harian (maks 5 foto, 1 laporan/hari)
+// POST /work-photos/report — simpan/update laporan per sesi clock-in
+// Rule: hanya bisa edit sesi yang sedang aktif (belum clock out)
 app.post("/work-photos/report", requireLevel(99), (req, res) => {
   const user    = req._requester;
   const today   = todayLocal();
   const { uraian, photos, action, photoIndex } = req.body;
 
-  // Validasi: harus sedang clock in (belum clock out)
-  const data = load(F.data, []);
-  const rec  = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
-  if (!rec) return res.status(403).json({ status: "NOT_WORKING", msg: "Hanya bisa kirim laporan saat sedang bekerja" });
+  // Cari record clock-in aktif (belum clock out)
+  const data    = load(F.data, []);
+  const recAktif = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  if (!recAktif) return res.status(403).json({ status: "NOT_WORKING", msg: "Hanya bisa kirim laporan saat sedang bekerja" });
+
+  const currentSesi = recAktif.sesi || 1;
 
   const wpStore = load(F.workPhotos, {});
   if (!wpStore[today]) wpStore[today] = {};
-  if (!wpStore[today][user]) wpStore[today][user] = { uraian: "", photos: [], updatedAt: null };
 
-  // Pastikan format baru (object {uraian, photos})
-  const laporan = wpStore[today][user];
+  // Normalisasi ke format array-of-sessions (backward-compat)
+  let sessions = wpGetSessions(wpStore, today, user);
+  wpStore[today][user] = sessions; // simpan dalam format baru
 
-  // Aksi: hapus 1 foto
-  if (action === "deletePhoto" && typeof photoIndex === "number") {
-    laporan.photos.splice(photoIndex, 1);
-    laporan.updatedAt = new Date().toISOString();
-    save(F.workPhotos, wpStore);
-    return res.json({ status: "OK", totalPhotos: laporan.photos.length });
+  // Cari atau buat sesi saat ini
+  let laporan = sessions.find(s => s.sesi === currentSesi);
+  if (!laporan) {
+    laporan = { sesi: currentSesi, uraian: "", photos: [], updatedAt: null, jamMasuk: recAktif.jamMasuk, lockedAt: null };
+    sessions.push(laporan);
   }
 
-  // Aksi: hapus semua foto
+  // Aksi: hapus 1 foto dari sesi ini
+  // photoIndex adalah global index (merged), konversi ke index dalam sesi ini
+  if (action === "deletePhoto" && typeof photoIndex === "number") {
+    // Hitung offset foto sesi ini dalam merged array
+    const merged = wpMergeAllSessions(sessions);
+    const targetPhoto = merged.photos[photoIndex];
+    if (!targetPhoto || targetPhoto.sesi !== currentSesi) {
+      return res.status(403).json({ status: "LOCKED", msg: "Hanya bisa hapus foto sesi aktif" });
+    }
+    // Hapus dari laporan sesi ini berdasarkan timestamp (unik)
+    laporan.photos = laporan.photos.filter(p => p.ts !== targetPhoto.ts);
+    laporan.updatedAt = new Date().toISOString();
+    save(F.workPhotos, wpStore);
+    const mergedAfter = wpMergeAllSessions(sessions);
+    return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
+  }
+
+  // Aksi: hapus semua foto sesi ini
   if (action === "clearPhotos") {
     laporan.photos = [];
     laporan.updatedAt = new Date().toISOString();
     save(F.workPhotos, wpStore);
-    return res.json({ status: "OK", totalPhotos: 0 });
+    const mergedAfter = wpMergeAllSessions(sessions);
+    return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
   }
 
   // Update uraian
   if (uraian !== undefined) laporan.uraian = String(uraian).slice(0, 1000);
 
-  // Tambah foto baru
+  // Tambah foto baru ke sesi ini
   if (Array.isArray(photos) && photos.length > 0) {
     for (const img of photos) {
       if (!img || typeof img !== "string" || !img.startsWith("data:image/")) continue;
-      if (img.length > 2000000) { // ~1.5MB actual image
+      if (img.length > 2000000) {
         console.warn(`[LAPORAN] ${user} foto terlalu besar: ${Math.round(img.length/1000)}KB — dilewati`);
         continue;
       }
       if (laporan.photos.length >= 5) {
-        return res.status(400).json({ status: "MAX_PHOTOS", msg: "Maksimal 5 foto per laporan" });
+        return res.status(400).json({ status: "MAX_PHOTOS", msg: "Maksimal 5 foto per sesi (maks 5 foto)" });
       }
       laporan.photos.push({ ts: new Date().toISOString(), image: img });
     }
@@ -3958,26 +4014,39 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
   Object.keys(wpStore).forEach(k => { if (k < wpCutoffStr) delete wpStore[k]; });
 
   save(F.workPhotos, wpStore);
-  console.log(`[LAPORAN] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — ${laporan.photos.length} foto, uraian: ${laporan.uraian ? "ada" : "kosong"}`);
-  res.json({ status: "OK", totalPhotos: laporan.photos.length, uraian: laporan.uraian });
+  const mergedFinal = wpMergeAllSessions(sessions);
+  console.log(`[LAPORAN] ${user} sesi-${currentSesi} @ ${new Date().toLocaleTimeString("id-ID")} — ${laporan.photos.length} foto, uraian: ${laporan.uraian ? "ada" : "kosong"}`);
+  res.json({ status: "OK", totalPhotos: laporan.photos.length, uraian: laporan.uraian, sesi: currentSesi });
 });
 
-// GET /work-photos/report/me — ambil laporan hari ini milik user sendiri
+// GET /work-photos/report/me — ambil laporan sesi aktif milik user hari ini
 app.get("/work-photos/report/me", requireLevel(99), (req, res) => {
   const user    = req._requester;
   const today   = todayLocal();
   const wpStore = load(F.workPhotos, {});
-  const laporan = (wpStore[today] || {})[user] || { uraian: "", photos: [], updatedAt: null };
-  // Ambil aktivitas dari record absensi hari ini
   const data    = load(F.data, []);
-  const rec     = data.slice().reverse().find(d => d.user === user && d.date === today);
+
+  // Cari sesi aktif (belum clock out)
+  const recAktif = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  const currentSesi = recAktif?.sesi || null;
+
+  const sessions  = wpGetSessions(wpStore, today, user);
+  // Ambil laporan sesi aktif; fallback ke sesi terakhir jika tidak ada sesi aktif
+  const laporan   = currentSesi
+    ? (sessions.find(s => s.sesi === currentSesi) || { uraian: "", photos: [], updatedAt: null })
+    : (sessions.at(-1) || { uraian: "", photos: [], updatedAt: null });
+
+  const rec       = data.slice().reverse().find(d => d.user === user && d.date === today);
   const aktivitas = rec?.aktivitas || "";
-  // Kembalikan tanpa image (hanya metadata) — hemat bandwidth
+  const isEditable = !!recAktif; // hanya bisa edit jika sedang clock in
+
   res.json({
     uraian:      laporan.uraian || "",
-    totalPhotos: Array.isArray(laporan.photos) ? laporan.photos.length : 0,
+    totalPhotos: laporan.photos?.length || 0,
     updatedAt:   laporan.updatedAt || null,
     aktivitas,
+    sesi:        laporan.sesi || currentSesi,
+    isEditable,  // client pakai ini untuk sembunyikan/tampilkan tombol edit
   });
 });
 

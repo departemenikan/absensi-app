@@ -11745,7 +11745,8 @@ async function showLaporanPopup() {
     ? `<span style="font-size:11px;color:#95a5a6;">Terakhir disimpan: ${new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</span>`
     : "";
 
-  const fotoMaxed = existing.totalPhotos >= 5;
+  const isEditable  = existing.isEditable !== false; // default true untuk backward-compat
+  const fotoMaxed   = existing.totalPhotos >= 5;
 
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:480px;padding:24px 20px 32px;max-height:90vh;overflow-y:auto;">
@@ -11767,6 +11768,7 @@ async function showLaporanPopup() {
         </div>
       </div>` : ""}
       <textarea id="laporan-uraian" placeholder="${existing.aktivitas ? `Uraian kegiatan — ${existing.aktivitas}...` : 'Tulis uraian kegiatan hari ini...'}"
+        ${isEditable ? "" : "readonly style='background:#f9f9f9;color:#aaa;'"}
         style="width:100%;height:110px;padding:12px;border:1.5px solid #e8ecf0;border-radius:12px;font-size:14px;resize:none;outline:none;box-sizing:border-box;color:#2c3e50;"
         onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
       >${existing.uraian || ""}</textarea>
@@ -11777,7 +11779,11 @@ async function showLaporanPopup() {
       <input type="file" id="laporan-file-input" accept="image/*" multiple style="display:none" onchange="_handleLaporanPhoto(this)"/>
       <input type="file" id="laporan-camera-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanPhoto(this)"/>
       <div class="laporan-foto-btns">
-      ${!fotoMaxed ? `
+      ${!isEditable ? `
+      <div style="width:100%;padding:12px;border:1.5px dashed #ddd;border-radius:12px;background:#f9f9f9;
+        color:#aaa;font-size:13px;text-align:center;margin-bottom:12px;">
+        🔒 Laporan terkunci — sudah Clock Out
+      </div>` : !fotoMaxed ? `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
         <button onclick="document.getElementById('laporan-camera-input').click()"
           style="padding:12px 8px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px;
@@ -11800,20 +11806,22 @@ async function showLaporanPopup() {
       </div>`}
       </div>
       <div id="laporan-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
-      <button onclick="_saveLaporan()"
+      ${isEditable ? `<button onclick="_saveLaporan()"
         style="width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:15px;">
         💾 Simpan Laporan
-      </button>
+      </button>` : `<div style="text-align:center;color:#aaa;font-size:13px;padding:10px 0;">
+        🔒 Laporan hanya bisa diubah saat sedang bekerja
+      </div>`}
     </div>`;
 
   document.body.appendChild(overlay);
   overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
-  _loadLaporanThumbs(existing.totalPhotos);
+  _loadLaporanThumbs(existing.totalPhotos, isEditable);
 }
 
-async function _loadLaporanThumbs(totalPhotos) {
+async function _loadLaporanThumbs(totalPhotos, isEditable = true) {
   const wrap = document.getElementById("laporan-thumbs");
-  if (!wrap || totalPhotos === 0) return;
+  if (!wrap || totalPhotos === 0) { if (wrap) wrap.innerHTML = ""; return; }
   const user = localStorage.getItem("user") || "";
   const today = new Date().toISOString().slice(0, 10);
   wrap.innerHTML = "";
@@ -11821,34 +11829,35 @@ async function _loadLaporanThumbs(totalPhotos) {
     const thumbWrap = document.createElement("div");
     thumbWrap.style.cssText = "position:relative;width:72px;height:72px;";
     const img = document.createElement("img");
-    img.style.cssText = "width:72px;height:72px;object-fit:cover;border-radius:10px;border:2px solid #e8ecf0;cursor:pointer;";
+    img.style.cssText = "width:72px;height:72px;object-fit:cover;border-radius:10px;border:2px solid #e8ecf0;background:#111;" + (isEditable ? "cursor:pointer;" : "cursor:default;");
     img.alt = "Foto " + (i + 1);
-    img.title = "Klik untuk ganti foto";
+    img.title = isEditable ? "Klik untuk ganti foto" : "Laporan terkunci (sudah Clock Out)";
     (async function(idx) {
       try {
         const r = await authFetch(`/work-photos/${user}/${idx}?date=${today}`);
         if (r.ok) { const d = await r.json(); if (d.image) img.src = d.image; }
       } catch (e) {}
     })(i);
-    // Klik gambar → popup pilihan replace (kamera/galeri)
+    // Klik gambar → popup pilihan replace (hanya jika editable)
     const capturedIdx = i;
-    img.onclick = function() { _showReplacePhotoMenu(capturedIdx); };
-    const delBtn = document.createElement("button");
-    delBtn.innerHTML = "✕";
-    delBtn.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:11px;cursor:pointer;font-weight:700;";
-    delBtn.onclick = async function() {
-      if (!confirm("Hapus foto ini?")) return;
-      try {
-        const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action: "deletePhoto", photoIndex: capturedIdx }) });
-        const d = await r.json();
-        if (d.status === "OK") { showToast("🗑 Foto dihapus"); showLaporanPopup(); }
-        else showToast("⚠️ Gagal hapus foto");
-      } catch(e) { showToast("❌ Gagal hapus foto"); }
-    };
+    if (isEditable) {
+      img.onclick = function() { _showReplacePhotoMenu(capturedIdx); };
+      const delBtn = document.createElement("button");
+      delBtn.innerHTML = "✕";
+      delBtn.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:11px;cursor:pointer;font-weight:700;";
+      delBtn.onclick = async function() {
+        if (!confirm("Hapus foto ini?")) return;
+        try {
+          const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action: "deletePhoto", photoIndex: capturedIdx }) });
+          const d = await r.json();
+          if (d.status === "OK") { showToast("🗑 Foto dihapus"); showLaporanPopup(); }
+          else showToast("⚠️ Gagal hapus foto");
+        } catch(e) { showToast("❌ Gagal hapus foto"); }
+      };
+      thumbWrap.appendChild(delBtn);
+    }
     thumbWrap.appendChild(img);
-    thumbWrap.appendChild(delBtn);
     wrap.appendChild(thumbWrap);
-
   }
 }
 
@@ -11906,7 +11915,7 @@ async function _handleLaporanPhoto(input) {
           if (btnGrid) btnGrid.innerHTML = `<div style="width:100%;padding:12px;border:1.5px dashed #ddd;border-radius:12px;background:#f9f9f9;color:#bbb;font-weight:700;font-size:14px;text-align:center;margin-bottom:12px;">🚫 Maksimal 5 foto tercapai</div>`;
         }
         // Refresh thumbnails in-place
-        _loadLaporanThumbs(newTotal);
+        _loadLaporanThumbs(newTotal, true); // uploading means still editable
       }
     } catch(e) {
       // Fallback: reload popup
