@@ -3120,14 +3120,6 @@
       <!-- ===== PANEL: Foto Kerja ===== -->
       <div id="panel-foto-kerja" style="display:none;">
 
-        <!-- Karyawan Mobile Aktif Hari Ini -->
-        <div class="card" id="wp-active-mobile-card" style="margin-top:0;padding:14px;">
-          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">📱 Karyawan Mobile Aktif</div>
-          <div id="wp-active-mobile-list">
-            <p style="color:var(--muted);text-align:center;padding:12px 0;">Memuat...</p>
-          </div>
-        </div>
-
         <!-- Filter -->
         <div class="card" style="margin-top:12px;padding:14px;">
           <!-- 1 baris: Karyawan (flex) + Tanggal + Refresh -->
@@ -3160,20 +3152,13 @@
           </div>
         </div>
 
-        <!-- Grid foto kegiatan -->
+        <!-- wp-grid-wrap hidden — expand inline per user card -->
         <div id="wp-grid-wrap" style="display:none;">
-          <div class="card" style="margin-top:12px;padding:14px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-              <div style="font-size:14px;font-weight:700;" id="wp-grid-title">Laporan Kegiatan</div>
-              <span id="wp-grid-count" style="font-size:12px;color:var(--muted);"></span>
-            </div>
-            <!-- Uraian kegiatan (muncul jika ada) -->
-            <div id="wp-uraian-wrap" style="display:none;margin-bottom:12px;"></div>
-            <div id="wp-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
-            <p id="wp-grid-empty" style="display:none;color:var(--muted);text-align:center;padding:24px;">
-              Belum ada foto kegiatan untuk karyawan ini hari ini.
-            </p>
-          </div>
+          <div id="wp-grid"></div>
+          <div id="wp-uraian-wrap" style="display:none;"></div>
+          <p id="wp-grid-empty" style="display:none;"></p>
+          <div id="wp-grid-title" style="display:none;"></div>
+          <span id="wp-grid-count" style="display:none;"></span>
         </div>
 
       </div><!-- /panel-foto-kerja -->
