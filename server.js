@@ -3666,6 +3666,7 @@ app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
   const date      = req.query.date || todayLocal();
   const wpStore   = load(F.workPhotos, {});
   const users     = load(F.users, {});
+  const data      = load(F.data, []);
   const dateData  = wpStore[date] || {};
   const requester = req._requester;
   const level     = req._requesterLevel;
@@ -3689,12 +3690,14 @@ app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
     const lap = dateData[username];
     const isNew = lap && !Array.isArray(lap); // format baru: object {uraian, photos}
     const photos = isNew ? (lap.photos || []) : (Array.isArray(lap) ? lap : []);
+    const rec = data.slice().reverse().find(d => d.user === username && d.date === date);
     return {
       username,
       namaLengkap: users[username]?.namaLengkap || username,
       jabatan:     users[username]?.jabatan || "",
       totalPhotos: photos.length,
       uraian:      isNew ? (lap.uraian || "") : "",
+      aktivitas:   rec?.aktivitas || "",
       lastPhoto:   photos.at(-1)?.ts || null,
     };
   }).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
@@ -3707,6 +3710,7 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
   const today     = todayLocal();
   const wpStore   = load(F.workPhotos, {});
   const users     = load(F.users, {});
+  const data      = load(F.data, []);
   const todayData = wpStore[today] || {};
   const requester = req._requester;
   const level     = req._requesterLevel;
@@ -3729,12 +3733,14 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
     const lap = todayData[username];
     const isNew = lap && !Array.isArray(lap);
     const photos = isNew ? (lap.photos || []) : (Array.isArray(lap) ? lap : []);
+    const rec = data.slice().reverse().find(d => d.user === username && d.date === today);
     return {
       username,
       namaLengkap: users[username]?.namaLengkap || username,
       jabatan:     users[username]?.jabatan || "",
       totalPhotos: photos.length,
       uraian:      isNew ? (lap.uraian || "") : "",
+      aktivitas:   rec?.aktivitas || "",
       lastPhoto:   photos.at(-1)?.ts || null,
     };
   }).sort((a, b) => a.namaLengkap.localeCompare(b.namaLengkap, "id"));
@@ -3748,19 +3754,48 @@ app.get("/work-photos/:user", requireLevel(3), (req, res) => {
   const date    = req.query.date || todayLocal();
   const wpStore = load(F.workPhotos, {});
   const lap     = (wpStore[date] || {})[user];
-  if (!lap) return res.json({ uraian: "", photos: [] });
+  // Ambil aktivitas dari record absensi pada tanggal tersebut
+  const data    = load(F.data, []);
+  const rec     = data.slice().reverse().find(d => d.user === user && d.date === date);
+  const aktivitas = rec?.aktivitas || "";
+  if (!lap) return res.json({ uraian: "", photos: [], aktivitas });
   const isNew = !Array.isArray(lap);
   const photos = isNew ? (lap.photos || []) : lap;
   res.json({
-    uraian:  isNew ? (lap.uraian || "") : "",
-    photos:  photos.map((p, i) => ({ index: i, ts: p.ts, date })),
+    uraian:    isNew ? (lap.uraian || "") : "",
+    photos:    photos.map((p, i) => ({ index: i, ts: p.ts, date })),
+    aktivitas,
   });
 });
 
 // GET /work-photos/:user/:index — foto kegiatan dengan image, support ?date=YYYY-MM-DD
-app.get("/work-photos/:user/:index", requireLevel(99), (req, res) => {
+app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
   const { user, index } = req.params;
-  const date    = req.query.date || todayLocal();
+  const date      = req.query.date || todayLocal();
+  const requester = req._requester;
+  const level     = req._requesterLevel;
+  const users     = load(F.users, {});
+
+  // Akses kontrol: anggota (level >4) hanya bisa lihat foto sendiri
+  // Manager/koordinator (level 3-4) hanya bisa lihat anggota divisinya
+  // Owner/admin (level <=2) bisa lihat semua
+  if (level > 2 && requester !== user) {
+    const me = users[requester];
+    const target = users[user];
+    if (!me || !target) return res.status(403).json({ status: "FORBIDDEN" });
+    const myDivisi  = Array.isArray(me.divisi) ? me.divisi : (me.divisi ? [me.divisi] : []);
+    const tgtDivisi = Array.isArray(target.divisi) ? target.divisi : (target.divisi ? [target.divisi] : []);
+    const tgtGroup  = target.group || "anggota";
+    // Tidak bisa lihat owner/admin/manager lain
+    if (tgtGroup === "owner" || tgtGroup === "admin" || tgtGroup === "manager") {
+      return res.status(403).json({ status: "FORBIDDEN" });
+    }
+    // Harus divisi yang sama
+    if (!myDivisi.some(d => tgtDivisi.includes(d))) {
+      return res.status(403).json({ status: "FORBIDDEN" });
+    }
+  }
+
   const wpStore = load(F.workPhotos, {});
   const lap     = (wpStore[date] || {})[user];
   if (!lap) return res.status(404).json({ status: "NOT_FOUND" });
@@ -3841,11 +3876,16 @@ app.get("/work-photos/report/me", requireLevel(99), (req, res) => {
   const today   = todayLocal();
   const wpStore = load(F.workPhotos, {});
   const laporan = (wpStore[today] || {})[user] || { uraian: "", photos: [], updatedAt: null };
+  // Ambil aktivitas dari record absensi hari ini
+  const data    = load(F.data, []);
+  const rec     = data.slice().reverse().find(d => d.user === user && d.date === today);
+  const aktivitas = rec?.aktivitas || "";
   // Kembalikan tanpa image (hanya metadata) — hemat bandwidth
   res.json({
-    uraian:     laporan.uraian || "",
+    uraian:      laporan.uraian || "",
     totalPhotos: Array.isArray(laporan.photos) ? laporan.photos.length : 0,
-    updatedAt:  laporan.updatedAt || null,
+    updatedAt:   laporan.updatedAt || null,
+    aktivitas,
   });
 });
 
