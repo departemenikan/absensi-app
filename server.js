@@ -1080,10 +1080,13 @@ app.get("/admin/today", requireLevel(3), (req, res) => {
   const users = load(F.users, {});
   const date  = req.query.date || todayLocal(); // lokal WITA
   const records = Object.keys(users).map(username => {
-    const rec = data.find(d => d.user === username && d.date === date);
+    // Prioritaskan sesi aktif agar multi-sesi tidak salah jadi DONE
+    const recAktifT  = data.find(d => d.user === username && d.date === date && !d.jamKeluar);
+    const recLatestT = data.slice().reverse().find(d => d.user === username && d.date === date);
+    const rec        = recAktifT || recLatestT;
     let status = "OUT";
-    if (rec && !rec.jamKeluar) { const lb = rec.breaks.at(-1); status = (lb && !lb.end) ? "BREAK" : "IN"; }
-    else if (rec && rec.jamKeluar) status = "DONE";
+    if (recAktifT) { const lb = recAktifT.breaks?.at(-1); status = (lb && !lb.end) ? "BREAK" : "IN"; }
+    else if (recLatestT?.jamKeluar) status = "DONE";
     const sessions  = load(F.sessions, {});
     const sess      = sessions[username] || {};
     return { user: username, jamMasuk: rec?.jamMasuk||null, jamKeluar: rec?.jamKeluar||null, status,
@@ -3466,12 +3469,15 @@ app.get("/tracking/live/all", requireLevel(3), (req, res) => {
     .map(username => {
       const points  = todayData[username] || [];
       const last    = points.length ? points[points.length - 1] : null;
-      const rec     = data.find(d => d.user === username && d.date === today);
+      // Prioritaskan sesi aktif agar status tidak salah jadi DONE saat multi-sesi
+      const recAktif2  = data.find(d => d.user === username && d.date === today && !d.jamKeluar);
+      const recLatest2 = data.slice().reverse().find(d => d.user === username && d.date === today);
+      const rec        = recAktif2 || recLatest2;
       let status    = "OUT";
-      if (rec && !rec.jamKeluar) {
-        const lb = rec.breaks.at(-1);
+      if (recAktif2) {
+        const lb = recAktif2.breaks?.at(-1);
         status   = (lb && !lb.end) ? "BREAK" : "IN";
-      } else if (rec && rec.jamKeluar) status = "DONE";
+      } else if (recLatest2?.jamKeluar) status = "DONE";
 
       return {
         username,
@@ -3593,15 +3599,16 @@ app.get("/screenshots/today", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec   = data.find(d => d.user === username && d.date === today);
+      // Prioritaskan sesi aktif agar status tidak salah jadi DONE saat multi-sesi
+      const recAktif3  = data.find(d => d.user === username && d.date === today && !d.jamKeluar);
+      const allRecs    = data.filter(d => d.user === username && d.date === today);
+      const latestRec  = allRecs.at(-1);
+      const rec        = recAktif3 || latestRec;
       let status  = "OUT";
-      if (rec && !rec.jamKeluar) {
-        const lb = rec.breaks?.at(-1);
+      if (recAktif3) {
+        const lb = recAktif3.breaks?.at(-1);
         status   = (lb && !lb.end) ? "BREAK" : "IN";
-      } else if (rec && rec.jamKeluar) status = "DONE";
-      // Ambil platform dari record terbaru hari ini (bukan hanya yang aktif)
-      const allRecs   = data.filter(d => d.user === username && d.date === today);
-      const latestRec = allRecs.at(-1);
+      } else if (latestRec?.jamKeluar) status = "DONE";
       const platform  = latestRec?.platform || rec?.platform || "desktop";
       const shots = todayData[username] || [];
       const sessions   = load(F.sessions, {});
@@ -3763,22 +3770,25 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
       return false;
     })
     .map(username => {
-      const rec = data.find(d => d.user === username && d.date === today);
+      // Ambil sesi aktif dulu (belum clock-out); jika tidak ada, ambil sesi terakhir
+      const recAktif  = data.find(d => d.user === username && d.date === today && !d.jamKeluar);
+      const recLatest = data.slice().reverse().find(d => d.user === username && d.date === today);
+      const rec = recAktif || recLatest;
       if (!rec) return null;
-      // Deteksi platform — fallback dari UA jika record lama tidak punya platform
+      // Deteksi platform dari sesi aktif atau sesi terakhir
       let platform = rec.platform || "desktop";
       if (platform === "desktop") {
-        // Cek session deviceType sebagai fallback
         const sess = load(F.sessions, {})[username] || {};
         if (sess.deviceType && sess.deviceType !== "desktop") platform = sess.deviceType;
       }
       // Hanya tampilkan non-desktop (mobile/pwa/pwa-desktop)
       if (!MOBILE_PLATFORMS.includes(platform)) return null;
+      // Status dari sesi aktif — jika ada sesi aktif, pasti IN/BREAK bukan DONE
       let status = "OUT";
-      if (!rec.jamKeluar) {
-        const lb = rec.breaks?.at(-1);
+      if (recAktif) {
+        const lb = recAktif.breaks?.at(-1);
         status = (lb && !lb.end) ? "BREAK" : "IN";
-      } else {
+      } else if (recLatest?.jamKeluar) {
         status = "DONE";
       }
       const sessions = wpGetSessions(wpStore, today, username);
@@ -3789,7 +3799,7 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
         jabatan:     users[username]?.jabatan || "",
         status,
         platform,
-        aktivitas:   rec.aktivitas || "",
+        aktivitas:   recAktif?.aktivitas || recLatest?.aktivitas || "",
         totalPhotos: merged.photos.length,
         uraian:      merged.uraian,
         lastPhoto:   merged.photos.at(-1)?.ts || null,
