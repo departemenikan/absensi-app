@@ -1106,9 +1106,7 @@ async function sendAbsen(type, label) {
       if (type === "IN" && window.__ELECTRON_APP__) {
         window.electronAPI.clockIn({ username: user, cookie: document.cookie });
       }
-      // Tampilkan/sembunyikan tombol Laporan Kegiatan
-      // Hanya muncul saat aktif (IN/BREAK), tersembunyi saat Clock Out
-      // Untuk edit laporan → harus Clock In lagi di hari yang sama
+      // Tampilkan/sembunyikan tombol Laporan Kegiatan secara langsung (tanpa reload)
       const laporanWrap = document.getElementById("btn-laporan-wrap");
       if (laporanWrap) {
         if (type === "IN" || type === "BREAK_START" || type === "BREAK_END") {
@@ -1376,8 +1374,6 @@ async function loadStatus() {
     const r = await authFetch("/status/" + user);
     const d = await r.json();
     updateBtns(d.status);
-    // Selalu refresh tombol laporan setiap loadStatus (muncul berdasarkan hari)
-    if (typeof checkAndShowLaporanBtn === "function") checkAndShowLaporanBtn();
   } catch { updateBtns("OUT"); }
 }
 
@@ -10824,8 +10820,8 @@ async function loadWorkPhotoList(silent = false) {
 
       const uraianSnip = uraian
         ? `<div style="font-size:12px;color:#555;margin-top:5px;padding:5px 8px;background:#f8f9ff;
-               border-left:3px solid #4f8ef7;border-radius:4px;line-height:1.5;
-               word-break:break-word;">${uraian}</div>` : "";
+               border-left:3px solid #4f8ef7;border-radius:4px;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${uraian}"</div>` : "";
 
       return `
         <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:8px;
@@ -11691,14 +11687,10 @@ async function checkAndShowLaporanBtn() {
     const user = localStorage.getItem("user") || "";
     const r = await authFetch("/status/" + user);
     const d = await r.json();
-
-    // Tombol laporan hanya muncul saat sedang aktif (IN/BREAK)
-    // Untuk edit laporan setelah clock out → clock in lagi
     const isActive = (d.status === "IN" || d.status === "BREAK");
     wrap.style.display = isActive ? "block" : "none";
     if (!isActive) return;
-
-    // Update teks tombol jika sudah ada laporan
+    // Tampilkan info laporan di tombol jika sudah ada
     try {
       const rl = await authFetch("/work-photos/report/me");
       if (rl.ok) {
@@ -11725,447 +11717,467 @@ async function checkAndShowLaporanBtn() {
 }
 
 // ── State antrian preview foto (belum diupload) ───────────────────────────────
-let _laporanPendingPhotos = []; // [{base64, file}]
+// ── State antrian preview foto (belum diupload) ───────────────────────────────
+let _laporanPendingPhotos = []; // [{base64, name}]
 
+// Helper: baca saved count dari data attribute
+function _laporanSavedCount() {
+  return parseInt(document.getElementById("laporan-foto-count")?.dataset.saved || "0", 10);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// showLaporanPopup — sheet compact mobile, editable sepanjang hari yg sama
+// ─────────────────────────────────────────────────────────────────────────────
 async function showLaporanPopup() {
-  const old = document.getElementById("laporan-overlay");
-  if (old) old.remove();
-  _laporanPendingPhotos = []; // reset antrian preview saat buka ulang
+  document.getElementById("laporan-overlay")?.remove();
+  _laporanPendingPhotos = [];
 
-  let existing = { uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "" };
+  // Tampilkan shell dulu (agar responsif), isi body setelah fetch
+  const overlay = document.createElement("div");
+  overlay.id = "laporan-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:850;display:flex;align-items:flex-end;justify-content:center;touch-action:none;";
+  overlay.innerHTML = `
+    <div id="laporan-sheet" style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;
+      padding:0 0 env(safe-area-inset-bottom,16px);max-height:92vh;overflow-y:auto;overscroll-behavior:contain;">
+      <div style="position:sticky;top:0;background:#fff;z-index:2;padding:10px 16px 0;">
+        <div style="width:36px;height:4px;background:#e0e0e0;border-radius:4px;margin:0 auto 10px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid #f0f2f5;">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#1a237e;">&#x1F4CB; Laporan Kegiatan</div>
+            <div id="laporan-updated-note" style="font-size:11px;color:#95a5a6;margin-top:1px;"></div>
+          </div>
+          <button onclick="document.getElementById('laporan-overlay').remove()"
+            style="width:30px;height:30px;border-radius:50%;border:none;background:#f0f2f5;font-size:16px;cursor:pointer;color:#555;flex-shrink:0;">&#x2715;</button>
+        </div>
+      </div>
+      <div style="padding:12px 16px 24px;" id="laporan-body">
+        <div style="text-align:center;padding:24px 0;color:#95a5a6;font-size:13px;">&#x23F3; Memuat laporan...</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+
+  // Fetch data laporan
+  let existing = { uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false };
   try {
     const r = await authFetch("/work-photos/report/me");
     if (r.ok) existing = await r.json();
   } catch (e) {}
-
-  // Ambil aktivitas dari status jika belum ada di laporan
   if (!existing.aktivitas) {
     try {
-      const user = localStorage.getItem("user") || "";
-      const rs = await authFetch("/status/" + user);
-      if (rs.ok) {
-        const ds = await rs.json();
-        if (ds.aktivitas) existing.aktivitas = ds.aktivitas;
-      }
+      const rs = await authFetch("/status/" + (localStorage.getItem("user") || ""));
+      if (rs.ok) { const ds = await rs.json(); if (ds.aktivitas) existing.aktivitas = ds.aktivitas; }
     } catch (e) {}
   }
 
-  // isEditable dari server: true jika sudah clock in hari ini (aktif atau sudah clock out)
-  // Popup ini umumnya hanya dibuka saat tombol muncul (= saat aktif)
-  // Tapi jika clock in kedua di hari sama, laporan lama tetap bisa diedit
-  const isEditable = existing.isEditable !== false;
-  const isActiveNow = true; // tombol hanya tampil saat aktif, jadi ini selalu true saat popup dibuka
-
-  const overlay = document.createElement("div");
-  overlay.id = "laporan-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.72);z-index:850;display:flex;align-items:flex-end;justify-content:center;";
-
-  const updatedNote = existing.updatedAt
-    ? `<span style="font-size:11px;color:#95a5a6;">Disimpan: ${new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</span>`
-    : "";
-
-  // Label status
-  const statusNote = isEditable
-    ? `<span style="font-size:11px;color:#27ae60;font-weight:700;">✅ Sedang aktif</span>`
-    : `<span style="font-size:11px;color:#e74c3c;font-weight:700;">🔒 Hanya bisa diedit saat Clock In</span>`;
-
-  overlay.innerHTML = `
-    <div id="laporan-sheet" style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px 28px;max-height:94vh;overflow-y:auto;">
-      <!-- Handle bar -->
-      <div style="width:36px;height:4px;background:#ddd;border-radius:4px;margin:0 auto 14px;"></div>
-
-      <!-- Header compact -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div>
-          <div style="font-size:15px;font-weight:800;color:#2c3e50;">📋 Laporan Kegiatan</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-            ${updatedNote}
-            ${updatedNote ? '<span style="color:#ddd;">·</span>' : ""}
-            ${statusNote}
-          </div>
-        </div>
-        <button onclick="document.getElementById('laporan-overlay').remove()"
-          style="width:30px;height:30px;border-radius:50%;border:none;background:#f0f2f5;font-size:17px;cursor:pointer;color:#555;flex-shrink:0;">✕</button>
-      </div>
-
-      <!-- Aktivitas badge compact -->
-      ${existing.aktivitas ? `
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:7px 10px;
-                  background:#f0f6ff;border-radius:8px;border-left:3px solid #4f8ef7;">
-        <span style="font-size:13px;">🏃</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:10px;font-weight:700;color:#4f8ef7;letter-spacing:.4px;">AKTIVITAS</div>
-          <div style="font-size:13px;font-weight:700;color:#2c3e50;">${existing.aktivitas}</div>
-        </div>
-      </div>` : ""}
-
-      <!-- Uraian label + textarea atau tampilan read mode -->
-      <div style="font-size:12px;font-weight:700;color:#2c3e50;margin-bottom:5px;">✏️ Uraian Kegiatan</div>
-      ${isEditable ? `
-      <textarea id="laporan-uraian"
-        placeholder="${existing.aktivitas ? `Uraian kegiatan — ${existing.aktivitas}...` : 'Tulis uraian kegiatan hari ini...'}"
-        style="width:100%;min-height:80px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
-               font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;line-height:1.5;"
-        onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
-      >${existing.uraian || ""}</textarea>
-      ` : `
-      <div style="padding:10px 12px;border:1.5px solid #f0f2f5;border-radius:10px;background:#fafafa;
-                  font-size:13px;color:#555;line-height:1.6;min-height:50px;word-break:break-word;">
-        ${existing.uraian
-          ? existing.uraian.replace(/\n/g,"<br>")
-          : '<span style="color:#bbb;">Belum ada uraian</span>'}
-      </div>`}
-
-      <!-- Foto section -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px;">
-        <div style="font-size:12px;font-weight:700;color:#2c3e50;">📸 Foto Kegiatan</div>
-        <span id="laporan-foto-count" style="font-size:11px;color:#95a5a6;font-weight:600;">${existing.totalPhotos}/5 foto</span>
-      </div>
-
-      ${isEditable ? `
-      <input type="file" id="laporan-camera-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanCameraPhoto(this)"/>
-      <input type="file" id="laporan-file-input" accept="image/*" multiple style="display:none" onchange="_handleLaporanGalleryPhoto(this)"/>
-      <div id="laporan-foto-btns" style="margin-bottom:8px;"></div>
-      <div id="laporan-preview-area" style="margin-bottom:8px;"></div>
-      ` : ""}
-
-      <!-- Thumbnail foto tersimpan (compact grid) -->
-      <div id="laporan-thumbs" style="margin-bottom:12px;"></div>
-
-      ${isEditable ? `
-      <div id="laporan-save-wrap">
-        <button onclick="_saveLaporan()"
-          style="width:100%;padding:13px;border:none;border-radius:12px;cursor:pointer;
-                 background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:14px;">
-          💾 Simpan Laporan
-        </button>
-      </div>` : `
-      <div style="text-align:center;padding:8px 0;">
-        <span style="font-size:12px;color:#aaa;">Laporan hanya dapat diedit pada hari yang sama</span>
-      </div>`}
-    </div>`;
-
-  document.body.appendChild(overlay);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
-
-  if (isEditable) _renderLaporanFotoBtns(existing.totalPhotos, 0);
-  _loadLaporanThumbs(existing.totalPhotos, isEditable);
+  _laporanRenderBody(existing);
 }
 
-// Render tombol tambah foto compact
+// ── Render isi sheet ──────────────────────────────────────────────────────────
+function _laporanRenderBody(existing) {
+  const body   = document.getElementById("laporan-body");
+  const noteEl = document.getElementById("laporan-updated-note");
+  if (!body) return;
+
+  if (noteEl) noteEl.textContent = existing.updatedAt
+    ? "Disimpan " + new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
+    : (existing.isEditable ? "\u2705 Sedang aktif" : "");
+
+  const isEditable = existing.isEditable !== false;
+  const saved      = existing.totalPhotos || 0;
+  const uraian     = existing.uraian || "";
+  const aktivitas  = existing.aktivitas || "";
+
+  let html = "";
+
+  // Badge aktivitas
+  if (aktivitas) html += `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f0f6ff;
+      border-radius:9px;border-left:3px solid #4f8ef7;margin-bottom:8px;">
+      <span style="font-size:13px;">&#x1F3C3;</span>
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#4f8ef7;letter-spacing:.4px;text-transform:uppercase;">Aktivitas</div>
+        <div style="font-size:12px;font-weight:700;color:#2c3e50;">${aktivitas}</div>
+      </div>
+    </div>`;
+
+  // Uraian
+  html += `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">&#x270F;&#xFE0F; Uraian Kegiatan</div>`;
+  if (isEditable) {
+    html += `<textarea id="laporan-uraian"
+      placeholder="${aktivitas ? "Uraian kegiatan \u2014 " + aktivitas + "..." : "Tulis uraian kegiatan hari ini..."}"
+      style="width:100%;height:80px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
+             font-size:13px;resize:none;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;"
+      onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
+    >${uraian}</textarea>`;
+  } else {
+    html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
+      border-left:3px solid #ccc;white-space:pre-wrap;line-height:1.5;min-height:40px;">
+      ${uraian || '<span style="color:#aaa;font-style:italic;">Belum ada uraian</span>'}
+    </div>`;
+  }
+
+  // Header foto
+  html += `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px;">
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;">&#x1F4F8; Foto Kegiatan</div>
+      <span id="laporan-foto-count" data-saved="${saved}"
+        style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;
+        background:${saved >= 5 ? "#fce4ec" : "#e8f5e9"};color:${saved >= 5 ? "#c0392b" : "#27ae60"};">
+        ${saved}/5 foto
+      </span>
+    </div>`;
+
+  if (isEditable) {
+    html += `
+    <input type="file" id="laporan-camera-input" accept="image/*" capture="environment" style="display:none" onchange="_handleLaporanCameraPhoto(this)"/>
+    <input type="file" id="laporan-file-input" accept="image/*" multiple style="display:none" onchange="_handleLaporanGalleryPhoto(this)"/>
+    <div id="laporan-foto-btns"></div>
+    <div id="laporan-preview-area"></div>`;
+  }
+
+  html += `<div id="laporan-thumbs"></div>`;
+
+  if (isEditable) {
+    html += `<button id="laporan-save-btn" onclick="_saveLaporan()"
+      style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:12px;cursor:pointer;
+      background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;font-weight:700;font-size:14px;">
+      &#x1F4BE; Simpan Laporan
+    </button>`;
+  } else {
+    html += `<div style="margin-top:10px;text-align:center;font-size:11px;color:#aaa;padding:6px 0;">
+      &#x1F4C5; Laporan hanya bisa diedit di hari yang sama
+    </div>`;
+  }
+
+  body.innerHTML = html;
+
+  if (isEditable) _renderLaporanFotoBtns(saved, 0);
+  _loadLaporanThumbs(saved, isEditable);
+}
+
+// ── Tombol tambah foto ────────────────────────────────────────────────────────
 function _renderLaporanFotoBtns(savedCount, pendingCount) {
   const wrap = document.getElementById("laporan-foto-btns");
   if (!wrap) return;
   const total = savedCount + pendingCount;
   if (total >= 5) {
-    wrap.innerHTML = `<div style="padding:8px 10px;border:1.5px dashed #ddd;border-radius:10px;background:#f9f9f9;color:#bbb;font-weight:700;font-size:13px;text-align:center;">🚫 Maksimal 5 foto tercapai</div>`;
+    wrap.innerHTML = `<div style="padding:8px 12px;border:1.5px dashed #ddd;border-radius:10px;background:#fafafa;
+      color:#bbb;font-size:12px;font-weight:700;text-align:center;margin-bottom:8px;">
+      &#x1F6AB; Kuota 5 foto/hari tercapai — hapus foto dulu untuk ganti</div>`;
     return;
   }
   const sisa = 5 - total;
   wrap.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:${sisa < 5 ? "4px" : "8px"};">
       <button onclick="document.getElementById('laporan-camera-input').click()"
-        style="padding:10px 8px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
+        style="padding:10px 6px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
         background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;
         display:flex;align-items:center;justify-content:center;gap:6px;">
-        <span style="font-size:17px;">📷</span><span>Ambil Foto</span>
+        <span>&#x1F4F7;</span> Ambil Foto
       </button>
       <button onclick="document.getElementById('laporan-file-input').click()"
-        style="padding:10px 8px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
+        style="padding:10px 6px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
         background:linear-gradient(135deg,#8e44ad,#9b59b6);color:white;
         display:flex;align-items:center;justify-content:center;gap:6px;">
-        <span style="font-size:17px;">🖼️</span><span>Galeri</span>
+        <span>&#x1F5BC;&#xFE0F;</span> Galeri
       </button>
     </div>
-    <div style="text-align:right;font-size:11px;color:#aaa;margin-top:3px;">Sisa slot: ${sisa} foto</div>`;
+    ${sisa < 5 ? `<div style="font-size:10px;color:#95a5a6;text-align:right;margin-bottom:6px;">Sisa ${sisa} foto lagi hari ini</div>` : ""}`;
 }
 
-// Render area preview foto pending (antrian belum diupload)
+// ── Preview pending ───────────────────────────────────────────────────────────
 function _renderLaporanPendingPreviews() {
   const area = document.getElementById("laporan-preview-area");
   if (!area) return;
   if (!_laporanPendingPhotos.length) { area.innerHTML = ""; return; }
-  area.innerHTML = `<div style="font-size:11px;font-weight:700;color:#e67e22;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">⏳ Preview — belum tersimpan (${_laporanPendingPhotos.length} foto)</div>`;
+
+  const wrap = document.createElement("div");
+  const lbl  = document.createElement("div");
+  lbl.style.cssText = "font-size:10px;font-weight:700;color:#e67e22;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;";
+  lbl.textContent = "\u23F3 Preview (" + _laporanPendingPhotos.length + " belum disimpan)";
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
-  _laporanPendingPhotos.forEach((item, idx) => {
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative;width:72px;height:72px;";
+  row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;";
+
+  _laporanPendingPhotos.forEach(function(item, idx) {
+    const box = document.createElement("div");
+    box.style.cssText = "position:relative;width:60px;height:60px;";
     const img = document.createElement("img");
     img.src = item.base64;
-    img.style.cssText = "width:72px;height:72px;object-fit:cover;border-radius:10px;border:2px solid #f39c12;";
-    const delBtn = document.createElement("button");
-    delBtn.innerHTML = "✕";
-    delBtn.style.cssText = "position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:11px;cursor:pointer;font-weight:700;z-index:2;";
-    delBtn.onclick = function() {
+    img.style.cssText = "width:60px;height:60px;object-fit:cover;border-radius:8px;border:2px solid #f39c12;";
+    const del = document.createElement("button");
+    del.textContent = "\u2715";
+    del.style.cssText = "position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:10px;cursor:pointer;font-weight:700;z-index:2;line-height:1;padding:0;";
+    del.onclick = function() {
       _laporanPendingPhotos.splice(idx, 1);
       _renderLaporanPendingPreviews();
-      // Update kuota tombol
-      const savedCount = parseInt((document.getElementById("laporan-foto-count")?.textContent || "0"), 10);
-      _renderLaporanFotoBtns(savedCount, _laporanPendingPhotos.length);
+      _renderLaporanFotoBtns(_laporanSavedCount(), _laporanPendingPhotos.length);
     };
-    wrap.appendChild(img);
-    wrap.appendChild(delBtn);
-    row.appendChild(wrap);
+    box.appendChild(img);
+    box.appendChild(del);
+    row.appendChild(box);
   });
+
+  area.innerHTML = "";
+  area.appendChild(lbl);
   area.appendChild(row);
 }
 
-// Handler kamera: ambil 1 foto per klik, bisa diklik lagi untuk tambah lagi
+// ── Handler kamera (1 foto/klik) ──────────────────────────────────────────────
 async function _handleLaporanCameraPhoto(input) {
   const file = input.files && input.files[0];
-  input.value = ""; // reset agar bisa ambil foto lagi
+  input.value = "";
   if (!file) return;
-  const savedCount = parseInt((document.getElementById("laporan-foto-count")?.textContent || "0"), 10);
-  if ((savedCount + _laporanPendingPhotos.length) >= 5) {
-    showToast("⚠️ Maksimal 5 foto per laporan"); return;
+  if ((_laporanSavedCount() + _laporanPendingPhotos.length) >= 5) {
+    showToast("\u26A0\uFE0F Kuota 5 foto/hari penuh — hapus foto dulu"); return;
   }
-  if (file.size > 8 * 1024 * 1024) { showToast("⚠️ File terlalu besar (maks 8MB)"); return; }
+  if (file.size > 8 * 1024 * 1024) { showToast("\u26A0\uFE0F File terlalu besar (maks 8MB)"); return; }
   const base64 = await _compressLaporanPhoto(file);
-  if (!base64) { showToast("❌ Gagal memproses foto"); return; }
-  _laporanPendingPhotos.push({ base64, name: file.name });
+  if (!base64) { showToast("\u274C Gagal memproses foto"); return; }
+  _laporanPendingPhotos.push({ base64: base64, name: file.name || "foto" });
   _renderLaporanPendingPreviews();
-  _renderLaporanFotoBtns(savedCount, _laporanPendingPhotos.length);
+  _renderLaporanFotoBtns(_laporanSavedCount(), _laporanPendingPhotos.length);
 }
 
-// Handler galeri: bisa pilih multiple, masuk antrian preview
+// ── Handler galeri (multiple) ─────────────────────────────────────────────────
 async function _handleLaporanGalleryPhoto(input) {
   const files = Array.from(input.files || []);
   input.value = "";
   if (!files.length) return;
-  const savedCount = parseInt((document.getElementById("laporan-foto-count")?.textContent || "0"), 10);
-  const sisa = 5 - savedCount - _laporanPendingPhotos.length;
-  if (sisa <= 0) { showToast("⚠️ Maksimal 5 foto per laporan"); return; }
-  const toProcess = files.slice(0, sisa);
-  if (files.length > sisa) showToast(`⚠️ Hanya ${sisa} foto lagi yang bisa ditambahkan`, "warning");
-  for (const file of toProcess) {
-    if (file.size > 8 * 1024 * 1024) { showToast(`⚠️ ${file.name || "File"} terlalu besar (maks 8MB)`); continue; }
+  const sisa = 5 - _laporanSavedCount() - _laporanPendingPhotos.length;
+  if (sisa <= 0) { showToast("\u26A0\uFE0F Kuota 5 foto/hari penuh — hapus foto dulu"); return; }
+  if (files.length > sisa) showToast("\u26A0\uFE0F Hanya " + sisa + " foto lagi bisa ditambahkan");
+  for (const file of files.slice(0, sisa)) {
+    if (file.size > 8 * 1024 * 1024) { showToast("\u26A0\uFE0F File terlalu besar (maks 8MB)"); continue; }
     const base64 = await _compressLaporanPhoto(file);
-    if (!base64) { showToast("❌ Gagal memproses foto"); continue; }
-    _laporanPendingPhotos.push({ base64, name: file.name });
+    if (base64) _laporanPendingPhotos.push({ base64: base64, name: file.name || "foto" });
   }
   _renderLaporanPendingPreviews();
-  _renderLaporanFotoBtns(savedCount, _laporanPendingPhotos.length);
+  _renderLaporanFotoBtns(_laporanSavedCount(), _laporanPendingPhotos.length);
 }
 
-// Thumbnail foto yang sudah tersimpan di server — compact grid 5 kolom, hapus & ganti
-async function _loadLaporanThumbs(totalPhotos, isEditable = true) {
+// ── Thumbnails foto tersimpan ─────────────────────────────────────────────────
+async function _loadLaporanThumbs(totalPhotos, isEditable) {
   const wrap = document.getElementById("laporan-thumbs");
   if (!wrap) return;
-  if (totalPhotos === 0) { wrap.innerHTML = ""; return; }
-  const user  = localStorage.getItem("user") || "";
-  const today = todayLocalStr();
   wrap.innerHTML = "";
+  if (totalPhotos === 0) {
+    if (isEditable) wrap.innerHTML = `<div style="font-size:11px;color:#bbb;text-align:center;padding:8px 0;">Belum ada foto tersimpan</div>`;
+    return;
+  }
+  const user  = localStorage.getItem("user") || "";
+  const today = new Date().toISOString().slice(0, 10);
 
-  // Label compact
   const lbl = document.createElement("div");
-  lbl.style.cssText = "font-size:11px;font-weight:700;color:#27ae60;margin-bottom:6px;";
-  lbl.textContent = `✅ Tersimpan ${totalPhotos}/5 foto${isEditable ? " — ketuk untuk hapus/ganti" : ""}`;
+  lbl.style.cssText = "font-size:10px;font-weight:700;color:#27ae60;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;";
+  lbl.textContent = "\u2705 Tersimpan (" + totalPhotos + " foto)" + (isEditable ? " \u2014 klik untuk ganti" : "");
   wrap.appendChild(lbl);
 
-  // Grid compact: 5 kolom
-  const grid = document.createElement("div");
-  grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:5px;";
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
 
-  for (let i = 0; i < totalPhotos; i++) {
-    const thumbWrap = document.createElement("div");
-    thumbWrap.style.cssText = "position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#f0f2f5;";
+  for (var i = 0; i < totalPhotos; i++) {
+    (function(idx) {
+      const box  = document.createElement("div");
+      box.style.cssText = "position:relative;width:60px;height:60px;";
 
-    const spinner = document.createElement("div");
-    spinner.style.cssText = "width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:16px;";
-    spinner.textContent = "⏳";
-    thumbWrap.appendChild(spinner);
+      const spin = document.createElement("div");
+      spin.style.cssText = "width:60px;height:60px;border-radius:8px;background:#f0f2f5;display:flex;align-items:center;justify-content:center;font-size:16px;";
+      spin.textContent = "\u23F3";
+      box.appendChild(spin);
 
-    const img = document.createElement("img");
-    img.alt = "Foto " + (i + 1);
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;display:none;" + (isEditable ? "cursor:pointer;" : "");
-    img.title = isEditable ? "Ketuk untuk hapus/ganti" : "";
+      const img = document.createElement("img");
+      img.alt = "Foto " + (idx + 1);
+      img.style.cssText = "width:60px;height:60px;object-fit:cover;border-radius:8px;border:2px solid #e8ecf0;position:absolute;inset:0;display:none;" + (isEditable ? "cursor:pointer;" : "");
+      if (isEditable) img.title = "Klik untuk ganti";
 
-    (function(idx, imgEl, spinnerEl) {
-      authFetch(`/work-photos/${user}/${idx}?date=${today}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
+      // Load gambar async — append ke DOM dulu baru set src
+      authFetch("/work-photos/" + user + "/" + idx + "?date=" + today)
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
           if (d && d.image) {
-            imgEl.onload = function() { spinnerEl.style.display = "none"; imgEl.style.display = "block"; };
-            imgEl.onerror = function() { spinnerEl.textContent = "❌"; };
-            imgEl.src = d.image;
-          } else { spinnerEl.textContent = "❌"; }
+            img.onload  = function() { spin.style.display = "none"; img.style.display = "block"; };
+            img.onerror = function() { spin.textContent = "\u274C"; };
+            box.appendChild(img);
+            img.src = d.image;
+          } else { spin.textContent = "\u274C"; }
         })
-        .catch(() => { spinnerEl.textContent = "❌"; });
-    })(i, img, spinner);
+        .catch(function() { spin.textContent = "\u274C"; });
 
-    thumbWrap.appendChild(img);
+      if (isEditable) {
+        img.onclick = function() { _showReplacePhotoMenu(idx); };
+        const del = document.createElement("button");
+        del.textContent = "\u2715";
+        del.style.cssText = "position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:10px;cursor:pointer;font-weight:700;z-index:2;line-height:1;padding:0;";
+        del.onclick = async function() {
+          if (!confirm("Hapus foto " + (idx + 1) + " ini?")) return;
+          del.disabled = true; del.textContent = "\u2026";
+          try {
+            const r = await authFetch("/work-photos/report", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "deletePhoto", photoIndex: idx })
+            });
+            const d = await r.json();
+            if (d.status === "OK") { showToast("\u{1F5D1} Foto dihapus"); showLaporanPopup(); }
+            else showToast("\u26A0\uFE0F Gagal hapus foto: " + (d.msg || ""));
+          } catch(e) { showToast("\u274C Gagal hapus foto"); }
+        };
+        box.appendChild(del);
+      }
 
-    if (isEditable) {
-      // Nomor urut di pojok kiri atas
-      const num = document.createElement("div");
-      num.style.cssText = "position:absolute;top:2px;left:3px;font-size:9px;font-weight:800;color:white;text-shadow:0 1px 3px rgba(0,0,0,.7);z-index:2;";
-      num.textContent = i + 1;
-      thumbWrap.appendChild(num);
-
-      // Tombol hapus (X) compact
-      const delBtn = document.createElement("button");
-      delBtn.innerHTML = "✕";
-      delBtn.style.cssText = "position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;border:none;background:#e74c3c;color:white;font-size:10px;cursor:pointer;font-weight:700;z-index:3;padding:0;";
-      const capturedIdx = i;
-      delBtn.onclick = async function(e) {
-        e.stopPropagation();
-        if (!confirm(`Hapus foto ${capturedIdx + 1}?`)) return;
-        try {
-          const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action: "deletePhoto", photoIndex: capturedIdx }) });
-          const d = await r.json();
-          if (d.status === "OK") { showToast("🗑 Foto dihapus"); showLaporanPopup(); }
-          else showToast("⚠️ Gagal hapus foto");
-        } catch(e) { showToast("❌ Gagal hapus foto"); }
-      };
-      thumbWrap.appendChild(delBtn);
-      img.onclick = function() { _showReplacePhotoMenu(capturedIdx); };
-    }
-
-    grid.appendChild(thumbWrap);
+      row.appendChild(box);
+    })(i);
   }
-  wrap.appendChild(grid);
+  wrap.appendChild(row);
 }
 
-// Fungsi lama dipertahankan sebagai alias (backward-compat)
-async function _handleLaporanPhoto(input) {
-  // Redirect ke handler baru sesuai tipe input
-  if (input.id === "laporan-camera-input") return _handleLaporanCameraPhoto(input);
-  return _handleLaporanGalleryPhoto(input);
-}
-
+// ── Compress foto ─────────────────────────────────────────────────────────────
 function _compressLaporanPhoto(file) {
-  return new Promise(resolve => {
+  return new Promise(function(resolve) {
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = function(e) {
       const img = new Image();
       img.onload = function() {
-        const MAX = 900; let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h*MAX/w); w=MAX; } else { w=Math.round(w*MAX/h); h=MAX; } }
+        var MAX = 900, w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
         const canvas = document.createElement("canvas");
         canvas.width = w; canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL("image/jpeg", 0.82));
       };
-      img.onerror = () => resolve(null);
+      img.onerror = function() { resolve(null); };
       img.src = e.target.result;
     };
-    reader.onerror = () => resolve(null);
+    reader.onerror = function() { resolve(null); };
     reader.readAsDataURL(file);
   });
 }
 
+// ── Simpan laporan ────────────────────────────────────────────────────────────
 async function _saveLaporan() {
   const uraian = (document.getElementById("laporan-uraian")?.value || "").trim();
-  const btn = document.querySelector("#laporan-overlay button[onclick='_saveLaporan()']");
-  if (btn) { btn.disabled = true; btn.textContent = "⏳ Menyimpan..."; }
+  const btn    = document.getElementById("laporan-save-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "\u23F3 Menyimpan..."; }
 
   try {
-    // 1. Upload foto pending (dari preview antrian)
+    // 1. Upload foto pending satu per satu
     if (_laporanPendingPhotos.length > 0) {
-      if (btn) btn.textContent = `⏳ Upload foto (0/${_laporanPendingPhotos.length})...`;
-      let uploaded = 0;
-      for (const item of _laporanPendingPhotos) {
-        if (btn) btn.textContent = `⏳ Upload foto (${uploaded + 1}/${_laporanPendingPhotos.length})...`;
+      for (var i = 0; i < _laporanPendingPhotos.length; i++) {
+        if (btn) btn.textContent = "\u23F3 Upload foto " + (i + 1) + "/" + _laporanPendingPhotos.length + "...";
         try {
-          const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [item.base64] }) });
+          const r = await authFetch("/work-photos/report", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ photos: [_laporanPendingPhotos[i].base64] })
+          });
           const d = await r.json();
-          if (d.status === "OK") uploaded++;
-          else if (d.status === "MAX_PHOTOS") { showToast("⚠️ Maksimal 5 foto per laporan"); break; }
-          else showToast("⚠️ " + (d.msg || "Gagal upload foto"));
-        } catch { showToast("❌ Gagal upload foto"); }
+          if (d.status === "MAX_PHOTOS") { showToast("\u26A0\uFE0F Kuota 5 foto/hari penuh"); break; }
+          else if (d.status !== "OK") showToast("\u26A0\uFE0F " + (d.msg || "Gagal upload foto"));
+        } catch(e) { showToast("\u274C Gagal upload foto"); }
       }
       _laporanPendingPhotos = [];
     }
 
     // 2. Simpan uraian
-    if (btn) btn.textContent = "⏳ Menyimpan uraian...";
-    const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ uraian }) });
+    if (btn) btn.textContent = "\u23F3 Menyimpan uraian...";
+    const r = await authFetch("/work-photos/report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uraian: uraian })
+    });
     const d = await r.json();
     if (d.status === "OK") {
-      showToast("✅ Laporan berhasil disimpan");
+      showToast("\u2705 Laporan tersimpan");
       document.getElementById("laporan-overlay")?.remove();
       if (typeof checkAndShowLaporanBtn === "function") checkAndShowLaporanBtn();
     } else {
-      showToast("⚠️ " + (d.msg || "Gagal menyimpan laporan"));
-      if (btn) { btn.disabled = false; btn.innerHTML = "💾 Simpan Laporan"; }
+      showToast("\u26A0\uFE0F " + (d.msg || "Gagal simpan"));
+      if (btn) { btn.disabled = false; btn.textContent = "\u1F4BE Simpan Laporan"; }
     }
   } catch(err) {
-    showToast("❌ Gagal menyimpan laporan");
-    if (btn) { btn.disabled = false; btn.innerHTML = "💾 Simpan Laporan"; }
+    showToast("\u274C Gagal simpan laporan");
+    if (btn) { btn.disabled = false; btn.textContent = "\u1F4BE Simpan Laporan"; }
   }
 }
 
-// ── Popup pilihan replace foto (kamera / galeri) ──
-let _replacePhotoIdx = null;
+// ── Popup ganti foto ──────────────────────────────────────────────────────────
+var _replacePhotoIdx = null;
 
 function _showReplacePhotoMenu(idx) {
   _replacePhotoIdx = idx;
-  const existing = document.getElementById("laporan-replace-menu");
-  if (existing) existing.remove();
-
+  document.getElementById("laporan-replace-menu")?.remove();
   const menu = document.createElement("div");
-  menu.id = "laporan-replace-menu";
+  menu.id    = "laporan-replace-menu";
   menu.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:flex-end;justify-content:center;";
   menu.innerHTML = `
-    <div style="background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:480px;padding:20px 20px 32px;">
-      <div style="width:36px;height:4px;background:#ddd;border-radius:4px;margin:0 auto 16px;"></div>
-      <div style="font-size:15px;font-weight:700;color:#2c3e50;margin-bottom:16px;text-align:center;">🔄 Ganti Foto ${idx+1}</div>
+    <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px 28px;">
+      <div style="width:36px;height:4px;background:#ddd;border-radius:4px;margin:0 auto 14px;"></div>
+      <div style="font-size:14px;font-weight:700;color:#2c3e50;margin-bottom:14px;text-align:center;">&#x1F504; Ganti Foto ${idx + 1}</div>
       <input type="file" id="laporan-replace-camera" accept="image/*" capture="environment" style="display:none" onchange="_handleReplacePhoto(this)"/>
       <input type="file" id="laporan-replace-gallery" accept="image/*" style="display:none" onchange="_handleReplacePhoto(this)"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
         <button onclick="document.getElementById('laporan-replace-camera').click()"
-          style="padding:14px 8px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px;
+          style="padding:11px 6px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
           background:linear-gradient(135deg,#2980b9,#4f8ef7);color:white;
-          display:flex;flex-direction:column;align-items:center;gap:6px;">
-          <span style="font-size:20px;">📷</span><span>Ambil Foto</span>
+          display:flex;align-items:center;justify-content:center;gap:6px;">
+          &#x1F4F7; Ambil Foto
         </button>
         <button onclick="document.getElementById('laporan-replace-gallery').click()"
-          style="padding:14px 8px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px;
+          style="padding:11px 6px;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px;
           background:linear-gradient(135deg,#8e44ad,#9b59b6);color:white;
-          display:flex;flex-direction:column;align-items:center;gap:6px;">
-          <span style="font-size:20px;">🖼️</span><span>Dari Galeri</span>
+          display:flex;align-items:center;justify-content:center;gap:6px;">
+          &#x1F5BC;&#xFE0F; Galeri
         </button>
       </div>
       <button onclick="document.getElementById('laporan-replace-menu').remove()"
-        style="width:100%;padding:12px;border:none;border-radius:12px;cursor:pointer;background:#f0f2f5;color:#555;font-weight:700;font-size:14px;">
+        style="width:100%;padding:11px;border:none;border-radius:10px;cursor:pointer;background:#f0f2f5;color:#555;font-weight:700;font-size:13px;">
         Batal
       </button>
     </div>`;
   document.body.appendChild(menu);
-  menu.addEventListener("click", e => { if (e.target === menu) menu.remove(); });
+  menu.addEventListener("click", function(e) { if (e.target === menu) menu.remove(); });
 }
 
 async function _handleReplacePhoto(input) {
   const file = input.files[0];
   if (!file) return;
-  const menuEl = document.getElementById("laporan-replace-menu");
-  if (menuEl) menuEl.remove();
-  if (file.size > 8 * 1024 * 1024) { showToast("⚠️ File terlalu besar (maks 8MB)"); input.value = ""; return; }
-  showToast("⏳ Mengganti foto...", "info");
+  document.getElementById("laporan-replace-menu")?.remove();
+  if (file.size > 8 * 1024 * 1024) { showToast("\u26A0\uFE0F File terlalu besar (maks 8MB)"); input.value = ""; return; }
+  showToast("\u23F3 Mengganti foto...");
   const base64 = await _compressLaporanPhoto(file);
-  if (!base64) { showToast("❌ Gagal memproses foto"); input.value = ""; return; }
+  if (!base64) { showToast("\u274C Gagal memproses foto"); input.value = ""; return; }
   try {
-    // Hapus foto lama dulu
-    const rDel = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action: "deletePhoto", photoIndex: _replacePhotoIdx }) });
+    const rDel = await authFetch("/work-photos/report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deletePhoto", photoIndex: _replacePhotoIdx })
+    });
     const dDel = await rDel.json();
-    if (dDel.status !== "OK") { showToast("⚠️ Gagal hapus foto lama"); input.value = ""; return; }
-    // Upload foto baru
-    const r = await authFetch("/work-photos/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ photos: [base64] }) });
+    if (dDel.status !== "OK") { showToast("\u26A0\uFE0F Gagal hapus foto lama"); input.value = ""; return; }
+    const r = await authFetch("/work-photos/report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photos: [base64] })
+    });
     const d = await r.json();
-    if (d.status === "OK") { showToast("✅ Foto berhasil diganti"); showLaporanPopup(); }
-    else showToast("⚠️ " + (d.msg || "Gagal upload foto"));
-  } catch(err) { showToast("❌ Gagal mengganti foto"); }
+    if (d.status === "OK") { showToast("\u2705 Foto berhasil diganti"); showLaporanPopup(); }
+    else showToast("\u26A0\uFE0F " + (d.msg || "Gagal upload foto baru"));
+  } catch(e) { showToast("\u274C Gagal mengganti foto"); }
   input.value = "";
 }
 
-window._showReplacePhotoMenu = _showReplacePhotoMenu;
-window._handleReplacePhoto   = _handleReplacePhoto;
+// backward-compat alias
+async function _handleLaporanPhoto(input) {
+  if (input.id === "laporan-camera-input") return _handleLaporanCameraPhoto(input);
+  return _handleLaporanGalleryPhoto(input);
+}
 
-window.checkAndShowLaporanBtn = checkAndShowLaporanBtn;
-window.showLaporanPopup       = showLaporanPopup;
-window._handleLaporanPhoto    = _handleLaporanPhoto;
+window._showReplacePhotoMenu      = _showReplacePhotoMenu;
+window._handleReplacePhoto        = _handleReplacePhoto;
+window.checkAndShowLaporanBtn     = checkAndShowLaporanBtn;
+window.showLaporanPopup           = showLaporanPopup;
+window._handleLaporanPhoto        = _handleLaporanPhoto;
 window._handleLaporanCameraPhoto  = _handleLaporanCameraPhoto;
 window._handleLaporanGalleryPhoto = _handleLaporanGalleryPhoto;
-window._saveLaporan           = _saveLaporan;
+window._saveLaporan               = _saveLaporan;
+
 
