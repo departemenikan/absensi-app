@@ -1031,15 +1031,20 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data  = load(F.data, []);
   const today = todayLocal(); // lokal WITA
 
-  // Cari record aktif hari ini
+  // Cari record aktif hari ini (belum clock-out)
   let aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
+  // Pernah absen hari ini (termasuk sudah clock-out)
+  const adaHariIni   = data.find(d => d.user === req.params.user && d.date === today);
+  const recTerakhir  = data.slice().reverse().find(d => d.user === req.params.user && d.date === today);
 
-  // Midnight split aktif — tidak perlu cek record kemarin
-
-  if (!aktif) return res.send({ status: "OUT" });
+  if (!aktif) return res.send({
+    status: "OUT",
+    hadAbsenceToday: !!adaHariIni,
+    aktivitas: recTerakhir?.aktivitas || ""
+  });
   const lb = aktif.breaks.at(-1);
   const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
-  return res.send({ status: statusStr, aktivitas: aktif.aktivitas || "" });
+  return res.send({ status: statusStr, hadAbsenceToday: true, aktivitas: aktif.aktivitas || "" });
 });
 
 // ========================

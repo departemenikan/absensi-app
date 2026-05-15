@@ -11757,18 +11757,29 @@ async function showLaporanPopup() {
   document.body.appendChild(overlay);
   overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 
-  // Fetch data laporan
+  // Fetch laporan + status clock-in secara paralel
+  const user = localStorage.getItem("user") || "";
   let existing = { uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false };
   try {
-    const r = await authFetch("/work-photos/report/me");
-    if (r.ok) existing = await r.json();
+    const [rReport, rStatus] = await Promise.allSettled([
+      authFetch("/work-photos/report/me"),
+      authFetch("/status/" + user)
+    ]);
+    // Ambil data laporan
+    if (rReport.status === "fulfilled" && rReport.value.ok) {
+      existing = await rReport.value.json();
+    }
+    // Status clock-in sebagai sumber kebenaran isEditable
+    if (rStatus.status === "fulfilled" && rStatus.value.ok) {
+      const ds = await rStatus.value.json();
+      if (ds.aktivitas && !existing.aktivitas) existing.aktivitas = ds.aktivitas;
+      // isEditable = true jika sedang clock-in aktif ATAU pernah absen hari ini
+      // isEditable = true jika clock-in aktif (IN/BREAK) atau pernah absen hari ini (sudah clock-out)
+      if (ds.status === "IN" || ds.status === "BREAK" || ds.hadAbsenceToday) {
+        existing.isEditable = true;
+      }
+    }
   } catch (e) {}
-  if (!existing.aktivitas) {
-    try {
-      const rs = await authFetch("/status/" + (localStorage.getItem("user") || ""));
-      if (rs.ok) { const ds = await rs.json(); if (ds.aktivitas) existing.aktivitas = ds.aktivitas; }
-    } catch (e) {}
-  }
 
   _laporanRenderBody(existing);
 }
