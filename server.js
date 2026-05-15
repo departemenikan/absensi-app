@@ -3715,13 +3715,17 @@ function wpFindSesiData(sessions, sesi) {
 // Merge semua foto dari semua sesi (untuk tampilan monitor — semua sesi tampil)
 function wpMergeAllSessions(sessions) {
   const allPhotos = [];
-  let uraian = "", aktivitas = "", updatedAt = null;
+  const uraianParts = [];
+  let updatedAt = null;
   sessions.forEach(s => {
-    s.photos.forEach(p => allPhotos.push({ ...p, sesi: s.sesi }));
-    if (s.uraian) uraian = s.uraian; // ambil uraian terbaru
+    // Pastikan setiap foto punya field sesi untuk keperluan deletePhoto
+    (s.photos || []).forEach(p => allPhotos.push({ ...p, sesi: s.sesi }));
+    if (s.uraian && s.uraian.trim()) uraianParts.push(s.uraian.trim());
     if (s.updatedAt && (!updatedAt || s.updatedAt > updatedAt)) updatedAt = s.updatedAt;
   });
-  return { photos: allPhotos, uraian, updatedAt };
+  // Gabungkan uraian semua sesi, pisah dengan newline jika berbeda
+  const uraianMerged = [...new Set(uraianParts)].join("\n");
+  return { photos: allPhotos, uraian: uraianMerged, updatedAt };
 }
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -3999,8 +4003,11 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
     return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
   }
 
-  // Update uraian (append ke uraian sesi aktif / sesi terakhir)
-  if (uraian !== undefined) laporan.uraian = String(uraian).slice(0, 2000);
+  // Update uraian pada sesi target (tidak overwrite sesi lain)
+  if (uraian !== undefined) {
+    const newUraian = String(uraian).slice(0, 2000);
+    laporan.uraian  = newUraian;
+  }
 
   // Tambah foto — cek kuota HARIAN (bukan per sesi)
   if (Array.isArray(photos) && photos.length > 0) {
@@ -4033,36 +4040,34 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
   res.json({ status: "OK", totalPhotos: mergedFinal.photos.length, uraian: laporan.uraian, sesi: currentSesi });
 });
 
-// GET /work-photos/report/me — ambil laporan hari ini milik user
+// GET /work-photos/report/me — ambil laporan hari ini milik user (semua sesi digabung)
 app.get("/work-photos/report/me", requireLevel(99), (req, res) => {
   const user    = req._requester;
   const today   = todayLocal();
   const wpStore = load(F.workPhotos, {});
   const data    = load(F.data, []);
 
-  // Cek apakah pernah absen hari ini (clock-in, boleh sudah clock-out)
+  // Cek apakah pernah absen hari ini (boleh sudah clock-out)
   const adaHariIni = data.find(d => d.user === user && d.date === today);
-  const recAktif   = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  if (!adaHariIni) {
+    // Belum pernah absen hari ini — kembalikan data kosong tapi bukan 403
+    return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false });
+  }
 
-  const sessions = wpGetSessions(wpStore, today, user);
-  // Merged = semua sesi hari ini digabung
-  const merged   = wpMergeAllSessions(sessions);
+  const sessions  = wpGetSessions(wpStore, today, user);
+  // Merge semua sesi hari ini — foto + uraian gabungan
+  const merged    = wpMergeAllSessions(sessions);
+  // Aktivitas dari sesi terakhir hari ini
+  const recTerakhir = data.slice().reverse().find(d => d.user === user && d.date === today);
+  const aktivitas   = recTerakhir?.aktivitas || "";
 
-  // Laporan terakhir untuk uraian (sesi terakhir yang punya uraian, atau sesi terakhir)
-  const laporanUraian = [...sessions].reverse().find(s => s.uraian) || sessions.at(-1) || { uraian: "" };
-  // Waktu update terbaru
-  const updatedAt = merged.updatedAt || null;
-
-  const rec       = data.slice().reverse().find(d => d.user === user && d.date === today);
-  const aktivitas = rec?.aktivitas || "";
-
-  // isEditable: true selama masih hari yang sama (bukan berdasarkan clock-out)
-  const isEditable = !!adaHariIni;
+  // isEditable = true selama masih hari yang sama
+  const isEditable = true;
 
   res.json({
-    uraian:      laporanUraian.uraian || "",
-    totalPhotos: merged.photos.length,  // total HARIAN
-    updatedAt,
+    uraian:      merged.uraian || "",
+    totalPhotos: merged.photos.length,
+    updatedAt:   merged.updatedAt || null,
     aktivitas,
     isEditable,
   });

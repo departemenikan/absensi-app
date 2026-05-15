@@ -11814,16 +11814,19 @@ function _laporanRenderBody(existing) {
 
   // Uraian
   html += `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">&#x270F;&#xFE0F; Uraian Kegiatan</div>`;
+  // Hitung tinggi textarea otomatis: min 80px, tambah 20px per baris
+  const uraianRows  = uraian ? Math.min(8, Math.max(3, uraian.split("\n").length + 1)) : 3;
+  const uraianH     = uraianRows * 22 + 16;
   if (isEditable) {
     html += `<textarea id="laporan-uraian"
       placeholder="${aktivitas ? "Uraian kegiatan \u2014 " + aktivitas + "..." : "Tulis uraian kegiatan hari ini..."}"
-      style="width:100%;height:80px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
-             font-size:13px;resize:none;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;"
+      style="width:100%;height:${uraianH}px;min-height:72px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
+             font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;line-height:1.5;"
       onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
     >${uraian}</textarea>`;
   } else {
     html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
-      border-left:3px solid #ccc;white-space:pre-wrap;line-height:1.5;min-height:40px;">
+      border-left:3px solid #4f8ef7;white-space:pre-wrap;line-height:1.5;min-height:40px;">
       ${uraian || '<span style="color:#aaa;font-style:italic;">Belum ada uraian</span>'}
     </div>`;
   }
