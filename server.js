@@ -149,6 +149,20 @@ async function loadAll() {
   );
 
   console.log("[DB] ✅ Semua data berhasil dimuat ke RAM");
+  // Debug: log struktur work_photos
+  const wp = _store["work_photos"] || {};
+  const wpDates = Object.keys(wp);
+  if (wpDates.length > 0) {
+    wpDates.forEach(date => {
+      const users = Object.keys(wp[date] || {});
+      users.forEach(u => {
+        const raw = wp[date][u];
+        console.log(`[DB-WP] ${date}/${u}: type=${Array.isArray(raw)?"array["+raw.length+"]":typeof raw} keys=${Array.isArray(raw)?"-":Object.keys(raw||{}).slice(0,5).join(",")}`);
+      });
+    });
+  } else {
+    console.log("[DB-WP] work_photos kosong atau belum ada data");
+  }
 }
 
 // ── Jalankan: migrasi data lama + load ke RAM sebelum server siap ─────────────
@@ -3697,13 +3711,50 @@ app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
 function wpGetSessions(wpStore, date, user) {
   const raw = (wpStore[date] || {})[user];
   if (!raw) return [];
-  // Format baru: array of sessions
-  if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0].sesi !== "undefined") return raw;
-  // Format lama: object {uraian, photos} atau array foto → wrap jadi 1 sesi
-  const isOldObj = raw && !Array.isArray(raw) && typeof raw === "object";
-  const isOldArr = Array.isArray(raw) && (raw.length === 0 || typeof raw[0].image !== "undefined");
-  if (isOldObj) return [{ sesi: 1, uraian: raw.uraian || "", photos: raw.photos || [], updatedAt: raw.updatedAt || null, jamMasuk: null, lockedAt: null }];
-  if (isOldArr) return [{ sesi: 1, uraian: "", photos: raw, updatedAt: null, jamMasuk: null, lockedAt: null }];
+
+  // Format baru: array of sessions [ {sesi, uraian, photos, ...} ]
+  if (Array.isArray(raw)) {
+    // Cek apakah isi array adalah session objects (punya field sesi)
+    const isSessionArr = raw.length === 0 || (raw[0] && typeof raw[0].sesi !== "undefined");
+    if (isSessionArr && raw.length > 0) return raw;
+    // Array kosong — kembalikan kosong
+    if (raw.length === 0) return [];
+    // Array of foto langsung (format sangat lama): [{ts, image}, ...]
+    if (raw[0] && (raw[0].image !== undefined || raw[0].ts !== undefined)) {
+      return [{ sesi: 1, uraian: "", photos: raw, updatedAt: null, jamMasuk: null, lockedAt: null }];
+    }
+    // Array of sessions tapi tanpa field sesi — normalize
+    return raw.map((s, i) => ({
+      sesi:      s.sesi      ?? (i + 1),
+      uraian:    s.uraian    ?? "",
+      photos:    s.photos    ?? [],
+      updatedAt: s.updatedAt ?? null,
+      jamMasuk:  s.jamMasuk  ?? null,
+      lockedAt:  s.lockedAt  ?? null,
+    }));
+  }
+
+  // Format lama: object {uraian, photos, updatedAt}
+  if (typeof raw === "object" && raw !== null) {
+    // Bisa jadi object dengan key sesi (misal: {"1": {uraian, photos}}) — handle juga
+    const keys = Object.keys(raw);
+    const isNumericKeys = keys.length > 0 && keys.every(k => !isNaN(parseInt(k)));
+    if (isNumericKeys && typeof raw[keys[0]] === "object" && raw[keys[0]].photos !== undefined) {
+      // Format {"1": {sesi:1, uraian, photos}, "2": {...}}
+      return keys.map(k => ({
+        sesi:      raw[k].sesi      ?? parseInt(k),
+        uraian:    raw[k].uraian    ?? "",
+        photos:    raw[k].photos    ?? [],
+        updatedAt: raw[k].updatedAt ?? null,
+        jamMasuk:  raw[k].jamMasuk  ?? null,
+        lockedAt:  raw[k].lockedAt  ?? null,
+      })).sort((a, b) => a.sesi - b.sesi);
+    }
+    // Standard format lama: {uraian, photos, updatedAt}
+    return [{ sesi: 1, uraian: raw.uraian || "", photos: Array.isArray(raw.photos) ? raw.photos : [], updatedAt: raw.updatedAt || null, jamMasuk: null, lockedAt: null }];
+  }
+
+  console.warn("[wpGetSessions] Format tidak dikenal untuk", user, date, typeof raw);
   return [];
 }
 
@@ -3975,7 +4026,12 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
   if (!wpStore[today]) wpStore[today] = {};
 
   // Normalisasi ke format array-of-sessions (backward-compat)
+  const rawBefore = (wpStore[today] || {})[user];
   let sessions = wpGetSessions(wpStore, today, user);
+  // Log jika ada migrasi format
+  if (rawBefore && !Array.isArray(rawBefore)) {
+    console.log(`[POST/REPORT] ${user} — migrasi format lama → ${sessions.length} sesi, ${sessions.reduce((n,s)=>n+(s.photos||[]).length,0)} foto`);
+  }
   wpStore[today][user] = sessions;
 
   // Cari atau buat sesi target
@@ -4060,26 +4116,25 @@ app.get("/work-photos/report/me", requireLevel(99), (req, res) => {
   // Cek apakah pernah absen hari ini (boleh sudah clock-out)
   const adaHariIni = data.find(d => d.user === user && d.date === today);
   if (!adaHariIni) {
-    // Belum pernah absen hari ini — kembalikan data kosong tapi bukan 403
     return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false });
   }
 
-  const sessions  = wpGetSessions(wpStore, today, user);
-  // Merge semua sesi hari ini — foto + uraian gabungan
-  const merged    = wpMergeAllSessions(sessions);
-  // Aktivitas dari sesi terakhir hari ini
+  const rawWp   = (wpStore[today] || {})[user];
+  const sessions = wpGetSessions(wpStore, today, user);
+  const merged   = wpMergeAllSessions(sessions);
+
+  // Debug log — bantu diagnosa format data di Supabase
+  console.log(`[REPORT/ME] ${user} ${today} — rawType:${Array.isArray(rawWp)?"array":typeof rawWp} sessions:${sessions.length} photos:${merged.photos.length} uraian:"${(merged.uraian||"").slice(0,40)}"`);
+
   const recTerakhir = data.slice().reverse().find(d => d.user === user && d.date === today);
   const aktivitas   = recTerakhir?.aktivitas || "";
-
-  // isEditable = true selama masih hari yang sama
-  const isEditable = true;
 
   res.json({
     uraian:      merged.uraian || "",
     totalPhotos: merged.photos.length,
     updatedAt:   merged.updatedAt || null,
     aktivitas,
-    isEditable,
+    isEditable:  true,
   });
 });
 
