@@ -77,6 +77,174 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", time: new Date().toISOString() });
 });
 
+// ── Halaman Admin Go-Live — URL rahasia, tidak muncul di menu aplikasi ────────
+// Akses: https://your-app.onrender.com/admin-golive
+// Proteksi: login username+password Owner dilakukan di sisi halaman HTML itu sendiri
+app.get("/admin-golive", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "admin-golive.html"));
+});
+
+// ========================
+// ADMIN GO-LIVE TOOLS — hanya Owner (level 1)
+// ========================
+
+// ── RESET DATA UJI COBA ───────────────────────────────────────────────────────
+// POST /admin/reset-data-uji-coba
+// Menghapus seluruh data absensi, tracking, cuti, screenshot, dll.
+// Master data (users, areas, groups, kebijakan, dll) TIDAK ikut terhapus.
+// Body: { "konfirmasi": "HAPUS SEMUA DATA" }
+app.post("/admin/reset-data-uji-coba", requireLevel(1), (req, res) => {
+  const { konfirmasi } = req.body;
+  if (konfirmasi !== "HAPUS SEMUA DATA") {
+    return res.status(400).json({
+      status: "GAGAL",
+      pesan: "Konfirmasi salah. Kirim: { \"konfirmasi\": \"HAPUS SEMUA DATA\" }"
+    });
+  }
+
+  // Data yang dihapus: semua record operasional
+  save(F.data,            []);   // absensi
+  save(F.tracking,        {});   // GPS tracking
+  save(F.aktivitas,       []);   // log aktivitas
+  save(F.screenshots,     {});   // screenshot
+  save(F.workPhotos,      {});   // foto kerja
+  save(F.pengajuanCuti,   []);   // pengajuan cuti
+  save(F.kuotaCuti,       {});   // saldo cuti & overtime
+  save(F.sessions,        {});   // sesi login
+
+  // Master data yang TIDAK dihapus:
+  // users, areas, groups, divisi, rules, appSettings,
+  // libur, kebijakanCuti, aktivitasKustom, pushSubs, webauthn
+
+  console.log(`[RESET] ✅ Data uji coba dihapus oleh: ${req._requester} @ ${new Date().toISOString()}`);
+  res.json({
+    status: "OK",
+    pesan: "Semua data operasional berhasil dihapus. Master data tetap aman.",
+    dihapus: ["data (absensi)", "tracking (GPS)", "aktivitas", "screenshots", "work_photos", "pengajuan_cuti", "kuota_cuti", "sessions"],
+    aman: ["users", "areas", "groups", "divisi", "rules", "app_settings", "libur", "kebijakan_cuti", "aktivitas_kustom", "push_subscriptions", "webauthn"]
+  });
+});
+
+// ── IMPORT SALDO AWAL DARI JIBBLE ────────────────────────────────────────────
+// POST /admin/import-saldo-awal
+// Mengisi sisa cuti tahunan & saldo overtime dari sistem lama (misal: Jibble).
+// Saldo masuk sebagai "carry over" — tidak menimpa kuota tahunan yang sudah ada.
+// Body:
+// {
+//   "konfirmasi": "IMPORT SALDO AWAL",
+//   "tahun": 2025,                        // opsional, default tahun sekarang
+//   "data": [
+//     { "username": "budi",  "sisaCuti": 9,  "sisaOvertime": 12.5 },
+//     { "username": "sari",  "sisaCuti": 7,  "sisaOvertime": 0    },
+//     { "username": "agus",  "sisaCuti": 11, "sisaOvertime": 4.25 }
+//   ]
+// }
+app.post("/admin/import-saldo-awal", requireLevel(1), (req, res) => {
+  const { konfirmasi, data: importData, tahun: tahunInput } = req.body;
+
+  if (konfirmasi !== "IMPORT SALDO AWAL") {
+    return res.status(400).json({
+      status: "GAGAL",
+      pesan: "Konfirmasi salah. Kirim: { \"konfirmasi\": \"IMPORT SALDO AWAL\" }"
+    });
+  }
+  if (!Array.isArray(importData) || importData.length === 0) {
+    return res.status(400).json({ status: "GAGAL", pesan: "Field 'data' harus berupa array dan tidak boleh kosong." });
+  }
+
+  const tahun     = String(tahunInput || new Date().getFullYear());
+  const tanggal   = new Date().toLocaleDateString("sv-SE");
+  const kuota     = load(F.kuotaCuti, {});
+  const users     = load(F.users, {});
+  const hasil     = [];
+  const tidakDitemukan = [];
+
+  importData.forEach(({ username, sisaCuti, sisaOvertime }) => {
+    // Validasi username ada di sistem
+    if (!users[username]) {
+      tidakDitemukan.push(username);
+      return;
+    }
+
+    if (!kuota[username])        kuota[username] = {};
+    if (!kuota[username][tahun]) kuota[username][tahun] = {};
+
+    const k = kuota[username][tahun];
+
+    // Sisa cuti: simpan sebagai jatah carry-over
+    // Jika sudah ada kuota tahunan, tambahkan sebagai bonus; jika belum, buat baru
+    const cutiVal = parseFloat(sisaCuti) || 0;
+    if (cutiVal > 0) {
+      if (k.tahunan) {
+        // Sudah ada kuota → tambahkan carry-over sebagai bonus di atas jatah
+        k.tahunan.carryOver  = parseFloat(((k.tahunan.carryOver || 0) + cutiVal).toFixed(2));
+        k.tahunan.keterangan = (k.tahunan.keterangan || "") + ` | Carry-over Jibble: +${cutiVal} hari (${tanggal})`;
+      } else {
+        // Belum ada → buat entry saldo awal
+        k.tahunan = {
+          jatah:       cutiVal,
+          terpakai:    0,
+          carryOver:   0,
+          keterangan:  `Saldo awal migrasi Jibble (${tanggal})`
+        };
+      }
+    }
+
+    // Saldo overtime: masuk sebagai jamCarryOver
+    const otVal = parseFloat(sisaOvertime) || 0;
+    if (otVal > 0) {
+      if (!k.overtime) {
+        k.overtime = {
+          jamTL_reguler: 0,
+          jamCarryOver:  0,
+          jamTerpakai:   0,
+          riwayat:       []
+        };
+      }
+      k.overtime.jamCarryOver = parseFloat(((k.overtime.jamCarryOver || 0) + otVal).toFixed(2));
+      k.overtime.riwayat = k.overtime.riwayat || [];
+      k.overtime.riwayat.push({
+        tanggal:    tanggal,
+        jam:        otVal,
+        sumber:     "migrasi-jibble",
+        keterangan: `Carry-over saldo overtime dari Jibble`
+      });
+    }
+
+    hasil.push({ username, sisaCuti: cutiVal, sisaOvertime: otVal, status: "OK" });
+  });
+
+  save(F.kuotaCuti, kuota);
+
+  console.log(`[IMPORT-SALDO] ✅ Diimport oleh: ${req._requester} @ ${tanggal} — ${hasil.length} user berhasil, ${tidakDitemukan.length} tidak ditemukan`);
+  if (tidakDitemukan.length) console.warn("[IMPORT-SALDO] Username tidak ditemukan:", tidakDitemukan.join(", "));
+
+  res.json({
+    status:           "OK",
+    tahun,
+    berhasil:         hasil.length,
+    tidak_ditemukan:  tidakDitemukan,
+    detail:           hasil,
+    catatan:          tidakDitemukan.length > 0
+      ? `Username berikut tidak ada di sistem, dilewati: ${tidakDitemukan.join(", ")}`
+      : "Semua username berhasil diimport."
+  });
+});
+
+// ── CEK SALDO AWAL (dry-run preview sebelum import) ──────────────────────────
+// GET /admin/cek-saldo/:username  — lihat saldo kuota_cuti user tertentu
+app.get("/admin/cek-saldo/:username", requireLevel(1), (req, res) => {
+  const username = req.params.username;
+  const kuota    = load(F.kuotaCuti, {});
+  const users    = load(F.users, {});
+  if (!users[username]) return res.status(404).json({ status: "GAGAL", pesan: "User tidak ditemukan." });
+  res.json({
+    username,
+    saldo: kuota[username] || {},
+    pesan: "Data saldo kuota_cuti user ini."
+  });
+});
+
 // ── Debug page — hanya Owner (level 2) ───────────────────────────────────────
 app.get("/debug-wp", requireLevel(2), (req, res) => {
   res.sendFile(path.join(__dirname, "public", "debug-wp.html"));

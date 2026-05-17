@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Go-Live — Absensi Smart</title>
+  <style>
+    :root {
+      --primary: #4f8ef7; --primary-dark: #1a237e;
+      --success: #27ae60; --danger: #e74c3c;
+      --warning: #f39c12; --bg: #f0f2f5;
+      --card: #fff; --text: #2c3e50; --muted: #95a5a6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── LOGIN ── */
+    #login-page {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #1a237e, #4f8ef7);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    .login-card {
+      background: white; border-radius: 20px; padding: 36px 28px;
+      width: 320px; text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    .login-logo { font-size: 44px; margin-bottom: 6px; }
+    .login-card h2 { font-size: 18px; margin-bottom: 4px; }
+    .login-card p { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+    .login-card input {
+      width: 100%; padding: 12px 14px; margin: 6px 0;
+      border: 2px solid #e8ecf0; border-radius: 10px;
+      font-size: 14px; outline: none; transition: .2s;
+    }
+    .login-card input:focus { border-color: var(--primary); }
+    .login-err { color: var(--danger); font-size: 13px; margin: 8px 0 0; min-height: 18px; }
+
+    /* ── HEADER ── */
+    .header {
+      background: linear-gradient(135deg, #1a237e, #4f8ef7);
+      color: white; padding: 18px 20px 22px;
+    }
+    .header h1 { font-size: 18px; }
+    .header p  { font-size: 12px; opacity: .8; margin-top: 3px; }
+    .header-meta { font-size: 11px; opacity: .7; margin-top: 6px; }
+
+    /* ── TABS ── */
+    .tabs {
+      display: flex; background: white;
+      border-bottom: 2px solid #f0f2f5;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .tab {
+      flex: 1; padding: 14px 8px; text-align: center;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      color: var(--muted); border-bottom: 3px solid transparent;
+      transition: .2s; user-select: none;
+    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* ── CONTENT ── */
+    .page-wrap { padding: 16px; max-width: 640px; margin: 0 auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .card {
+      background: var(--card); border-radius: 16px; padding: 20px;
+      margin-top: 16px; box-shadow: 0 4px 20px rgba(0,0,0,.07);
+    }
+    .card h4 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+    .card p  { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+
+    .warn-box {
+      background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px;
+      padding: 12px 14px; font-size: 13px; color: #7b5800; margin-bottom: 16px; line-height: 1.6;
+    }
+    .info-box {
+      background: #e3f2fd; border: 1px solid #90caf9; border-radius: 10px;
+      padding: 12px 14px; font-size: 13px; color: #0d47a1; margin-bottom: 16px; line-height: 1.6;
+    }
+
+    label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; }
+    input[type=text], input[type=password], input[type=number] {
+      width: 100%; padding: 10px 12px; border: 2px solid #e8ecf0;
+      border-radius: 10px; font-size: 14px; outline: none; transition: .2s;
+    }
+    input:focus { border-color: var(--primary); }
+
+    /* ── BUTTONS ── */
+    .btn {
+      width: 100%; padding: 14px; border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 700; cursor: pointer; transition: .2s;
+      margin-top: 10px;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-danger  { background: linear-gradient(135deg,#c0392b,#e74c3c); color: white; }
+    .btn-success { background: linear-gradient(135deg,#27ae60,#2ecc71); color: white; }
+    .btn-primary { background: linear-gradient(135deg,#1a237e,#4f8ef7); color: white; }
+    .btn-gray    { background: #f0f2f5; color: var(--text); }
+    .btn-sm {
+      padding: 7px 14px; font-size: 12px; font-weight: 700;
+      border: none; border-radius: 8px; cursor: pointer; transition: .2s;
+    }
+    .btn-sm:active { transform: scale(.96); }
+    .btn-sm-danger  { background: #fce4ec; color: var(--danger); }
+    .btn-sm-primary { background: #e3f2fd; color: var(--primary); }
+
+    /* ── IMPORT TABLE ── */
+    .import-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    .import-table th {
+      background: #f8f9ff; padding: 8px 10px; text-align: left;
+      font-size: 12px; font-weight: 700; color: var(--muted);
+      border-bottom: 2px solid #e8ecf0;
+    }
+    .import-table td { padding: 7px 6px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+    .import-table input {
+      width: 100%; padding: 7px 8px; border: 1.5px solid #e8ecf0;
+      border-radius: 8px; font-size: 13px; outline: none; transition: .2s;
+    }
+    .import-table input:focus { border-color: var(--primary); }
+    .add-row-btn {
+      margin-top: 10px; padding: 9px 16px; border: 2px dashed #b0bec5;
+      background: transparent; border-radius: 10px; font-size: 13px;
+      font-weight: 600; color: var(--muted); cursor: pointer; width: 100%;
+      transition: .2s;
+    }
+    .add-row-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* ── RESULT ── */
+    .result-box {
+      margin-top: 14px; padding: 14px; border-radius: 12px;
+      font-size: 13px; line-height: 1.7; display: none;
+    }
+    .result-box.ok    { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; }
+    .result-box.error { background: #fce4ec; border: 1px solid #ef9a9a; color: #880e4f; }
+
+    /* ── CHECKLIST ── */
+    .checklist { list-style: none; padding: 0; }
+    .checklist li {
+      padding: 10px 0; border-bottom: 1px solid #f0f2f5;
+      font-size: 13px; display: flex; align-items: flex-start; gap: 10px;
+    }
+    .checklist li:last-child { border-bottom: none; }
+    .checklist .ico { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .checklist .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; top: 20px; left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      background: #2ecc71; color: white; padding: 12px 24px;
+      border-radius: 50px; font-weight: 700; font-size: 14px;
+      box-shadow: 0 8px 25px rgba(0,0,0,.2); z-index: 9999;
+      transition: transform .4s cubic-bezier(.175,.885,.32,1.275); white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.error { background: var(--danger); }
+
+    /* ── SPINNER ── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 3px solid rgba(255,255,255,.4); border-top-color: white;
+      border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── LOGOUT ── */
+    .logout-btn {
+      position: fixed; bottom: 20px; right: 16px;
+      background: rgba(0,0,0,.12); color: white; border: none;
+      padding: 8px 16px; border-radius: 50px; font-size: 12px;
+      font-weight: 700; cursor: pointer; display: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">🔐</div>
+    <h2>Admin Go-Live</h2>
+    <p>Masuk sebagai Owner untuk melanjutkan</p>
+    <input type="text" id="login-user" placeholder="Username Owner" autocomplete="off">
+    <input type="password" id="login-pass" placeholder="Password" autocomplete="off">
+    <button class="btn btn-primary" onclick="doLogin()" style="margin-top:14px">Masuk</button>
+    <p class="login-err" id="login-err"></p>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ── MAIN APP ── -->
+<div id="main-app" style="display:none">
+
+  <div class="header">
+    <h1>🚀 Admin Go-Live Tools</h1>
+    <p>Alat persiapan sebelum aplikasi digunakan resmi</p>
+    <div class="header-meta" id="header-meta"></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('reset')">🗑️ Reset Data</div>
+    <div class="tab" onclick="switchTab('import')">📥 Import Saldo</div>
+    <div class="tab" onclick="switchTab('ceksaldo')">🔍 Cek Saldo</div>
+    <div class="tab" onclick="switchTab('panduan')">📋 Panduan</div>
+  </div>
+
+  <!-- ══ TAB 1: RESET DATA ══ -->
+  <div class="tab-content active page-wrap" id="tab-reset">
+
+    <div class="warn-box">
+      ⚠️ <strong>Perhatian!</strong> Fitur ini akan <strong>menghapus permanen</strong> semua data absensi, tracking GPS, saldo cuti, dan data operasional lainnya. Master data karyawan, area, dan pengaturan <strong>tidak ikut terhapus</strong>.
+    </div>
+
+    <div class="card">
+      <h4>🗑️ Reset Data Uji Coba</h4>
+      <p>Gunakan sebelum aplikasi mulai dipakai resmi untuk menghapus semua data test/uji coba.</p>
+
+      <div style="margin-bottom:14px">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">DATA YANG AKAN DIHAPUS:</p>
+        <ul style="font-size:13px;color:var(--danger);padding-left:18px;line-height:2">
+          <li>Semua record absensi (clock in/out)</li>
+          <li>Data tracking GPS</li>
+          <li>Log aktivitas</li>
+          <li>Screenshot & foto kerja</li>
+          <li>Pengajuan cuti</li>
+          <li>Saldo cuti & overtime</li>
+          <li>Sesi login aktif</li>
+        </ul>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">DATA YANG AMAN (TIDAK DIHAPUS):</p>
+        <ul style="font-size:13px;color:var(--success);padding-left:18px;line-height:2">
+          <li>Data karyawan (users)</li>
+          <li>Area & radius</li>
+          <li>Grup & divisi</li>
+          <li>Kebijakan cuti</li>
+          <li>Pengaturan sistem</li>
+          <li>Hari libur</li>
+        </ul>
+      </div>
+
+      <label>Ketik konfirmasi untuk melanjutkan:</label>
+      <input type="text" id="reset-konfirmasi" placeholder='Ketik: HAPUS SEMUA DATA'
+        oninput="checkResetBtn()" autocomplete="off" spellcheck="false">
+
+      <button class="btn btn-danger" id="reset-btn" disabled onclick="doReset()">
+        🗑️ Reset Semua Data Uji Coba
+      </button>
+
+      <div class="result-box" id="reset-result"></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB 2: IMPORT SALDO ══ -->
+  <div class="tab-content page-wrap" id="tab-import">
+
+    <div class="info-box">
+      📥 <strong>Import saldo dari Jibble.</strong> Masukkan sisa cuti tahunan dan saldo overtime masing-masing karyawan. Data akan masuk sebagai carry-over — tidak menimpa pengaturan kebijakan cuti.
+    </div>
+
+    <div class="card">
+      <h4>📥 Import Saldo Cuti & Overtime</h4>
+
+      <div style="display:flex;gap:10px;margin-bottom:14px;align-items:flex-end">
+        <div style="flex:1">
+          <label>Tahun</label>
+          <input type="number" id="import-tahun" value="" placeholder="2025" min="2020" max="2099" style="width:100%">
+        </div>
+        <button class="btn-sm btn-sm-primary" onclick="isiUserOtomatis()" style="height:38px;white-space:nowrap">
+          🔄 Isi dari Sistem
+        </button>
+      </div>
+
+      <table class="import-table">
+        <thead>
+          <tr>
+            <th style="width:35%">Username</th>
+            <th style="width:25%">Sisa Cuti (hari)</th>
+            <th style="width:28%">Sisa OT (jam)</th>
+            <th style="width:12%"></th>
+          </tr>
+        </thead>
+        <tbody id="import-rows"></tbody>
+      </table>
+
+      <button class="add-row-btn" onclick="tambahBaris()">+ Tambah Baris</button>
+
+      <button class="btn btn-success" onclick="doImport()" style="margin-top:16px">
+        📥 Import Saldo Sekarang
+      </button>
+
+      <div class="result-box" id="import-result"></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB 3: CEK SALDO ══ -->
+  <div class="tab-content page-wrap" id="tab-ceksaldo">
+    <div class="card">
+      <h4>🔍 Cek Saldo User</h4>
+      <p>Lihat data saldo cuti & overtime user tertentu setelah import.</p>
+
+      <label>Username</label>
+      <input type="text" id="cek-username" placeholder="Masukkan username" autocomplete="off">
+      <button class="btn btn-primary" onclick="doCekSaldo()" style="margin-top:10px">
+        🔍 Cek Saldo
+      </button>
+
+      <div class="result-box" id="cek-result"></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB 4: PANDUAN ══ -->
+  <div class="tab-content page-wrap" id="tab-panduan">
+    <div class="card">
+      <h4>📋 Urutan Go-Live yang Direkomendasikan</h4>
+      <ul class="checklist">
+        <li>
+          <span class="ico">1️⃣</span>
+          <div>
+            <div><strong>Pastikan semua master data sudah benar</strong></div>
+            <div class="desc">Data karyawan, area/radius, grup, kebijakan cuti, hari libur — cek di aplikasi utama</div>
+          </div>
+        </li>
+        <li>
+          <span class="ico">2️⃣</span>
+          <div>
+            <div><strong>Export data dari Jibble</strong></div>
+            <div class="desc">Catat sisa cuti tahunan dan saldo overtime tiap karyawan dari Reports → Time Off di Jibble</div>
+          </div>
+        </li>
+        <li>
+          <span class="ico">3️⃣</span>
+          <div>
+            <div><strong>Reset data uji coba</strong></div>
+            <div class="desc">Buka tab "Reset Data", ketik konfirmasi, klik Reset. Lakukan ini tepat sebelum go-live</div>
+          </div>
+        </li>
+        <li>
+          <span class="ico">4️⃣</span>
+          <div>
+            <div><strong>Import saldo dari Jibble</strong></div>
+            <div class="desc">Buka tab "Import Saldo", isi data per karyawan, klik Import</div>
+          </div>
+        </li>
+        <li>
+          <span class="ico">5️⃣</span>
+          <div>
+            <div><strong>Verifikasi saldo</strong></div>
+            <div class="desc">Buka tab "Cek Saldo", periksa beberapa karyawan memastikan data masuk dengan benar</div>
+          </div>
+        </li>
+        <li>
+          <span class="ico">6️⃣</span>
+          <div>
+            <div><strong>🚀 Mulai operasional!</strong></div>
+            <div class="desc">Aplikasi siap digunakan. Setelah go-live, hapus file admin-golive.html dari server agar URL ini tidak bisa diakses lagi</div>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4>⚠️ Catatan Penting</h4>
+      <ul style="font-size:13px;line-height:2;padding-left:18px;color:var(--muted)">
+        <li>Halaman ini <strong>tidak muncul di menu aplikasi</strong> — hanya yang tahu URL-nya yang bisa akses</li>
+        <li>Semua aksi di sini hanya bisa dilakukan oleh <strong>Owner</strong></li>
+        <li>Setelah go-live, <strong>hapus file admin-golive.html</strong> dari folder <code>public/</code> di server</li>
+        <li>Reset data bersifat <strong>permanen</strong> — tidak bisa di-undo</li>
+        <li>Import saldo bisa dijalankan ulang jika ada koreksi — nilai akan dijumlahkan, bukan ditimpa</li>
+      </ul>
+    </div>
+  </div>
+
+</div><!-- end main-app -->
+
+<script>
+  let ownerUsername = "";
+
+  // ── LOGIN ──────────────────────────────────────────────────────────────────
+  async function doLogin() {
+    const user = document.getElementById("login-user").value.trim();
+    const pass = document.getElementById("login-pass").value;
+    const err  = document.getElementById("login-err");
+    if (!user || !pass) { err.textContent = "Username dan password wajib diisi."; return; }
+
+    err.textContent = "Memeriksa...";
+    try {
+      const r = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const d = await r.json();
+      // Cek apakah level Owner (level 1)
+      if (d.status === "OK" && d.level <= 1) {
+        ownerUsername = user;
+        document.getElementById("login-page").style.display = "none";
+        document.getElementById("main-app").style.display = "block";
+        document.getElementById("header-meta").textContent = `Login sebagai: ${user}`;
+        document.getElementById("import-tahun").value = new Date().getFullYear();
+        tambahBaris(); // baris pertama
+      } else if (d.status === "OK") {
+        err.textContent = "❌ Akses ditolak. Halaman ini hanya untuk Owner.";
+      } else {
+        err.textContent = "❌ Username atau password salah.";
+      }
+    } catch(e) {
+      err.textContent = "❌ Gagal terhubung ke server.";
+    }
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter" && document.getElementById("login-page").style.display !== "none") doLogin();
+  });
+
+  // ── TABS ───────────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll(".tab").forEach((t,i) => {
+      const names = ["reset","import","ceksaldo","panduan"];
+      t.classList.toggle("active", names[i] === name);
+    });
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    document.getElementById("tab-" + name).classList.add("active");
+  }
+
+  // ── TOAST ──────────────────────────────────────────────────────────────────
+  function toast(msg, type = "ok") {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = type === "error" ? "error" : "";
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 3000);
+  }
+
+  // ── RESULT BOX ─────────────────────────────────────────────────────────────
+  function showResult(id, html, type = "ok") {
+    const el = document.getElementById(id);
+    el.innerHTML = html;
+    el.className = "result-box " + type;
+    el.style.display = "block";
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  // ── TAB RESET ──────────────────────────────────────────────────────────────
+  function checkResetBtn() {
+    const val = document.getElementById("reset-konfirmasi").value;
+    document.getElementById("reset-btn").disabled = val !== "HAPUS SEMUA DATA";
+  }
+
+  async function doReset() {
+    const btn = document.getElementById("reset-btn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Memproses...';
+    try {
+      const r = await fetch("/admin/reset-data-uji-coba", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User": ownerUsername },
+        body: JSON.stringify({ konfirmasi: "HAPUS SEMUA DATA" })
+      });
+      const d = await r.json();
+      if (d.status === "OK") {
+        showResult("reset-result",
+          `✅ <strong>Reset berhasil!</strong><br>${d.pesan}<br><br>` +
+          `<strong>Data yang dihapus:</strong><br>${(d.dihapus||[]).map(x=>"• "+x).join("<br>")}`,
+          "ok");
+        toast("✅ Data uji coba berhasil dihapus");
+        document.getElementById("reset-konfirmasi").value = "";
+      } else {
+        showResult("reset-result", "❌ " + (d.error || d.pesan || "Gagal"), "error");
+      }
+    } catch(e) {
+      showResult("reset-result", "❌ Gagal terhubung ke server: " + e.message, "error");
+    }
+    btn.innerHTML = "🗑️ Reset Semua Data Uji Coba";
+    btn.disabled = false;
+  }
+
+  // ── TAB IMPORT ─────────────────────────────────────────────────────────────
+  let rowCount = 0;
+
+  function tambahBaris(username = "", cuti = "", ot = "") {
+    rowCount++;
+    const id = "row-" + rowCount;
+    const tbody = document.getElementById("import-rows");
+    const tr = document.createElement("tr");
+    tr.id = id;
+    tr.innerHTML = `
+      <td><input type="text" placeholder="username" value="${username}" class="col-user"></td>
+      <td><input type="number" placeholder="0" min="0" step="0.5" value="${cuti}" class="col-cuti"></td>
+      <td><input type="number" placeholder="0" min="0" step="0.25" value="${ot}" class="col-ot"></td>
+      <td><button class="btn-sm btn-sm-danger" onclick="hapusBaris('${id}')">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  function hapusBaris(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }
+
+  async function isiUserOtomatis() {
+    toast("Mengambil daftar karyawan...");
+    try {
+      const r = await fetch("/users", { headers: { "X-User": ownerUsername } });
+      const d = await r.json();
+      const users = Array.isArray(d) ? d : (d.users || Object.keys(d));
+      document.getElementById("import-rows").innerHTML = "";
+      rowCount = 0;
+      if (Array.isArray(users) && users.length) {
+        users.forEach(u => tambahBaris(typeof u === "string" ? u : u.username || u, "", ""));
+        toast("✅ " + users.length + " karyawan dimuat");
+      } else {
+        toast("Tidak ada data karyawan ditemukan", "error");
+      }
+    } catch(e) {
+      // Fallback: coba endpoint /admin/cek-saldo untuk verifikasi koneksi
+      toast("Gagal ambil data: " + e.message, "error");
+    }
+  }
+
+  async function doImport() {
+    const rows = document.querySelectorAll("#import-rows tr");
+    const tahun = parseInt(document.getElementById("import-tahun").value) || new Date().getFullYear();
+    const data = [];
+
+    rows.forEach(tr => {
+      const user = tr.querySelector(".col-user")?.value?.trim();
+      const cuti = parseFloat(tr.querySelector(".col-cuti")?.value) || 0;
+      const ot   = parseFloat(tr.querySelector(".col-ot")?.value) || 0;
+      if (user) data.push({ username: user, sisaCuti: cuti, sisaOvertime: ot });
+    });
+
+    if (!data.length) { toast("Tidak ada data untuk diimport", "error"); return; }
+
+    const btn = document.querySelector("#tab-import .btn-success");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Mengimport...';
+
+    try {
+      const r = await fetch("/admin/import-saldo-awal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User": ownerUsername },
+        body: JSON.stringify({ konfirmasi: "IMPORT SALDO AWAL", tahun, data })
+      });
+      const d = await r.json();
+      if (d.status === "OK") {
+        let html = `✅ <strong>Import berhasil!</strong> ${d.berhasil} karyawan diproses untuk tahun ${d.tahun}.<br><br>`;
+        if (d.tidak_ditemukan?.length) {
+          html += `⚠️ <strong>Username tidak ditemukan di sistem:</strong> ${d.tidak_ditemukan.join(", ")}<br><br>`;
+        }
+        html += `<strong>Detail:</strong><br>`;
+        html += (d.detail||[]).map(x =>
+          `• <strong>${x.username}</strong>: cuti ${x.sisaCuti} hari, overtime ${x.sisaOvertime} jam`
+        ).join("<br>");
+        showResult("import-result", html, "ok");
+        toast("✅ Import saldo berhasil");
+      } else {
+        showResult("import-result", "❌ " + (d.error || d.pesan || "Gagal"), "error");
+      }
+    } catch(e) {
+      showResult("import-result", "❌ Gagal: " + e.message, "error");
+    }
+    btn.innerHTML = "📥 Import Saldo Sekarang";
+    btn.disabled = false;
+  }
+
+  // ── TAB CEK SALDO ──────────────────────────────────────────────────────────
+  async function doCekSaldo() {
+    const username = document.getElementById("cek-username").value.trim();
+    if (!username) { toast("Masukkan username dulu", "error"); return; }
+
+    const btn = document.querySelector("#tab-ceksaldo .btn-primary");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Memeriksa...';
+
+    try {
+      const r = await fetch(`/admin/cek-saldo/${username}`, {
+        headers: { "X-User": ownerUsername }
+      });
+      const d = await r.json();
+      if (r.ok && d.saldo) {
+        const saldo = d.saldo;
+        let html = `👤 <strong>${username}</strong><br><br>`;
+        const tahunList = Object.keys(saldo);
+        if (!tahunList.length) {
+          html += "Belum ada data saldo untuk user ini.";
+        } else {
+          tahunList.sort().reverse().forEach(thn => {
+            const k = saldo[thn];
+            html += `<strong>📅 Tahun ${thn}</strong><br>`;
+            if (k.tahunan) {
+              const t = k.tahunan;
+              html += `• Cuti tahunan: jatah <strong>${t.jatah}</strong> hari`;
+              if (t.carryOver) html += ` + carry-over <strong>${t.carryOver}</strong> hari`;
+              html += `, terpakai <strong>${t.terpakai||0}</strong> hari<br>`;
+            }
+            if (k.overtime) {
+              const ot = k.overtime;
+              const saldoBersih = ((ot.jamTL_reguler||0) + (ot.jamCarryOver||0) - (ot.jamTerpakai||0)).toFixed(2);
+              html += `• Overtime: reguler <strong>${ot.jamTL_reguler||0}</strong>j + carry-over <strong>${ot.jamCarryOver||0}</strong>j - terpakai <strong>${ot.jamTerpakai||0}</strong>j = saldo <strong>${saldoBersih}</strong> jam<br>`;
+            }
+            html += "<br>";
+          });
+        }
+        showResult("cek-result", html, "ok");
+      } else {
+        showResult("cek-result", "❌ " + (d.pesan || "User tidak ditemukan"), "error");
+      }
+    } catch(e) {
+      showResult("cek-result", "❌ Gagal: " + e.message, "error");
+    }
+    btn.innerHTML = "🔍 Cek Saldo"; btn.disabled = false;
+  }
+
+  document.getElementById("cek-username").addEventListener("keydown", e => {
+    if (e.key === "Enter") doCekSaldo();
+  });
+</script>
+</body>
+</html>
