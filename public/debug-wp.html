@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔧 Debug Foto Kerja</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #2c3e50; padding: 16px; }
+  h1 { font-size: 18px; font-weight: 800; color: #1a237e; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: #95a5a6; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .card h2 { font-size: 13px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 12px; }
+  .btn { display: block; width: 100%; padding: 13px; border: none; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+  .btn-blue  { background: linear-gradient(135deg,#1a237e,#4f8ef7); color: #fff; }
+  .btn-green { background: linear-gradient(135deg,#1b5e20,#27ae60); color: #fff; }
+  .btn-red   { background: linear-gradient(135deg,#b71c1c,#e74c3c); color: #fff; }
+  .btn-gray  { background: #f0f2f5; color: #555; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .result { background: #1a1a2e; color: #a8d8a8; border-radius: 10px; padding: 14px; font-size: 11px; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 340px; overflow-y: auto; margin-top: 10px; display: none; }
+  .result.error { color: #ff6b6b; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge-ok  { background: #e8f5e9; color: #27ae60; }
+  .badge-warn{ background: #fff8e1; color: #f39c12; }
+  .badge-err { background: #fce4ec; color: #e74c3c; }
+  .info-row  { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid #f0f2f5; font-size: 13px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-label { color: #95a5a6; font-size: 12px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #status-bar { position: sticky; top: 0; background: #fff; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.08); font-size: 13px; font-weight: 600; }
+  #status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+  .section-title { font-size: 11px; font-weight: 700; color: #95a5a6; text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 8px; }
+</style>
+</head>
+<body>
+
+<h1>🔧 Debug Foto Kerja</h1>
+<p class="sub">Diagnosa & repair data laporan kegiatan di Supabase</p>
+
+<!-- Status Login -->
+<div id="status-bar">
+  <div id="status-dot"></div>
+  <div id="status-text">Mengecek login...</div>
+</div>
+
+<!-- Cek Data -->
+<div class="card">
+  <h2>📊 Diagnosa Data</h2>
+  <div id="diag-info" style="margin-bottom:12px;display:none;">
+    <div class="info-row"><span class="info-label">User</span><span id="d-user">—</span></div>
+    <div class="info-row"><span class="info-label">Tanggal</span><span id="d-today">—</span></div>
+    <div class="info-row"><span class="info-label">Format Supabase</span><span id="d-type">—</span></div>
+    <div class="info-row"><span class="info-label">Sessions terparse</span><span id="d-sessions">—</span></div>
+    <div class="info-row"><span class="info-label">Total foto</span><span id="d-photos">—</span></div>
+    <div class="info-row"><span class="info-label">Uraian</span><span id="d-uraian" style="max-width:60%;text-align:right;font-size:12px;color:#2c3e50;">—</span></div>
+    <div class="info-row"><span class="info-label">RAM Store</span><span id="d-ram">—</span></div>
+    <div class="info-row"><span class="info-label">Absen hari ini</span><span id="d-absen">—</span></div>
+  </div>
+  <button class="btn btn-blue" id="btn-diag" onclick="runDiag()">🔍 Cek Data Sekarang</button>
+  <div class="result" id="result-diag"></div>
+</div>
+
+<!-- Repair -->
+<div class="card">
+  <h2>🔨 Repair Format Data</h2>
+  <p style="font-size:12px;color:#95a5a6;margin-bottom:12px;">
+    Jika format data di Supabase masih format lama (bukan array-of-sessions),
+    tombol ini akan otomatis mengkonversi semua data ke format baru.
+  </p>
+  <button class="btn btn-green" id="btn-fix" onclick="runFix()">⚡ Repair Data Otomatis</button>
+  <div class="result" id="result-fix"></div>
+</div>
+
+<!-- Cek Semua User -->
+<div class="card">
+  <h2>👥 Cek Semua User</h2>
+  <div id="user-input-wrap">
+    <input id="input-user" type="text" placeholder="Masukkan username (e.g. sukodo)"
+      style="width:100%;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;font-size:13px;outline:none;margin-bottom:10px;"
+      onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"/>
+  </div>
+  <button class="btn btn-blue" onclick="runDiagUser()">🔍 Cek User Ini</button>
+  <div class="result" id="result-user"></div>
+</div>
+
+<!-- Repair Paksa Manual -->
+<div class="card">
+  <h2>🚨 Force Reload Store</h2>
+  <p style="font-size:12px;color:#95a5a6;margin-bottom:12px;">
+    Paksa server reload data dari Supabase ke RAM (_store). 
+    Gunakan ini jika data sudah benar di Supabase tapi masih belum muncul di app.
+  </p>
+  <button class="btn btn-red" id="btn-reload" onclick="runForceReload()">🔄 Force Reload dari Supabase</button>
+  <div class="result" id="result-reload"></div>
+</div>
+
+<!-- Info -->
+<div class="card">
+  <h2>ℹ️ Cara Pakai</h2>
+  <div style="font-size:12px;color:#555;line-height:1.7;">
+    <b>1. Cek Data</b> → lihat format data di Supabase untuk user yang login.<br>
+    <b>2. Jika "Format Supabase" bukan <code>array[N]</code></b> → klik Repair.<br>
+    <b>3. Setelah Repair</b> → buka app dan cek Laporan Kegiatan lagi.<br>
+    <b>4. Jika masih kosong</b> → coba Force Reload lalu buka Laporan lagi.<br><br>
+    <span style="color:#e74c3c;">⚠️ Halaman ini hanya bisa diakses oleh Owner/Admin.</span>
+  </div>
+</div>
+
+<script>
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+const user      = localStorage.getItem("user") || "";
+const sessionId = localStorage.getItem("sessionId") || "";
+
+function aFetch(url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers || {}, {
+    "X-User": user, "X-Session-Id": sessionId
+  });
+  return fetch(url, opts);
+}
+
+// ── Status bar ────────────────────────────────────────────────────────────────
+async function checkLogin() {
+  const dot  = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  if (!user || !sessionId) {
+    dot.style.background = "#e74c3c";
+    text.textContent = "❌ Belum login — buka app dulu, login, lalu kembali ke halaman ini";
+    disableAll(); return;
+  }
+  try {
+    const r = await aFetch("/status/" + user);
+    const d = await r.json();
+    dot.style.background = "#27ae60";
+    text.textContent = `✅ Login sebagai: ${user} (${d.status || "?"})`;
+    // Isi default input user
+    document.getElementById("input-user").value = user;
+  } catch(e) {
+    dot.style.background = "#f39c12";
+    text.textContent = `⚠️ Tidak bisa verifikasi login: ${e.message}`;
+  }
+}
+
+function disableAll() {
+  document.querySelectorAll(".btn").forEach(b => b.disabled = true);
+}
+
+// ── Show result ───────────────────────────────────────────────────────────────
+function showResult(id, data, isError = false) {
+  const el = document.getElementById(id);
+  el.style.display = "block";
+  el.className = "result" + (isError ? " error" : "");
+  el.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+}
+
+function setBtnLoading(id, loading, label) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="spinner"></span> Memproses...` : label;
+}
+
+// ── Diagnosa ──────────────────────────────────────────────────────────────────
+async function runDiag() {
+  setBtnLoading("btn-diag", true, "🔍 Cek Data Sekarang");
+  try {
+    const r = await aFetch("/debug/wp/" + user);
+    if (r.status === 403) { showResult("result-diag", "❌ Akses ditolak — harus Owner/Admin", true); return; }
+    const d = await r.json();
+    renderDiagInfo(d);
+    showResult("result-diag", d);
+  } catch(e) {
+    showResult("result-diag", "Error: " + e.message, true);
+  } finally {
+    setBtnLoading("btn-diag", false, "🔍 Cek Data Sekarang");
+  }
+}
+
+function renderDiagInfo(d) {
+  const wrap = document.getElementById("diag-info");
+  wrap.style.display = "block";
+
+  document.getElementById("d-user").textContent    = d.user || "?";
+  document.getElementById("d-today").textContent   = d.today || "?";
+
+  const type = d.supabase_raw?.type || "?";
+  const isArr = type.startsWith("array");
+  const typeEl = document.getElementById("d-type");
+  typeEl.innerHTML = `<span class="badge ${isArr ? "badge-ok" : "badge-err"}">${type}</span>`;
+
+  const sess = d.parsed?.sessions ?? "?";
+  document.getElementById("d-sessions").innerHTML =
+    `<span class="badge ${sess > 0 ? "badge-ok" : "badge-warn"}">${sess} sesi</span>`;
+
+  const photos = d.parsed?.total_photos ?? 0;
+  document.getElementById("d-photos").innerHTML =
+    `<span class="badge ${photos > 0 ? "badge-ok" : "badge-warn"}">${photos} foto</span>`;
+
+  const uraian = d.parsed?.uraian || "";
+  document.getElementById("d-uraian").textContent = uraian ? `"${uraian.slice(0,60)}${uraian.length>60?"…":""}"` : "(kosong)";
+
+  const ram = d.ram_store || "kosong";
+  document.getElementById("d-ram").innerHTML =
+    `<span class="badge ${typeof ram === "object" ? "badge-ok" : "badge-warn"}">${typeof ram === "string" ? ram : ram.type + " " + ram.photos + " foto"}</span>`;
+
+  const absen = d.absen_hari_ini || [];
+  document.getElementById("d-absen").innerHTML =
+    absen.length ? absen.map(a => `sesi-${a.sesi} ${a.jamMasuk||"?"} → ${a.jamKeluar||"aktif"}`).join("<br>") : `<span class="badge badge-warn">belum absen</span>`;
+}
+
+// ── Repair ────────────────────────────────────────────────────────────────────
+async function runFix() {
+  if (!confirm("Yakin ingin repair semua data work_photos ke format baru?")) return;
+  setBtnLoading("btn-fix", true, "⚡ Repair Data Otomatis");
+  try {
+    const r = await aFetch("/debug/fix-wp", { method: "POST", headers: {"Content-Type":"application/json"} });
+    if (r.status === 403) { showResult("result-fix", "❌ Akses ditolak — harus Owner/Admin", true); return; }
+    const d = await r.json();
+    const msg = d.fixed > 0
+      ? `✅ ${d.fixed} dari ${d.total} entries berhasil direpair!\n\nDetail:\n${(d.log||[]).join("\n")}`
+      : `ℹ️ Semua ${d.total} entries sudah format baru, tidak perlu repair.\n\nDetail:\n${(d.log||[]).join("\n")}`;
+    showResult("result-fix", msg);
+    // Auto refresh diagnosa
+    if (d.fixed > 0) setTimeout(runDiag, 1000);
+  } catch(e) {
+    showResult("result-fix", "Error: " + e.message, true);
+  } finally {
+    setBtnLoading("btn-fix", false, "⚡ Repair Data Otomatis");
+  }
+}
+
+// ── Cek user lain ─────────────────────────────────────────────────────────────
+async function runDiagUser() {
+  const targetUser = document.getElementById("input-user").value.trim();
+  if (!targetUser) { alert("Masukkan username dulu"); return; }
+  const btn = document.querySelector('[onclick="runDiagUser()"]');
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Memproses...`;
+  try {
+    const r = await aFetch("/debug/wp/" + targetUser);
+    if (r.status === 403) { showResult("result-user", "❌ Akses ditolak — harus Owner/Admin", true); return; }
+    const d = await r.json();
+    showResult("result-user", d);
+  } catch(e) {
+    showResult("result-user", "Error: " + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = "🔍 Cek User Ini";
+  }
+}
+
+// ── Force reload ──────────────────────────────────────────────────────────────
+async function runForceReload() {
+  if (!confirm("Paksa server reload semua data dari Supabase ke RAM?")) return;
+  setBtnLoading("btn-reload", true, "🔄 Force Reload dari Supabase");
+  try {
+    const r = await aFetch("/debug/reload-store", { method: "POST" });
+    if (r.status === 404) {
+      showResult("result-reload", "⚠️ Endpoint belum ada — coba tutup & buka app lagi saja", true); return;
+    }
+    if (r.status === 403) { showResult("result-reload", "❌ Akses ditolak", true); return; }
+    const d = await r.json();
+    showResult("result-reload", d);
+  } catch(e) {
+    showResult("result-reload", "Error: " + e.message, true);
+  } finally {
+    setBtnLoading("btn-reload", false, "🔄 Force Reload dari Supabase");
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+checkLogin();
+</script>
+</body>
+</html>

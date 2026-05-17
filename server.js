@@ -77,103 +77,139 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", time: new Date().toISOString() });
 });
 
-// ── Debug + Fix endpoint — diagnosa & repair data Supabase ──────────────────
-// GET  /debug/wp/:user  → lihat struktur data
-// POST /debug/fix-wp    → repair format data work_photos ke format baru
-app.post("/debug/fix-wp", async (req, res) => {
-  const auth = req.headers.authorization || "";
-  const JWT_SECRET = process.env.JWT_SECRET || "";
-  if (!JWT_SECRET || !auth.includes(JWT_SECRET.slice(0,8))) {
-    return res.status(403).json({ error: "forbidden" });
-  }
+// ── Debug page — hanya Owner (level 2) ───────────────────────────────────────
+app.get("/debug-wp", requireLevel(2), (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "debug-wp.html"));
+});
+
+// ── Force reload _store dari Supabase ─────────────────────────────────────────
+app.post("/debug/reload-store", requireLevel(2), async (req, res) => {
   try {
-    const wpRaw = await dbLoad("work_photos", {});
-    let fixed = 0, total = 0;
-    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Makassar" });
-
-    // Perbaiki semua entry dalam 3 hari terakhir
-    for (const date of Object.keys(wpRaw)) {
-      for (const user of Object.keys(wpRaw[date] || {})) {
-        total++;
-        const raw = wpRaw[date][user];
-        // Jika sudah array of sessions — skip
-        if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0].sesi !== "undefined") continue;
-        // Convert ke format baru
-        let newVal;
-        if (Array.isArray(raw) && raw.length > 0 && raw[0].image !== undefined) {
-          // Array foto langsung
-          newVal = [{ sesi: 1, uraian: "", photos: raw, updatedAt: null, jamMasuk: null, lockedAt: null }];
-        } else if (!Array.isArray(raw) && raw && typeof raw === "object") {
-          // Object {uraian, photos, updatedAt}
-          newVal = [{ sesi: 1, uraian: raw.uraian || "", photos: Array.isArray(raw.photos) ? raw.photos : [], updatedAt: raw.updatedAt || null, jamMasuk: null, lockedAt: null }];
-        } else {
-          continue; // tidak dikenal, skip
-        }
-        wpRaw[date][user] = newVal;
-        fixed++;
-        console.log(`[FIX-WP] ${date}/${user}: converted → sesi:${newVal.length} photos:${newVal[0].photos.length} uraian:"${(newVal[0].uraian||"").slice(0,40)}"`);
-      }
-    }
-
-    if (fixed > 0) {
-      // Simpan ke Supabase dan update _store
-      _store["work_photos"] = wpRaw;
-      await dbLoad("work_photos", {}); // warm cache
-      save("work_photos", wpRaw);
-      console.log(`[FIX-WP] ✅ ${fixed}/${total} entries diperbaiki`);
-    }
-
-    res.json({ status: "OK", total, fixed, msg: fixed > 0 ? `${fixed} entries direpair ke format baru` : "Semua sudah format baru" });
-  } catch (err) {
+    console.log("[RELOAD-STORE] Diminta oleh:", req._requester);
+    const keys = Object.values(F);
+    const defaults = {
+      data: [], users: {}, areas: [], libur: [],
+      aktivitas: [], groups: [], divisi: [],
+      tracking: {}, kebijakan_cuti: [], kuota_cuti: {},
+      pengajuan_cuti: [], aktivitas_kustom: [],
+      rules: { messList: [] }, push_subscriptions: {},
+      app_settings: { timezone: "Asia/Makassar" },
+      screenshots: {}, work_photos: {},
+    };
+    let loaded = 0;
+    await Promise.all(keys.map(async key => {
+      try {
+        const val = await dbLoad(key, defaults[key] ?? null);
+        if (val !== null) { _store[key] = val; loaded++; }
+      } catch(e) { console.error("[RELOAD] gagal load:", key, e.message); }
+    }));
+    // Log work_photos setelah reload
+    const wp = _store["work_photos"] || {};
+    const wpSummary = [];
+    Object.keys(wp).forEach(date => {
+      Object.keys(wp[date] || {}).forEach(u => {
+        const raw = wp[date][u];
+        wpSummary.push(`${date}/${u}: ${Array.isArray(raw) ? "array["+raw.length+"]" : typeof raw}`);
+      });
+    });
+    console.log("[RELOAD-STORE] ✅ Selesai reload", loaded, "keys. WP:", wpSummary.join(", ") || "kosong");
+    res.json({ status: "OK", loaded, work_photos_summary: wpSummary });
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get("/debug/wp/:user", async (req, res) => {
-  // Simple auth: hanya dengan Bearer token yang sama dengan JWT secret
-  const auth = req.headers.authorization || "";
-  const JWT_SECRET = process.env.JWT_SECRET || "";
-  if (!JWT_SECRET || !auth.includes(JWT_SECRET.slice(0,8))) {
-    return res.status(403).json({ error: "forbidden" });
-  }
+// ── Debug + Fix endpoint — diagnosa & repair data Supabase ──────────────────
+// GET  /debug/wp/:user  → lihat struktur data
+// POST /debug/fix-wp    → repair format data work_photos ke format baru
+// GET /debug/wp/:user — pakai requireLevel(2) = hanya Owner/Admin
+app.get("/debug/wp/:user", requireLevel(2), async (req, res) => {
   try {
-    const { user } = req.params;
-    const today    = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Makassar" });
+    const user  = req.params.user;
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Makassar" });
 
     // Baca langsung dari Supabase (bypass _store)
-    const wpRaw  = await dbLoad("work_photos", {});
+    const wpRaw   = await dbLoad("work_photos", {});
     const dataRaw = await dbLoad("data", []);
 
-    const dayData    = (wpRaw[today] || {})[user];
-    const absenHari  = dataRaw.filter(d => d.user === user && d.date === today);
+    const dayData = (wpRaw[today] || {})[user];
+    const absenHari = dataRaw.filter(d => d.user === user && d.date === today);
 
     // Baca juga dari _store (RAM)
-    const wpStore    = load("work_photos", null);
-    const dayStore   = wpStore ? ((wpStore[today] || {})[user]) : "(_store kosong)";
+    const wpStore  = load("work_photos", null);
+    const dayStore = wpStore ? ((wpStore[today] || {})[user]) : null;
+
+    // Parse dengan wpGetSessions untuk lihat hasilnya
+    const sessions = wpGetSessions(wpRaw, today, user);
+    const merged   = wpMergeAllSessions(sessions);
 
     res.json({
-      today,
-      user,
-      supabase: {
-        type:  Array.isArray(dayData) ? "array[" + dayData.length + "]" : typeof dayData,
-        keys:  dayData && !Array.isArray(dayData) ? Object.keys(dayData).slice(0, 8) : null,
-        arrayItem0: Array.isArray(dayData) && dayData[0] ? {
-          sesi:      dayData[0].sesi,
-          uraian:    (dayData[0].uraian || "").slice(0, 80),
-          photos:    (dayData[0].photos || []).length,
-          updatedAt: dayData[0].updatedAt,
-        } : null,
-        raw_preview: JSON.stringify(dayData).slice(0, 300),
+      today, user,
+      supabase_raw: {
+        type:        Array.isArray(dayData) ? "array[" + dayData.length + "]" : typeof dayData,
+        keys:        dayData && !Array.isArray(dayData) ? Object.keys(dayData).slice(0, 10) : null,
+        item0:       Array.isArray(dayData) && dayData[0] ? {
+          sesi: dayData[0].sesi, uraian: (dayData[0].uraian||"").slice(0,100),
+          photos: (dayData[0].photos||[]).length, updatedAt: dayData[0].updatedAt
+        } : dayData && !Array.isArray(dayData) ? {
+          uraian: (dayData.uraian||"").slice(0,100), photos: (dayData.photos||[]).length,
+          updatedAt: dayData.updatedAt
+        } : "kosong/null",
       },
-      ram_store: {
-        type:    Array.isArray(dayStore) ? "array[" + dayStore.length + "]" : typeof dayStore,
-        present: dayStore !== null && dayStore !== "(_store kosong)",
-        preview: typeof dayStore === "string" ? dayStore : JSON.stringify(dayStore).slice(0, 200),
+      parsed: {
+        sessions: sessions.length,
+        total_photos: merged.photos.length,
+        uraian: merged.uraian,
+        updatedAt: merged.updatedAt,
       },
+      ram_store: dayStore ? {
+        type: Array.isArray(dayStore) ? "array[" + dayStore.length + "]" : typeof dayStore,
+        photos: Array.isArray(dayStore) ? dayStore.reduce((n,s)=>n+(s.photos||[]).length,0) : (dayStore.photos||[]).length,
+      } : "kosong",
       absen_hari_ini: absenHari.map(d => ({
-        sesi: d.sesi, jamMasuk: d.jamMasuk, jamKeluar: d.jamKeluar, aktivitas: d.aktivitas
+        sesi: d.sesi, jamMasuk: d.jamMasuk, jamKeluar: d.jamKeluar || null, aktivitas: d.aktivitas
       })),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack?.slice(0,300) });
+  }
+});
+
+// POST /debug/fix-wp — repair format data (requireLevel 2 = Owner saja)
+app.post("/debug/fix-wp", requireLevel(2), async (req, res) => {
+  try {
+    const wpRaw = await dbLoad("work_photos", {});
+    let fixed = 0, total = 0;
+    const log = [];
+
+    for (const date of Object.keys(wpRaw)) {
+      for (const user of Object.keys(wpRaw[date] || {})) {
+        total++;
+        const raw = wpRaw[date][user];
+        if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0].sesi !== "undefined") {
+          log.push(`${date}/${user}: OK (array[${raw.length}])`);
+          continue;
+        }
+        let newVal;
+        if (Array.isArray(raw) && raw.length > 0 && (raw[0].image !== undefined || raw[0].ts !== undefined)) {
+          newVal = [{ sesi:1, uraian:"", photos:raw, updatedAt:null, jamMasuk:null, lockedAt:null }];
+        } else if (!Array.isArray(raw) && raw && typeof raw === "object") {
+          newVal = [{ sesi:1, uraian:raw.uraian||"", photos:Array.isArray(raw.photos)?raw.photos:[], updatedAt:raw.updatedAt||null, jamMasuk:null, lockedAt:null }];
+        } else {
+          log.push(`${date}/${user}: SKIP (unknown format: ${typeof raw})`);
+          continue;
+        }
+        wpRaw[date][user] = newVal;
+        fixed++;
+        log.push(`${date}/${user}: FIXED → sesi:1, photos:${newVal[0].photos.length}, uraian:"${(newVal[0].uraian||"").slice(0,40)}"`);
+      }
+    }
+
+    if (fixed > 0) {
+      save("work_photos", wpRaw);
+      console.log("[FIX-WP] " + log.filter(l=>l.includes("FIXED")).join(" | "));
+    }
+    res.json({ status:"OK", total, fixed, log });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
