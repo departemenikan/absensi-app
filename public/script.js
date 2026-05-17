@@ -11784,60 +11784,67 @@ async function showLaporanPopup() {
   _laporanRenderBody(existing);
 }
 
-// ── Render isi sheet ──────────────────────────────────────────────────────────
+// ── State sesi aktif yang sedang diedit ─────────────────────────────────────
+var _laporanActiveSesi = 1;   // sesi yang sedang dipilih user untuk edit uraian
+var _laporanAllSessions = []; // cache sessions[] dari server
+var _laporanCurrentSesi = 1;  // sesi yang sedang aktif (clock-in)
+var _laporanTotalPhotos = 0;  // total foto semua sesi
+
+// ── Render isi sheet — support multi-sesi ─────────────────────────────────────
 function _laporanRenderBody(existing) {
   const body   = document.getElementById("laporan-body");
   const noteEl = document.getElementById("laporan-updated-note");
   if (!body) return;
 
-  if (noteEl) noteEl.textContent = existing.updatedAt
-    ? "Disimpan " + new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
-    : (existing.isEditable ? "\u2705 Sedang aktif" : "");
+  const isEditable    = existing.isEditable !== false;
+  const saved         = existing.totalPhotos || 0;
+  const sessions      = existing.sessions || [];
+  const currentSesi   = existing.currentSesi || 1;
 
-  const isEditable = existing.isEditable !== false;
-  const saved      = existing.totalPhotos || 0;
-  const uraian     = existing.uraian || "";
-  const aktivitas  = existing.aktivitas || "";
+  // Cache state global
+  _laporanAllSessions  = sessions;
+  _laporanCurrentSesi  = currentSesi;
+  _laporanTotalPhotos  = saved;
+  // Default: edit sesi yang aktif
+  _laporanActiveSesi   = currentSesi;
+
+  // Update note header
+  if (noteEl) {
+    const lastUpdate = existing.updatedAt
+      ? "Disimpan " + new Date(existing.updatedAt).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
+      : (isEditable ? "✅ Sedang aktif" : "");
+    noteEl.textContent = lastUpdate;
+  }
 
   let html = "";
 
-  // Badge aktivitas
-  if (aktivitas) html += `
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f0f6ff;
-      border-radius:9px;border-left:3px solid #4f8ef7;margin-bottom:8px;">
-      <span style="font-size:13px;">&#x1F3C3;</span>
-      <div>
-        <div style="font-size:9px;font-weight:700;color:#4f8ef7;letter-spacing:.4px;text-transform:uppercase;">Aktivitas</div>
-        <div style="font-size:12px;font-weight:700;color:#2c3e50;">${aktivitas}</div>
-      </div>
-    </div>`;
-
-  // Uraian
-  html += `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">&#x270F;&#xFE0F; Uraian Kegiatan</div>`;
-  // Hitung tinggi textarea otomatis: min 80px, tambah 20px per baris
-  const uraianRows  = uraian ? Math.min(8, Math.max(3, uraian.split("\n").length + 1)) : 3;
-  const uraianH     = uraianRows * 22 + 16;
-  if (isEditable) {
-    html += `<textarea id="laporan-uraian"
-      placeholder="${aktivitas ? "Uraian kegiatan \u2014 " + aktivitas + "..." : "Tulis uraian kegiatan hari ini..."}"
-      style="width:100%;height:${uraianH}px;min-height:72px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
-             font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;line-height:1.5;"
-      onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
-    >${uraian}</textarea>`;
-  } else {
-    html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
-      border-left:3px solid #4f8ef7;white-space:pre-wrap;line-height:1.5;min-height:40px;">
-      ${uraian || '<span style="color:#aaa;font-style:italic;">Belum ada uraian</span>'}
-    </div>`;
+  // ── Multi-sesi: tampilkan tab sesi jika lebih dari 1 ─────────────────────
+  if (sessions.length > 1) {
+    html += `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;">`;
+    sessions.forEach(s => {
+      const jamM = s.jamMasuk ? new Date(s.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
+      const label = "Sesi " + s.sesi + (jamM ? " · " + jamM : "");
+      const isActive = s.sesi === currentSesi;
+      const badge = isActive
+        ? `<span style="display:inline-block;width:7px;height:7px;background:#27ae60;border-radius:50%;margin-right:3px;vertical-align:middle;"></span>`
+        : "";
+      html += `<button onclick="_laporanSwitchSesi(${s.sesi})" id="laporan-tab-${s.sesi}"
+        style="flex-shrink:0;padding:5px 12px;border-radius:20px;border:2px solid ${s.sesi===currentSesi?'#4f8ef7':'#e0e3ea'};
+        background:${s.sesi===currentSesi?'#4f8ef7':'#f5f7ff'};color:${s.sesi===currentSesi?'#fff':'#555'};
+        font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+        ${badge}${label}${s.isAktif ? ' 🟢' : ''}
+      </button>`;
+    });
+    html += `</div>`;
   }
 
-  // Header foto
+  // ── Foto header (total semua sesi) ────────────────────────────────────────
   html += `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px;">
-      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;">&#x1F4F8; Foto Kegiatan</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;">&#x1F4F8; Foto Kegiatan${sessions.length>1?" (semua sesi)":""}</div>
       <span id="laporan-foto-count" data-saved="${saved}"
         style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;
-        background:${saved >= 5 ? "#fce4ec" : "#e8f5e9"};color:${saved >= 5 ? "#c0392b" : "#27ae60"};">
+        background:${saved>=5?"#fce4ec":"#e8f5e9"};color:${saved>=5?"#c0392b":"#27ae60"};">
         ${saved}/5 foto
       </span>
     </div>`;
@@ -11849,8 +11856,10 @@ function _laporanRenderBody(existing) {
     <div id="laporan-foto-btns"></div>
     <div id="laporan-preview-area"></div>`;
   }
-
   html += `<div id="laporan-thumbs"></div>`;
+
+  // ── Area uraian — per sesi aktif yang dipilih ─────────────────────────────
+  html += `<div id="laporan-uraian-area"></div>`;
 
   if (isEditable) {
     html += `<button id="laporan-save-btn" onclick="_saveLaporan()"
@@ -11868,6 +11877,85 @@ function _laporanRenderBody(existing) {
 
   if (isEditable) _renderLaporanFotoBtns(saved, 0);
   _loadLaporanThumbs(saved, isEditable);
+  _laporanRenderUraian(currentSesi, isEditable);
+}
+
+// ── Render textarea uraian untuk sesi tertentu ────────────────────────────────
+function _laporanRenderUraian(sesiNum, isEditable) {
+  const wrap = document.getElementById("laporan-uraian-area");
+  if (!wrap) return;
+  _laporanActiveSesi = sesiNum;
+
+  // Highlight tab yang aktif
+  _laporanAllSessions.forEach(s => {
+    const tab = document.getElementById("laporan-tab-" + s.sesi);
+    if (!tab) return;
+    const isSelected = s.sesi === sesiNum;
+    tab.style.background    = isSelected ? "#4f8ef7" : "#f5f7ff";
+    tab.style.color         = isSelected ? "#fff" : "#555";
+    tab.style.borderColor   = isSelected ? "#4f8ef7" : "#e0e3ea";
+  });
+
+  const sesiData  = _laporanAllSessions.find(s => s.sesi === sesiNum) || {};
+  const uraian    = sesiData.uraian || "";
+  const aktivitas = sesiData.aktivitas || "";
+  const isAktif   = sesiData.isAktif !== false;
+  const jamM      = sesiData.jamMasuk ? new Date(sesiData.jamMasuk).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
+  const jamK      = sesiData.jamKeluar ? new Date(sesiData.jamKeluar).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : null;
+
+  let html = "";
+
+  // Info sesi
+  if (_laporanAllSessions.length > 1) {
+    html += `<div style="font-size:11px;color:#7f8c8d;margin-bottom:6px;padding:4px 8px;background:#f0f3f8;border-radius:6px;">
+      Sesi ${sesiNum}${jamM ? " — masuk " + jamM : ""}${jamK ? ", keluar " + jamK : " (aktif)"}
+    </div>`;
+  }
+
+  // Badge aktivitas sesi ini
+  if (aktivitas) {
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f0f6ff;
+      border-radius:9px;border-left:3px solid #4f8ef7;margin-bottom:8px;">
+      <span style="font-size:13px;">&#x1F3C3;</span>
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#4f8ef7;letter-spacing:.4px;text-transform:uppercase;">Aktivitas</div>
+        <div style="font-size:12px;font-weight:700;color:#2c3e50;">${aktivitas}</div>
+      </div>
+    </div>`;
+  }
+
+  html += `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">&#x270F;&#xFE0F; Uraian Kegiatan${_laporanAllSessions.length>1?" — Sesi "+sesiNum:""}</div>`;
+  const uraianRows = uraian ? Math.min(8, Math.max(3, uraian.split("\n").length + 1)) : 3;
+  const uraianH    = uraianRows * 22 + 16;
+
+  if (isEditable) {
+    html += `<textarea id="laporan-uraian" data-sesi="${sesiNum}"
+      placeholder="${aktivitas ? "Uraian kegiatan \u2014 " + aktivitas + "..." : "Tulis uraian kegiatan sesi " + sesiNum + "..."}"
+      style="width:100%;height:${uraianH}px;min-height:72px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
+             font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;line-height:1.5;"
+      onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
+    >${uraian}</textarea>`;
+  } else {
+    html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
+      border-left:3px solid #4f8ef7;white-space:pre-wrap;line-height:1.5;min-height:40px;">
+      ${uraian || '<span style="color:#aaa;font-style:italic;">Belum ada uraian</span>'}
+    </div>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
+// ── Pindah tab sesi ───────────────────────────────────────────────────────────
+function _laporanSwitchSesi(sesiNum) {
+  // Simpan uraian sesi sebelumnya ke cache lokal sebelum pindah
+  const currentTextarea = document.getElementById("laporan-uraian");
+  if (currentTextarea) {
+    const oldSesi = parseInt(currentTextarea.dataset.sesi || _laporanActiveSesi);
+    const sesiObj = _laporanAllSessions.find(s => s.sesi === oldSesi);
+    if (sesiObj) sesiObj.uraian = currentTextarea.value;
+  }
+  const isEditable = !!document.getElementById("laporan-save-btn");
+  _laporanRenderUraian(sesiNum, isEditable);
 }
 
 // ── Tombol tambah foto ────────────────────────────────────────────────────────
@@ -11980,7 +12068,7 @@ async function _loadLaporanThumbs(totalPhotos, isEditable) {
     return;
   }
   const user  = localStorage.getItem("user") || "";
-  const today = new Date().toLocaleDateString("sv-SE"); // fix: pakai locale lokal bukan UTC
+  const today = new Date().toLocaleDateString("sv-SE"); // fix: lokal bukan UTC
 
   const lbl = document.createElement("div");
   lbl.style.cssText = "font-size:10px;font-weight:700;color:#27ae60;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;";
@@ -12072,19 +12160,26 @@ function _compressLaporanPhoto(file) {
 
 // ── Simpan laporan ────────────────────────────────────────────────────────────
 async function _saveLaporan() {
-  const uraian = (document.getElementById("laporan-uraian")?.value || "").trim();
-  const btn    = document.getElementById("laporan-save-btn");
+  // Simpan dulu uraian sesi aktif dari textarea ke cache
+  const currentTextarea = document.getElementById("laporan-uraian");
+  if (currentTextarea) {
+    const tSesi = parseInt(currentTextarea.dataset.sesi || _laporanActiveSesi);
+    const sesiObj = _laporanAllSessions.find(s => s.sesi === tSesi);
+    if (sesiObj) sesiObj.uraian = currentTextarea.value;
+  }
+
+  const btn = document.getElementById("laporan-save-btn");
   if (btn) { btn.disabled = true; btn.textContent = "\u23F3 Menyimpan..."; }
 
   try {
-    // 1. Upload foto pending satu per satu
+    // 1. Upload foto pending — masuk ke sesi aktif (currentSesi)
     if (_laporanPendingPhotos.length > 0) {
       for (var i = 0; i < _laporanPendingPhotos.length; i++) {
         if (btn) btn.textContent = "\u23F3 Upload foto " + (i + 1) + "/" + _laporanPendingPhotos.length + "...";
         try {
           const r = await authFetch("/work-photos/report", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ photos: [_laporanPendingPhotos[i].base64] })
+            body: JSON.stringify({ photos: [_laporanPendingPhotos[i].base64], targetSesi: _laporanCurrentSesi })
           });
           const d = await r.json();
           if (d.status === "MAX_PHOTOS") { showToast("\u26A0\uFE0F Kuota 5 foto/hari penuh"); break; }
@@ -12094,21 +12189,25 @@ async function _saveLaporan() {
       _laporanPendingPhotos = [];
     }
 
-    // 2. Simpan uraian
+    // 2. Simpan uraian semua sesi yang punya uraian (bisa multi-sesi)
     if (btn) btn.textContent = "\u23F3 Menyimpan uraian...";
-    const r = await authFetch("/work-photos/report", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uraian: uraian })
-    });
-    const d = await r.json();
-    if (d.status === "OK") {
-      showToast("\u2705 Laporan tersimpan");
-      document.getElementById("laporan-overlay")?.remove();
-      if (typeof checkAndShowLaporanBtn === "function") checkAndShowLaporanBtn();
-    } else {
-      showToast("\u26A0\uFE0F " + (d.msg || "Gagal simpan"));
-      if (btn) { btn.disabled = false; btn.textContent = "\u1F4BE Simpan Laporan"; }
+    // Jika hanya 1 sesi — simpan seperti biasa
+    const toSave = _laporanAllSessions.length > 0 ? _laporanAllSessions : [{ sesi: _laporanActiveSesi, uraian: currentTextarea?.value || "" }];
+    for (const sesiData of toSave) {
+      const r = await authFetch("/work-photos/report", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uraian: (sesiData.uraian || "").trim(), targetSesi: sesiData.sesi })
+      });
+      const d = await r.json();
+      if (d.status !== "OK") {
+        showToast("\u26A0\uFE0F " + (d.msg || "Gagal simpan sesi " + sesiData.sesi));
+        if (btn) { btn.disabled = false; btn.textContent = "\u1F4BE Simpan Laporan"; }
+        return;
+      }
     }
+    showToast("\u2705 Laporan tersimpan");
+    document.getElementById("laporan-overlay")?.remove();
+    if (typeof checkAndShowLaporanBtn === "function") checkAndShowLaporanBtn();
   } catch(err) {
     showToast("\u274C Gagal simpan laporan");
     if (btn) { btn.disabled = false; btn.textContent = "\u1F4BE Simpan Laporan"; }

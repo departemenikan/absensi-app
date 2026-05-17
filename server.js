@@ -4095,6 +4095,73 @@ app.get("/work-photos/today", requireLevel(3), (req, res) => {
   res.json(result);
 });
 
+// GET /work-photos/report/me — laporan hari ini milik user, return per-sesi
+// WAJIB terdaftar SEBELUM /work-photos/:user agar Express tidak salah tangkap
+app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
+  try {
+    const user  = req._requester;
+    const today = todayLocal();
+
+    // Load data absensi — fallback Supabase jika _store kosong
+    let data = load(F.data, null);
+    if (!data) data = await dbLoad(F.data, []);
+
+    // Cek apakah pernah absen hari ini
+    const adaHariIni = data.find(d => d.user === user && d.date === today);
+    if (!adaHariIni) {
+      return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "",
+                        currentSesi: 1, sessions: [], isEditable: false });
+    }
+
+    // Load work_photos — fallback Supabase jika _store kosong
+    let wpStore = load(F.workPhotos, null);
+    if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
+
+    const rawWp   = (wpStore[today] || {})[user];
+    const sessions = wpGetSessions(wpStore, today, user);
+    const merged   = wpMergeAllSessions(sessions);
+
+    console.log(`[REPORT/ME] ${user} ${today} — src:${rawWp?"store":"empty"} type:${Array.isArray(rawWp)?"arr["+sessions.length+"]":typeof rawWp} photos:${merged.photos.length} uraian:"${(merged.uraian||"").slice(0,50)}"`);
+
+    // Absensi hari ini diurutkan per sesi
+    const absenHariIni = data.filter(d => d.user === user && d.date === today)
+      .sort((a, b) => (a.sesi || 1) - (b.sesi || 1));
+    const recTerakhir = absenHariIni[absenHariIni.length - 1];
+    const aktivitas   = recTerakhir?.aktivitas || "";
+    const currentSesi = (absenHariIni.find(d => !d.jamKeluar) || recTerakhir)?.sesi || 1;
+
+    // Data per-sesi untuk tampilan multi-sesi di client
+    const sessionsOut = absenHariIni.map(absen => {
+      const sNum   = absen.sesi || 1;
+      const wpSesi = sessions.find(s => s.sesi === sNum) || { sesi: sNum, uraian: "", photos: [], updatedAt: null };
+      return {
+        sesi:        sNum,
+        uraian:      wpSesi.uraian || "",
+        totalPhotos: wpSesi.photos.length,
+        updatedAt:   wpSesi.updatedAt || null,
+        aktivitas:   absen.aktivitas || "",
+        jamMasuk:    absen.jamMasuk  || null,
+        jamKeluar:   absen.jamKeluar || null,
+        isAktif:     !absen.jamKeluar,
+      };
+    });
+
+    res.json({
+      uraian:      merged.uraian || "",
+      totalPhotos: merged.photos.length,
+      updatedAt:   merged.updatedAt || null,
+      aktivitas,
+      currentSesi,
+      sessions:    sessionsOut,
+      isEditable:  true,
+    });
+  } catch (err) {
+    console.error("[REPORT/ME] Error:", err.message);
+    res.status(500).json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "",
+                           currentSesi: 1, sessions: [], isEditable: true });
+  }
+});
+
 // GET /work-photos/:user — list metadata foto kegiatan user (tanpa image), support ?date=YYYY-MM-DD
 // Menggabungkan semua sesi pada tanggal tersebut
 app.get("/work-photos/:user", requireLevel(3), (req, res) => {
@@ -4114,17 +4181,15 @@ app.get("/work-photos/:user", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/:user/:index — foto kegiatan dengan image, support ?date=YYYY-MM-DD
-app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
+app.get("/work-photos/:user/:index", requireLevel(99), (req, res) => {
   const { user, index } = req.params;
   const date      = req.query.date || todayLocal();
   const requester = req._requester;
   const level     = req._requesterLevel;
   const users     = load(F.users, {});
 
-  // Akses kontrol: anggota (level >4) hanya bisa lihat foto sendiri
-  // Manager/koordinator (level 3-4) hanya bisa lihat anggota divisinya
-  // Owner/admin (level <=2) bisa lihat semua
-  if (level > 2 && requester !== user) {
+  // Akses kontrol: user bisa lihat foto milik sendiri; manager lihat divisinya; owner lihat semua
+  if (requester !== user && level > 2) {
     const me = users[requester];
     const target = users[user];
     if (!me || !target) return res.status(403).json({ status: "FORBIDDEN" });
@@ -4156,7 +4221,7 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
   try {
   const user    = req._requester;
   const today   = todayLocal();
-  const { uraian, photos, action, photoIndex } = req.body;
+  const { uraian, photos, action, photoIndex, targetSesi } = req.body;
 
   // Load data absensi dengan fallback Supabase
   let data = load(F.data, null);
@@ -4165,9 +4230,16 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
   const adaHariIni = data.find(d => d.user === user && d.date === today);
   if (!adaHariIni) return res.status(403).json({ status: "NOT_WORKING", msg: "Belum ada absensi hari ini" });
 
-  const recAktif    = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
-  const recTarget   = recAktif || data.slice().reverse().find(d => d.user === user && d.date === today);
-  const currentSesi = recTarget?.sesi || 1;
+  const recAktif = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+  const recLast  = data.slice().reverse().find(d => d.user === user && d.date === today);
+  // targetSesi: client bisa tentukan sesi mana yang diedit (untuk multi-sesi)
+  // default: sesi aktif (belum clock-out), atau sesi terakhir jika semua sudah clock-out
+  const defaultSesi  = (recAktif || recLast)?.sesi || 1;
+  const currentSesi  = (typeof targetSesi === "number" && targetSesi > 0)
+    ? targetSesi : defaultSesi;
+  // recTarget: absensi yang sesuai sesi yang diedit
+  const recTarget = data.find(d => d.user === user && d.date === today && d.sesi === currentSesi)
+                 || recLast;
 
   // Load work_photos dengan fallback Supabase
   let wpStore = load(F.workPhotos, null);
@@ -4256,49 +4328,6 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
   } catch (err) {
     console.error("[POST/REPORT] Error:", err.message);
     res.status(500).json({ status: "ERROR", msg: "Gagal simpan laporan: " + err.message });
-  }
-});
-
-// GET /work-photos/report/me — ambil laporan hari ini milik user (semua sesi digabung)
-// Async karena perlu fallback langsung ke Supabase saat _store belum siap (Render cold start)
-app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
-  try {
-    const user  = req._requester;
-    const today = todayLocal();
-
-    // Load data absensi — fallback ke Supabase jika _store kosong
-    let data    = load(F.data, null);
-    if (!data)  data = await dbLoad(F.data, []);
-
-    // Cek apakah pernah absen hari ini
-    const adaHariIni = data.find(d => d.user === user && d.date === today);
-    if (!adaHariIni) {
-      return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false });
-    }
-
-    // Load work_photos — fallback ke Supabase jika _store kosong
-    let wpStore = load(F.workPhotos, null);
-    if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
-
-    const rawWp  = (wpStore[today] || {})[user];
-    const sessions = wpGetSessions(wpStore, today, user);
-    const merged   = wpMergeAllSessions(sessions);
-
-    console.log(`[REPORT/ME] ${user} ${today} — src:${rawWp?"store":"empty"} type:${Array.isArray(rawWp)?"arr["+sessions.length+"]":typeof rawWp} photos:${merged.photos.length} uraian:"${(merged.uraian||"").slice(0,50)}"`);
-
-    const recTerakhir = data.slice().reverse().find(d => d.user === user && d.date === today);
-    const aktivitas   = recTerakhir?.aktivitas || "";
-
-    res.json({
-      uraian:      merged.uraian || "",
-      totalPhotos: merged.photos.length,
-      updatedAt:   merged.updatedAt || null,
-      aktivitas,
-      isEditable:  true,
-    });
-  } catch (err) {
-    console.error("[REPORT/ME] Error:", err.message);
-    res.status(500).json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: true });
   }
 });
 
