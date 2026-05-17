@@ -503,6 +503,40 @@ setInterval(() => {
     });
   }
 
+  // ── AUTO OVERTIME SERVER-SIDE ─────────────────────────────────────────────
+  // Jalan di 2 waktu:
+  //   1) Senin 01:00 — utama, midnight-split sudah selesai & jam sudah final
+  //   2) Senin 06:00 — backup, jika server restart antara 00:00–05:59
+  //      Urutan aman: overtime 06:00 → autoTutupKekurangan 07:00 (jarak 1 jam)
+  // PENTING: harus di atas "if (hour < 17) return" agar tidak terblokir
+  const isOvertimeTime = (hour === 1 && min === 0 && dow === 1) ||
+                         (hour === 6 && min === 0 && dow === 1);
+  if (isOvertimeTime) {
+    const usersOT = load(F.users, {});
+    const triggerLabel = (hour === 1) ? "Senin 01:00 (utama)" : "Senin 06:00 (backup)";
+    console.log(`[AUTO-OT-SERVER] Memproses overtime semua user (${triggerLabel})...`);
+    Object.keys(usersOT).forEach(username => {
+      try { hitungOvertimeBackground(username); } catch(e) {
+        console.error(`[AUTO-OT-SERVER] Gagal proses ${username}:`, e.message);
+      }
+    });
+    console.log(`[AUTO-OT-SERVER] Selesai (${triggerLabel}).`);
+  }
+
+  // ── AUTO RESET CUTI TAHUNAN — 1 Januari jam 00:01 ────────────────────────
+  // PENTING: harus di atas "if (hour < 17) return" agar tidak terblokir
+  if (hour === 0 && min === 1 && now.getDate() === 1 && now.getMonth() === 0) {
+    const tahunBaru = now.getFullYear();
+    const usersReset = load(F.users, {});
+    const kuotaReset = load(F.kuotaCuti, {});
+    console.log(`[AUTO-RESET] Reset cuti tahunan untuk tahun ${tahunBaru}...`);
+    Object.keys(usersReset).forEach(username => {
+      initKuotaUser(kuotaReset, username, tahunBaru);
+    });
+    save(F.kuotaCuti, kuotaReset);
+    console.log("[AUTO-RESET] Selesai reset cuti tahunan.");
+  }
+
   // ── AUTO CLOCK-OUT — hanya aktif mulai jam 17:00 ─────────────────────────
   if (hour < 17) return;
 
@@ -686,38 +720,6 @@ setInterval(() => {
       save(F.data, dataMid);
     }
     } // end toggleMidnightSplit check
-  }
-
-  // ── AUTO OVERTIME SERVER-SIDE ─────────────────────────────────────────────
-  // Jalan di 2 waktu:
-  //   1) Senin 01:00 — utama, midnight-split sudah selesai & jam sudah final
-  //   2) Senin 06:00 — backup, jika server restart antara 00:00–05:59
-  //      Urutan aman: overtime 06:00 → autoTutupKekurangan 07:00 (jarak 1 jam)
-  const isOvertimeTime = (hour === 1 && min === 0 && dow === 1) ||
-                         (hour === 6 && min === 0 && dow === 1);
-  if (isOvertimeTime) {
-    const usersOT = load(F.users, {});
-    const triggerLabel = (hour === 1) ? "Senin 01:00 (utama)" : "Senin 06:00 (backup)";
-    console.log(`[AUTO-OT-SERVER] Memproses overtime semua user (${triggerLabel})...`);
-    Object.keys(usersOT).forEach(username => {
-      try { hitungOvertimeBackground(username); } catch(e) {
-        console.error(`[AUTO-OT-SERVER] Gagal proses ${username}:`, e.message);
-      }
-    });
-    console.log(`[AUTO-OT-SERVER] Selesai (${triggerLabel}).`);
-  }
-
-  // ── AUTO RESET CUTI TAHUNAN — 1 Januari jam 00:01 ────────────────────────
-  if (hour === 0 && min === 1 && now.getDate() === 1 && now.getMonth() === 0) {
-    const tahunBaru = now.getFullYear();
-    const usersReset = load(F.users, {});
-    const kuotaReset = load(F.kuotaCuti, {});
-    console.log(`[AUTO-RESET] Reset cuti tahunan untuk tahun ${tahunBaru}...`);
-    Object.keys(usersReset).forEach(username => {
-      initKuotaUser(kuotaReset, username, tahunBaru);
-    });
-    save(F.kuotaCuti, kuotaReset);
-    console.log("[AUTO-RESET] Selesai reset cuti tahunan.");
   }
 
 }, 60000); // cek setiap 1 menit
