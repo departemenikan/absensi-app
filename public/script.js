@@ -10816,7 +10816,7 @@ async function loadWorkPhotoList(silent = false) {
 
       // Baris bawah kanan: info foto atau teks kosong jika belum ada
       const fotoRight = total > 0
-        ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">📸 ${total} foto${lastT ? " · " + lastT : ""}</span>`
+        ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">📸 ${total} foto</span>`
         : `<span style="font-size:11px;color:#bbb;white-space:nowrap;">Belum ada laporan & foto</span>`;
 
       return `
