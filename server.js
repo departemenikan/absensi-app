@@ -23,7 +23,7 @@ const path     = require("path");
 const bcrypt   = require("bcryptjs");
 const webpush  = require("web-push");
 const app      = express();
-const { dbLoad, dbSave, migrateFromTmp } = require("./db");
+const { dbLoad, dbSave, migrateFromTmp, USE_SUPABASE, bucketUpload, bucketDelete, bucketDeleteMany, bucketSignedUrl, base64ToBuffer } = require("./db");
 const { sendWA, waStatus, getWAQR, logoutWA } = require("./wa");
 
 // ── Fonnte WA API — hanya untuk notif penting (cuti) ─────────────────────────
@@ -844,30 +844,55 @@ setInterval(() => {
 
 // ── CLEANUP MALAM — hapus screenshot & foto kegiatan > 7 hari ────────────────
 // Berjalan setiap menit, eksekusi cleanup hanya jam 00:05
-setInterval(() => {
+setInterval(async () => {
   const now  = new Date();
   if (now.getHours() !== 0 || now.getMinutes() !== 5) return;
 
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 3);
+  cutoff.setDate(cutoff.getDate() - 7);
   const cutoffStr = cutoff.toLocaleDateString("sv-SE");
 
   // Cleanup screenshots
   const screenshots = load(F.screenshots, {});
   let ssDeleted = 0;
-  Object.keys(screenshots).forEach(k => { if (k < cutoffStr) { delete screenshots[k]; ssDeleted++; } });
+  const ssBucketPaths = [];
+  Object.keys(screenshots).forEach(k => {
+    if (k < cutoffStr) {
+      // Kumpulkan path bucket untuk dihapus
+      Object.values(screenshots[k]).forEach(shots => {
+        shots.forEach(s => { if (s.path) ssBucketPaths.push(s.path); });
+      });
+      delete screenshots[k];
+      ssDeleted++;
+    }
+  });
   if (ssDeleted > 0) {
     save(F.screenshots, screenshots);
-    console.log(`[CLEANUP] ✅ Hapus ${ssDeleted} hari data screenshot (retensi 7 hari)`);
+    if (ssBucketPaths.length) await bucketDeleteMany(ssBucketPaths);
+    console.log(`[CLEANUP] ✅ Hapus ${ssDeleted} hari screenshot (retensi 7 hari) — ${ssBucketPaths.length} file bucket`);
   }
 
   // Cleanup work photos
   const workPhotos = load(F.workPhotos, {});
   let wpDeleted = 0;
-  Object.keys(workPhotos).forEach(k => { if (k < cutoffStr) { delete workPhotos[k]; wpDeleted++; } });
+  const wpBucketPaths = [];
+  Object.keys(workPhotos).forEach(k => {
+    if (k < cutoffStr) {
+      // Kumpulkan path bucket untuk dihapus
+      Object.values(workPhotos[k]).forEach(sessions => {
+        const sesArr = Array.isArray(sessions) ? sessions : [sessions];
+        sesArr.forEach(s => {
+          (s.photos || []).forEach(p => { if (p.path) wpBucketPaths.push(p.path); });
+        });
+      });
+      delete workPhotos[k];
+      wpDeleted++;
+    }
+  });
   if (wpDeleted > 0) {
     save(F.workPhotos, workPhotos);
-    console.log(`[CLEANUP] ✅ Hapus ${wpDeleted} hari data foto kegiatan (retensi 7 hari)`);
+    if (wpBucketPaths.length) await bucketDeleteMany(wpBucketPaths);
+    console.log(`[CLEANUP] ✅ Hapus ${wpDeleted} hari foto kerja (retensi 7 hari) — ${wpBucketPaths.length} file bucket`);
   }
 
   if (ssDeleted > 0 || wpDeleted > 0)
@@ -3670,8 +3695,7 @@ app.get("/absen-status", requireLevel(99), (req, res) => {
   res.json({ clockedIn: !!rec, user, date: today });
 });
 
-app.post("/screenshot", requireLevel(99), (req, res) => {
-  // Cek apakah fitur screenshot diaktifkan
+app.post("/screenshot", requireLevel(99), async (req, res) => {
   const settings = load(F.appSettings, {});
   if (settings.screenshotEnabled === false) {
     return res.status(403).json({ status: "DISABLED", msg: "Fitur screenshot tidak aktif" });
@@ -3680,8 +3704,6 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   const user  = req._requester;
   const today = todayLocal();
 
-  // Validasi: user harus sedang clock in (cari record aktif = belum clock out)
-  // Pakai !d.jamKeluar agar konsisten dengan /absen-status dan tidak salah tangkap record lama
   const data = load(F.data, []);
   const rec  = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
   if (!rec) {
@@ -3702,26 +3724,50 @@ app.post("/screenshot", requireLevel(99), (req, res) => {
   if (!screenshots[today]) screenshots[today] = {};
   if (!screenshots[today][user]) screenshots[today][user] = [];
 
-  screenshots[today][user].push({ ts: new Date().toISOString(), image });
+  const ts    = new Date().toISOString();
+  const idx   = screenshots[today][user].length;
+  let   entry = { ts };
 
-  // Batasi max 50 per user per hari (8 jam × 4 SS/jam = 32, dengan buffer)
+  // Upload ke bucket jika Supabase aktif, simpan path — bukan base64
+  if (USE_SUPABASE) {
+    try {
+      const buf      = base64ToBuffer(image);
+      const filePath = `screenshots/${today}/${user}/${idx}_${Date.now()}.jpg`;
+      const uploaded = await bucketUpload(filePath, buf);
+      if (uploaded) {
+        entry.path = filePath;   // simpan path, TIDAK simpan base64
+      } else {
+        entry.image = image;     // fallback: simpan base64 jika upload gagal
+        console.warn(`[SCREENSHOT] Bucket upload gagal, fallback base64 untuk ${user}`);
+      }
+    } catch(e) {
+      entry.image = image;
+      console.error("[SCREENSHOT] Bucket error:", e.message);
+    }
+  } else {
+    entry.image = image;         // tanpa Supabase: simpan base64 di /tmp
+  }
+
+  screenshots[today][user].push(entry);
+
+  // Batasi max 50 per user per hari
   if (screenshots[today][user].length > 50) {
     screenshots[today][user] = screenshots[today][user].slice(-50);
   }
 
-  // Retensi 7 hari — hapus data lebih dari 7 hari
+  // Retensi 7 hari — hapus metadata lebih dari 7 hari
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 3);
+  cutoff.setDate(cutoff.getDate() - 7);
   const cutoffStr = cutoff.toLocaleDateString("sv-SE");
   Object.keys(screenshots).forEach(k => {
     if (k < cutoffStr) {
       delete screenshots[k];
-      console.log(`[SCREENSHOT] Cleanup: hapus data tanggal ${k}`);
+      console.log(`[SCREENSHOT] Cleanup metadata: hapus tanggal ${k}`);
     }
   });
 
   save(F.screenshots, screenshots);
-  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total hari ini: ${screenshots[today][user].length}`);
+  console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total hari ini: ${screenshots[today][user].length} | bucket: ${!!entry.path}`);
   res.json({ status: "OK" });
 });
 
@@ -3835,13 +3881,22 @@ app.get("/screenshots/:user", requireLevel(3), (req, res) => {
 });
 
 // GET /screenshots/:user/:index — satu screenshot dengan image, support ?date=YYYY-MM-DD
-app.get("/screenshots/:user/:index", requireLevel(3), (req, res) => {
+app.get("/screenshots/:user/:index", requireLevel(3), async (req, res) => {
   const { user, index } = req.params;
   const date        = req.query.date || todayLocal();
   const screenshots = load(F.screenshots, {});
   const shots       = (screenshots[date] || {})[user] || [];
   const shot        = shots[parseInt(index)];
   if (!shot) return res.status(404).json({ status: "NOT_FOUND" });
+
+  // Jika tersimpan di bucket → kembalikan signed URL (valid 1 jam)
+  if (shot.path && USE_SUPABASE) {
+    const signedUrl = await bucketSignedUrl(shot.path, 3600);
+    if (signedUrl) return res.json({ ts: shot.ts, url: signedUrl, date });
+    return res.status(500).json({ status: "ERROR", msg: "Gagal generate URL" });
+  }
+
+  // Fallback: base64 lama
   res.json({ ts: shot.ts, image: shot.image, date });
 });
 
@@ -4181,7 +4236,7 @@ app.get("/work-photos/:user", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/:user/:index — foto kegiatan dengan image, support ?date=YYYY-MM-DD
-app.get("/work-photos/:user/:index", requireLevel(99), (req, res) => {
+app.get("/work-photos/:user/:index", requireLevel(99), async (req, res) => {
   const { user, index } = req.params;
   const date      = req.query.date || todayLocal();
   const requester = req._requester;
@@ -4212,6 +4267,15 @@ app.get("/work-photos/:user/:index", requireLevel(99), (req, res) => {
   const allPhotos = merged.photos;
   const photo     = allPhotos[parseInt(index)];
   if (!photo) return res.status(404).json({ status: "NOT_FOUND" });
+
+  // Jika tersimpan di bucket → kembalikan signed URL
+  if (photo.path && USE_SUPABASE) {
+    const signedUrl = await bucketSignedUrl(photo.path, 3600);
+    if (signedUrl) return res.json({ ts: photo.ts, url: signedUrl, date });
+    return res.status(500).json({ status: "ERROR", msg: "Gagal generate URL" });
+  }
+
+  // Fallback: base64 lama
   res.json({ ts: photo.ts, image: photo.image, date });
 });
 
@@ -4308,7 +4372,31 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
       if (fotoHariIni >= 5) {
         return res.status(400).json({ status: "MAX_PHOTOS", msg: "Maksimal 5 foto per hari" });
       }
-      laporan.photos.push({ ts: new Date().toISOString(), image: img });
+      const ts       = new Date().toISOString();
+      const photoIdx = fotoHariIni;
+      let   entry    = { ts };
+
+      // Upload ke bucket jika Supabase aktif
+      if (USE_SUPABASE) {
+        try {
+          const buf      = base64ToBuffer(img);
+          const filePath = `workphotos/${today}/${user}/${currentSesi}_${photoIdx}_${Date.now()}.jpg`;
+          const uploaded = await bucketUpload(filePath, buf);
+          if (uploaded) {
+            entry.path = filePath;  // simpan path, TIDAK simpan base64
+          } else {
+            entry.image = img;      // fallback base64 jika bucket gagal
+            console.warn(`[LAPORAN] Bucket upload gagal, fallback base64 untuk ${user}`);
+          }
+        } catch(e) {
+          entry.image = img;
+          console.error("[LAPORAN] Bucket error:", e.message);
+        }
+      } else {
+        entry.image = img;          // tanpa Supabase: simpan base64
+      }
+
+      laporan.photos.push(entry);
       fotoHariIni++;
     }
   }

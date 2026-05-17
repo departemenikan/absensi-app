@@ -10506,10 +10506,11 @@ async function ssLoadThumb(index, username, date) {
     const d     = await r.json();
     const thumb = document.getElementById(`ss-thumb-${index}`);
     const load  = document.getElementById(`ss-loading-${index}`);
-    if (!thumb || !d.image) return;
+    const src   = d.url || d.image;
+    if (!thumb || !src) return;
     if (load) load.remove();
     const img = document.createElement("img");
-    img.src = d.image;
+    img.src = src;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;";
     thumb.insertBefore(img, thumb.firstChild);
   } catch {}
@@ -10528,7 +10529,7 @@ async function ssOpenModal(index, username, date) {
     const r = await authFetch(`/screenshots/${username}/${index}?date=${date}`);
     if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar","error"); return; }
     const d = await r.json();
-    img.src = d.image;
+    img.src = d.url || d.image;
     const waktu = new Date(d.ts).toLocaleString("id-ID",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
     if (info) info.textContent = `🖥️ ${username} · ${waktu}`;
   } catch { modal.style.display = "none"; }
@@ -10946,18 +10947,17 @@ async function wpLoadDetailThumb(index, username, date, i) {
   try {
     const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) return;
-    const d = await r.json();
-    const el = document.getElementById(`wpd-loading-${username}-${i}`);
-    if (!el) return;
+    const d   = await r.json();
+    const src = d.url || d.thumbnail || d.image;
+    const el  = document.getElementById(`wpd-loading-${username}-${i}`);
+    if (!el || !src) return;
     const container = el.parentElement;
-    if (d.thumbnail || d.image) {
-      const img = document.createElement("img");
-      img.src = d.thumbnail || d.image;
-      img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:8px;";
-      img.onload = () => { el.style.display = "none"; }; // sembunyikan spinner SETELAH img loaded
-      img.onerror = () => {}; // jaga-jaga jika gagal load
-      container.appendChild(img);
-    }
+    const img = document.createElement("img");
+    img.src = src;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:8px;";
+    img.onload  = () => { el.style.display = "none"; };
+    img.onerror = () => {};
+    container.appendChild(img);
   } catch {}
 }
 
@@ -11043,17 +11043,17 @@ async function wpLoadThumb(index, username, date, domIdx) {
   try {
     const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) return;
-    const d     = await r.json();
+    const d   = await r.json();
+    const src = d.url || d.image;
     const thumb = document.getElementById(`wp-thumb-${thumbId}`);
     const load  = document.getElementById(`wp-loading-${thumbId}`);
-    if (!thumb || !d.image) return;
+    if (!thumb || !src) return;
     const img = document.createElement("img");
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;display:none;";
-    // Tambah ke DOM dulu, baru set src — cegah foto hitam
     thumb.insertBefore(img, thumb.firstChild);
     img.onload  = () => { img.style.display = "block"; if (load) load.remove(); };
     img.onerror = () => { img.remove(); };
-    img.src = d.image;
+    img.src = src;
   } catch {}
 }
 
@@ -11070,7 +11070,7 @@ async function wpOpenModal(index, username, date) {
     const r = await authFetch(`/work-photos/${username}/${index}?date=${date}`);
     if (!r.ok) { modal.style.display = "none"; showToast("❌ Gagal memuat gambar", "error"); return; }
     const d = await r.json();
-    img.src = d.image;
+    img.src = d.url || d.image;
     const waktu = new Date(d.ts).toLocaleString("id-ID", { day: "2-digit", month: "short", year:"numeric", hour: "2-digit", minute: "2-digit" });
     if (info) info.textContent = `📸 Foto ${index+1} — ${username} · ${waktu}`;
   } catch { modal.style.display = "none"; }
@@ -12052,11 +12052,12 @@ async function _loadLaporanThumbs(totalPhotos, isEditable) {
       authFetch("/work-photos/" + user + "/" + idx + "?date=" + today)
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(d) {
-          if (d && d.image) {
+          if (d && (d.url || d.image)) {
+            const src = d.url || d.image;
             img.onload  = function() { spin.style.display = "none"; img.style.display = "block"; };
             img.onerror = function() { spin.textContent = "\u274C"; };
             box.appendChild(img);
-            img.src = d.image;
+            img.src = src;
           } else { spin.textContent = "\u274C"; }
         })
         .catch(function() { spin.textContent = "\u274C"; });

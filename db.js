@@ -187,4 +187,142 @@ async function migrateFromTmp(fileMap) {
   console.log(`[MIGRATE] Selesai. ${migrated} file berhasil dimigrasi.`);
 }
 
-module.exports = { dbLoad, dbSave, migrateFromTmp, USE_SUPABASE };
+// ── SUPABASE STORAGE BUCKET ───────────────────────────────────────────────────
+// Bucket "media" harus dibuat manual di dashboard Supabase:
+//   Storage → New bucket → name: "media" → Public: OFF
+//
+// Path konvensi:
+//   screenshots/<date>/<user>/<index>.jpg
+//   workphotos/<date>/<user>/<sesi>_<ts>.jpg
+
+const BUCKET = "media";
+
+// Upload file ke bucket — body berupa Buffer (binary JPEG)
+async function bucketUpload(filePath, buffer, contentType = "image/jpeg") {
+  if (!USE_SUPABASE) return null;
+  return new Promise((resolve, reject) => {
+    const url     = new URL(SUPABASE_URL);
+    const bodyBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    const opts = {
+      hostname: url.hostname,
+      path:     `/storage/v1/object/${BUCKET}/${filePath}`,
+      method:   "POST",
+      headers: {
+        "apikey":          SUPABASE_KEY,
+        "Authorization":   `Bearer ${SUPABASE_KEY}`,
+        "Content-Type":    contentType,
+        "Content-Length":  bodyBuf.length,
+        "x-upsert":        "true",
+      },
+    };
+    const req = https.request(opts, res => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        if (res.statusCode >= 400) {
+          console.error(`[BUCKET] Upload gagal ${filePath}: ${res.statusCode} ${raw}`);
+          resolve(null);
+        } else {
+          resolve(filePath);
+        }
+      });
+    });
+    req.on("error", e => { console.error("[BUCKET] Upload error:", e.message); resolve(null); });
+    req.write(bodyBuf);
+    req.end();
+  });
+}
+
+// Hapus satu file dari bucket
+async function bucketDelete(filePath) {
+  if (!USE_SUPABASE) return;
+  try {
+    const { status } = await supabaseRequest(
+      "DELETE",
+      ``,  // pakai endpoint storage
+      { prefixes: [filePath] },
+      { "Content-Type": "application/json" }
+    );
+    // Pakai fetch langsung untuk storage delete (endpoint berbeda)
+    return await _storageDelete([filePath]);
+  } catch(e) {
+    console.error("[BUCKET] Delete error:", e.message);
+  }
+}
+
+// Hapus banyak file sekaligus (lebih efisien)
+async function bucketDeleteMany(filePaths) {
+  if (!USE_SUPABASE || !filePaths.length) return;
+  return await _storageDelete(filePaths);
+}
+
+function _storageDelete(filePaths) {
+  return new Promise((resolve) => {
+    const url     = new URL(SUPABASE_URL);
+    const bodyStr = JSON.stringify({ prefixes: filePaths });
+    const opts = {
+      hostname: url.hostname,
+      path:     `/storage/v1/object/${BUCKET}`,
+      method:   "DELETE",
+      headers: {
+        "apikey":          SUPABASE_KEY,
+        "Authorization":   `Bearer ${SUPABASE_KEY}`,
+        "Content-Type":    "application/json",
+        "Content-Length":  Buffer.byteLength(bodyStr),
+      },
+    };
+    const req = https.request(opts, res => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => resolve(res.statusCode));
+    });
+    req.on("error", e => { console.error("[BUCKET] Delete error:", e.message); resolve(null); });
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+// Buat signed URL (berlaku 1 jam) untuk akses private bucket
+function bucketSignedUrl(filePath, expiresInSec = 3600) {
+  return new Promise((resolve) => {
+    const url     = new URL(SUPABASE_URL);
+    const bodyStr = JSON.stringify({ expiresIn: expiresInSec });
+    const opts = {
+      hostname: url.hostname,
+      path:     `/storage/v1/object/sign/${BUCKET}/${filePath}`,
+      method:   "POST",
+      headers: {
+        "apikey":          SUPABASE_KEY,
+        "Authorization":   `Bearer ${SUPABASE_KEY}`,
+        "Content-Type":    "application/json",
+        "Content-Length":  Buffer.byteLength(bodyStr),
+      },
+    };
+    const req = https.request(opts, res => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        try {
+          const d = JSON.parse(raw);
+          if (d.signedURL) {
+            resolve(`${SUPABASE_URL}${d.signedURL}`);
+          } else {
+            console.error("[BUCKET] SignedURL gagal:", raw);
+            resolve(null);
+          }
+        } catch { resolve(null); }
+      });
+    });
+    req.on("error", e => { console.error("[BUCKET] SignedURL error:", e.message); resolve(null); });
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+// Helper: konversi base64 data URL → Buffer binary
+function base64ToBuffer(dataUrl) {
+  const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+  return Buffer.from(base64, "base64");
+}
+
+module.exports = { dbLoad, dbSave, migrateFromTmp, USE_SUPABASE, bucketUpload, bucketDelete, bucketDeleteMany, bucketSignedUrl, base64ToBuffer };
