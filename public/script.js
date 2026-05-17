@@ -10910,7 +10910,7 @@ async function wpLoadUserDetail(username) {
     if (aktivitas || uraian) {
       html += `<div style="background:#f0f6ff;border-radius:10px;padding:11px 13px;margin-bottom:12px;border-left:3px solid #4f8ef7;">`;
       if (aktivitas) html += `<div style="font-size:11px;font-weight:700;color:#1976d2;margin-bottom:3px;">🏃 ${aktivitas}</div>`;
-      if (uraian)    html += `<div style="font-size:13px;color:#2c3e50;line-height:1.5;">📝 ${uraian}</div>`;
+      if (uraian)    html += `<div style="font-size:13px;color:#2c3e50;line-height:1.6;">📝 ${uraian.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>`;
       html += `</div>`;
     }
 
@@ -11002,7 +11002,7 @@ async function loadWorkPhotos(silent = false) {
           </div>` : ""}
           ${uraian ? `<div style="padding:10px 14px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;border-left:3px solid var(--primary);">
             <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;">📝 URAIAN KEGIATAN</div>
-            ${uraian}
+            <div style="line-height:1.6;">${uraian.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>
           </div>` : ""}`;
         uraianWrap.style.display = "block";
       } else {
@@ -11824,12 +11824,49 @@ function _laporanRenderBody(existing) {
   const uraianRows  = uraian ? Math.min(8, Math.max(3, uraian.split("\n").length + 1)) : 3;
   const uraianH     = uraianRows * 22 + 16;
   if (isEditable) {
+    // Tambahkan bullet • pada tiap baris uraian yang belum punya, saat dimuat
+    const uraianWithBullets = uraian
+      ? uraian.split("\n").map(l => l.trim() === "" ? "" : (l.startsWith("• ") ? l : "• " + l)).join("\n")
+      : "";
     html += `<textarea id="laporan-uraian"
-      placeholder="${aktivitas ? "Uraian kegiatan \u2014 " + aktivitas + "..." : "Tulis uraian kegiatan hari ini..."}"
+      placeholder="${aktivitas ? "• Uraian kegiatan \u2014 " + aktivitas + "..." : "• Tulis uraian kegiatan hari ini..."}"
       style="width:100%;height:${uraianH}px;min-height:72px;padding:10px 12px;border:1.5px solid #e8ecf0;border-radius:10px;
              font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;line-height:1.5;"
       onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
-    >${uraian}</textarea>`;
+    >${uraianWithBullets}</textarea>`;
+    // Inject script auto-bullet setelah textarea dirender
+    html += `<script>
+(function() {
+  // Tunggu textarea ada di DOM
+  var _ta = document.getElementById('laporan-uraian');
+  if (!_ta) return;
+  // Jika kosong, isi dengan bullet awal
+  if (!_ta.value) { _ta.value = '• '; }
+  _ta.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var start = this.selectionStart;
+    var end   = this.selectionEnd;
+    var val   = this.value;
+    // Sisipkan newline + bullet
+    var ins = '\\n• ';
+    this.value = val.slice(0, start) + ins + val.slice(end);
+    // Pindahkan kursor ke setelah bullet baru
+    var pos = start + ins.length;
+    this.selectionStart = this.selectionEnd = pos;
+    // Resize otomatis
+    this.style.height = 'auto';
+    this.style.height = Math.max(72, this.scrollHeight) + 'px';
+  });
+  _ta.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.max(72, this.scrollHeight) + 'px';
+  });
+  // Resize awal
+  _ta.style.height = 'auto';
+  _ta.style.height = Math.max(72, _ta.scrollHeight) + 'px';
+})();
+<\/script>`;
   } else {
     html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
       border-left:3px solid #4f8ef7;white-space:pre-wrap;line-height:1.5;min-height:40px;">
