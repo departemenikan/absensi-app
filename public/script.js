@@ -10818,7 +10818,10 @@ async function loadWorkPhotoList(silent = false) {
         ? `<span style="font-size:11px;color:var(--muted);">📸 ${total} foto${lastT ? " · " + lastT : ""}</span>`
         : `<span style="font-size:11px;color:var(--muted);">Belum ada laporan & foto</span>`;
 
-      const uraianSnip = ""; // dihapus — uraian tampil di detail saja, tidak dobel di card
+      const uraianSnip = uraian
+        ? `<div style="font-size:12px;color:#555;margin-top:5px;padding:5px 8px;background:#f8f9ff;
+               border-left:3px solid #4f8ef7;border-radius:4px;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${uraian}"</div>` : "";
 
       return `
         <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:8px;
@@ -10905,17 +10908,17 @@ async function wpLoadUserDetail(username) {
       html += `</div>`;
     }
 
-    // Foto grid
+    // Foto grid — 1 baris 5 foto, klik untuk besar
     if (photos.length > 0) {
-      html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">`;
+      html += `<div style="display:flex;gap:5px;overflow-x:auto;">`;
       photos.forEach((p, i) => {
         const waktu = new Date(p.ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
         html += `<div onclick="wpOpenModal(${p.index},'${username}','${date}')"
-          style="aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:pointer;
+          style="flex:0 0 18%;max-width:18%;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;
                  background:#f0f2f5;position:relative;display:flex;align-items:center;justify-content:center;">
-          <span style="font-size:22px;color:#bbb;" id="wpd-loading-${username}-${i}">⏳</span>
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.45);
-            padding:3px 5px;color:white;font-size:10px;font-weight:700;">${waktu}</div>
+          <span style="font-size:16px;color:#bbb;" id="wpd-loading-${username}-${i}">⏳</span>
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);
+            padding:2px 3px;color:white;font-size:9px;font-weight:700;text-align:center;">${waktu}</div>
         </div>`;
       });
       html += `</div><div style="font-size:11px;color:#aaa;text-align:right;margin-top:4px;">${photos.length} foto · ${dateFmt}</div>`;
