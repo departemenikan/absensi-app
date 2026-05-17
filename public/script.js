@@ -10818,10 +10818,7 @@ async function loadWorkPhotoList(silent = false) {
         ? `<span style="font-size:11px;color:var(--muted);">📸 ${total} foto${lastT ? " · " + lastT : ""}</span>`
         : `<span style="font-size:11px;color:var(--muted);">Belum ada laporan & foto</span>`;
 
-      const uraianSnip = uraian
-        ? `<div style="font-size:12px;color:#555;margin-top:5px;padding:5px 8px;background:#f8f9ff;
-               border-left:3px solid #4f8ef7;border-radius:4px;
-               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${uraian}"</div>` : "";
+      const uraianSnip = ""; // dihapus — uraian tampil di detail saja, tidak dobel di card
 
       return `
         <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:8px;
@@ -10833,19 +10830,16 @@ async function loadWorkPhotoList(silent = false) {
               display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;">
               ${initial}</div>
             <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span style="font-weight:700;font-size:14px;color:var(--text);">${nm}</span>
-                ${platBadge}
+              <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${nm}</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${u.jabatan || ""}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                ${statusBadge}${platBadge}
               </div>
-              <div style="font-size:11px;color:var(--muted);margin-top:1px;">${u.jabatan || ""}</div>
-              <div style="margin-top:3px;">${fotoInfo}</div>
+              <div style="margin-top:4px;">${fotoInfo}</div>
               ${uraianSnip}
             </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
-              ${statusBadge}
-              <span id="wp-chevron-${u.username}"
-                style="font-size:22px;color:#ddd;transition:transform .25s;line-height:1;">›</span>
-            </div>
+            <span id="wp-chevron-${u.username}"
+              style="font-size:22px;color:#ddd;transition:transform .25s;flex-shrink:0;line-height:1;">›</span>
           </div>
           <div id="wp-detail-${u.username}" style="display:none;border-top:1px solid #f5f5f5;"></div>
         </div>`;
