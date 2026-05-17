@@ -11980,7 +11980,7 @@ async function _loadLaporanThumbs(totalPhotos, isEditable) {
     return;
   }
   const user  = localStorage.getItem("user") || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("sv-SE"); // fix: pakai locale lokal bukan UTC
 
   const lbl = document.createElement("div");
   lbl.style.cssText = "font-size:10px;font-weight:700;color:#27ae60;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;";
