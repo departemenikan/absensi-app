@@ -10910,7 +10910,7 @@ async function wpLoadUserDetail(username) {
     if (aktivitas || uraian) {
       html += `<div style="background:#f0f6ff;border-radius:10px;padding:11px 13px;margin-bottom:12px;border-left:3px solid #4f8ef7;">`;
       if (aktivitas) html += `<div style="font-size:11px;font-weight:700;color:#1976d2;margin-bottom:3px;">🏃 ${aktivitas}</div>`;
-      if (uraian)    html += `<div style="font-size:13px;color:#2c3e50;line-height:1.6;">📝 ${uraian.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>`;
+      if (uraian)    html += `<div style="font-size:13px;color:#2c3e50;line-height:1.6;">${uraian.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>")}</div>`;
       html += `</div>`;
     }
 
