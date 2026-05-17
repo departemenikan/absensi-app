@@ -10804,40 +10804,46 @@ async function loadWorkPhotoList(silent = false) {
       const lastT   = u.lastPhoto ? new Date(u.lastPhoto).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
 
       const statusBadge = u.status && statusLabel[u.status]
-        ? `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
+        ? `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;
             background:${statusColor[u.status]||"#95a5a6"}22;color:${statusColor[u.status]||"#95a5a6"};">
             ${statusLabel[u.status]}</span>` : "";
 
       const platBadge = u.platform && platLabels[u.platform]
-        ? `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;
+        ? `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;
             background:${platColors[u.platform]}22;color:${platColors[u.platform]};">
             ${platLabels[u.platform]}</span>` : "";
 
-      const fotoInfo = total > 0
-        ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📸 ${total} foto${lastT ? " · " + lastT : ""}</div>`
-        : `<div style="font-size:11px;color:#ccc;margin-top:2px;">Belum ada foto</div>`;
+      // Baris bawah kanan: info foto atau teks kosong jika belum ada
+      const fotoRight = total > 0
+        ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">📸 ${total} foto${lastT ? " · " + lastT : ""}</span>`
+        : `<span style="font-size:11px;color:#bbb;white-space:nowrap;">Belum ada laporan & foto</span>`;
 
       return `
         <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:6px;
           box-shadow:0 1px 4px rgba(0,0,0,.06);background:white;overflow:hidden;">
           <div onclick="wpSelectUser('${u.username}')"
             style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;">
+            <!-- Avatar -->
             <div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;
               background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;
               display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
               ${initial}</div>
+            <!-- Info 2 baris -->
             <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nm}</div>
-              <div style="font-size:11px;color:var(--muted);">${u.jabatan || ""}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:3px;">
-                ${statusBadge}${platBadge}
+              <!-- Baris 1: Nama · platBadge · statusBadge -->
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow:hidden;">
+                <span style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;">${nm}</span>
+                ${platBadge}${statusBadge}
+              </div>
+              <!-- Baris 2: Jabatan (kiri) · fotoInfo (kanan) -->
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;">
+                <span style="font-size:11px;color:var(--muted);">${u.jabatan || ""}</span>
+                ${fotoRight}
               </div>
             </div>
-            <div style="text-align:right;flex-shrink:0;min-width:0;">
-              ${fotoInfo}
-            </div>
+            <!-- Chevron -->
             <span id="wp-chevron-${u.username}"
-              style="font-size:20px;color:#ddd;transition:transform .25s;flex-shrink:0;line-height:1;margin-left:4px;">›</span>
+              style="font-size:20px;color:#ddd;transition:transform .25s;flex-shrink:0;line-height:1;margin-left:2px;">›</span>
           </div>
           <div id="wp-detail-${u.username}" style="display:none;border-top:1px solid #f5f5f5;"></div>
         </div>`;
