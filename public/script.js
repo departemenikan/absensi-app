@@ -10829,16 +10829,21 @@ async function loadWorkPhotoList(silent = false) {
               display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
               ${initial}</div>
             <!-- Info 2 baris -->
-            <div style="flex:1;min-width:0;">
-              <!-- Baris 1: Nama · platBadge · statusBadge -->
-              <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow:hidden;">
-                <span style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;">${nm}</span>
-                ${platBadge}${statusBadge}
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;">
+              <!-- Kiri: Nama + Jabatan -->
+              <div style="flex:1;min-width:0;">
+                <!-- Baris 1: Nama · platBadge -->
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow:hidden;">
+                  <span style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;">${nm}</span>
+                  ${platBadge}
+                </div>
+                <!-- Baris 2: Jabatan -->
+                <div style="font-size:11px;color:var(--muted);margin-top:3px;">${u.jabatan || ""}</div>
               </div>
-              <!-- Baris 2: Jabatan (kiri) · fotoInfo (kanan) -->
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;">
-                <span style="font-size:11px;color:var(--muted);">${u.jabatan || ""}</span>
-                ${fotoRight}
+              <!-- Kanan: statusBadge atas · fotoInfo bawah -->
+              <div style="text-align:right;flex-shrink:0;">
+                <div>${statusBadge}</div>
+                <div style="margin-top:3px;">${fotoRight}</div>
               </div>
             </div>
             <!-- Chevron -->
