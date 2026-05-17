@@ -77,6 +77,108 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", time: new Date().toISOString() });
 });
 
+// ── Debug + Fix endpoint — diagnosa & repair data Supabase ──────────────────
+// GET  /debug/wp/:user  → lihat struktur data
+// POST /debug/fix-wp    → repair format data work_photos ke format baru
+app.post("/debug/fix-wp", async (req, res) => {
+  const auth = req.headers.authorization || "";
+  const JWT_SECRET = process.env.JWT_SECRET || "";
+  if (!JWT_SECRET || !auth.includes(JWT_SECRET.slice(0,8))) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  try {
+    const wpRaw = await dbLoad("work_photos", {});
+    let fixed = 0, total = 0;
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Makassar" });
+
+    // Perbaiki semua entry dalam 3 hari terakhir
+    for (const date of Object.keys(wpRaw)) {
+      for (const user of Object.keys(wpRaw[date] || {})) {
+        total++;
+        const raw = wpRaw[date][user];
+        // Jika sudah array of sessions — skip
+        if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0].sesi !== "undefined") continue;
+        // Convert ke format baru
+        let newVal;
+        if (Array.isArray(raw) && raw.length > 0 && raw[0].image !== undefined) {
+          // Array foto langsung
+          newVal = [{ sesi: 1, uraian: "", photos: raw, updatedAt: null, jamMasuk: null, lockedAt: null }];
+        } else if (!Array.isArray(raw) && raw && typeof raw === "object") {
+          // Object {uraian, photos, updatedAt}
+          newVal = [{ sesi: 1, uraian: raw.uraian || "", photos: Array.isArray(raw.photos) ? raw.photos : [], updatedAt: raw.updatedAt || null, jamMasuk: null, lockedAt: null }];
+        } else {
+          continue; // tidak dikenal, skip
+        }
+        wpRaw[date][user] = newVal;
+        fixed++;
+        console.log(`[FIX-WP] ${date}/${user}: converted → sesi:${newVal.length} photos:${newVal[0].photos.length} uraian:"${(newVal[0].uraian||"").slice(0,40)}"`);
+      }
+    }
+
+    if (fixed > 0) {
+      // Simpan ke Supabase dan update _store
+      _store["work_photos"] = wpRaw;
+      await dbLoad("work_photos", {}); // warm cache
+      save("work_photos", wpRaw);
+      console.log(`[FIX-WP] ✅ ${fixed}/${total} entries diperbaiki`);
+    }
+
+    res.json({ status: "OK", total, fixed, msg: fixed > 0 ? `${fixed} entries direpair ke format baru` : "Semua sudah format baru" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/debug/wp/:user", async (req, res) => {
+  // Simple auth: hanya dengan Bearer token yang sama dengan JWT secret
+  const auth = req.headers.authorization || "";
+  const JWT_SECRET = process.env.JWT_SECRET || "";
+  if (!JWT_SECRET || !auth.includes(JWT_SECRET.slice(0,8))) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  try {
+    const { user } = req.params;
+    const today    = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Makassar" });
+
+    // Baca langsung dari Supabase (bypass _store)
+    const wpRaw  = await dbLoad("work_photos", {});
+    const dataRaw = await dbLoad("data", []);
+
+    const dayData    = (wpRaw[today] || {})[user];
+    const absenHari  = dataRaw.filter(d => d.user === user && d.date === today);
+
+    // Baca juga dari _store (RAM)
+    const wpStore    = load("work_photos", null);
+    const dayStore   = wpStore ? ((wpStore[today] || {})[user]) : "(_store kosong)";
+
+    res.json({
+      today,
+      user,
+      supabase: {
+        type:  Array.isArray(dayData) ? "array[" + dayData.length + "]" : typeof dayData,
+        keys:  dayData && !Array.isArray(dayData) ? Object.keys(dayData).slice(0, 8) : null,
+        arrayItem0: Array.isArray(dayData) && dayData[0] ? {
+          sesi:      dayData[0].sesi,
+          uraian:    (dayData[0].uraian || "").slice(0, 80),
+          photos:    (dayData[0].photos || []).length,
+          updatedAt: dayData[0].updatedAt,
+        } : null,
+        raw_preview: JSON.stringify(dayData).slice(0, 300),
+      },
+      ram_store: {
+        type:    Array.isArray(dayStore) ? "array[" + dayStore.length + "]" : typeof dayStore,
+        present: dayStore !== null && dayStore !== "(_store kosong)",
+        preview: typeof dayStore === "string" ? dayStore : JSON.stringify(dayStore).slice(0, 200),
+      },
+      absen_hari_ini: absenHari.map(d => ({
+        sesi: d.sesi, jamMasuk: d.jamMasuk, jamKeluar: d.jamKeluar, aktivitas: d.aktivitas
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Key Supabase (string pendek) ↔ path file /tmp (untuk fallback & migrasi) ──
 const F = {
   data:            "data",
