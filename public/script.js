@@ -10801,48 +10801,43 @@ async function loadWorkPhotoList(silent = false) {
       const nm      = u.namaLengkap || u.username;
       const initial = nm.charAt(0).toUpperCase();
       const total   = u.totalPhotos || 0;
-      const uraian  = u.uraian || "";
       const lastT   = u.lastPhoto ? new Date(u.lastPhoto).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}) : "";
 
       const statusBadge = u.status && statusLabel[u.status]
-        ? `<span style="padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
+        ? `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
             background:${statusColor[u.status]||"#95a5a6"}22;color:${statusColor[u.status]||"#95a5a6"};">
             ${statusLabel[u.status]}</span>` : "";
 
       const platBadge = u.platform && platLabels[u.platform]
-        ? `<span style="padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;
+        ? `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:700;
             background:${platColors[u.platform]}22;color:${platColors[u.platform]};">
             ${platLabels[u.platform]}</span>` : "";
 
       const fotoInfo = total > 0
-        ? `<span style="font-size:11px;color:var(--muted);">📸 ${total} foto${lastT ? " · " + lastT : ""}</span>`
-        : `<span style="font-size:11px;color:var(--muted);">Belum ada laporan & foto</span>`;
-
-      const uraianSnip = uraian
-        ? `<div style="font-size:12px;color:#555;margin-top:5px;padding:5px 8px;background:#f8f9ff;
-               border-left:3px solid #4f8ef7;border-radius:4px;
-               white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${uraian}"</div>` : "";
+        ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📸 ${total} foto${lastT ? " · " + lastT : ""}</div>`
+        : `<div style="font-size:11px;color:#ccc;margin-top:2px;">Belum ada foto</div>`;
 
       return `
-        <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:8px;
-          box-shadow:0 1px 5px rgba(0,0,0,.07);background:white;overflow:hidden;">
+        <div id="wp-row-${u.username}" style="border-radius:12px;margin-bottom:6px;
+          box-shadow:0 1px 4px rgba(0,0,0,.06);background:white;overflow:hidden;">
           <div onclick="wpSelectUser('${u.username}')"
-            style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;">
-            <div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;
+            style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;">
+            <div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;
               background:linear-gradient(135deg,#1a237e,#4f8ef7);color:white;
-              display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;">
+              display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">
               ${initial}</div>
             <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:3px;">${nm}</div>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${u.jabatan || ""}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+              <div style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nm}</div>
+              <div style="font-size:11px;color:var(--muted);">${u.jabatan || ""}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:3px;">
                 ${statusBadge}${platBadge}
               </div>
-              <div style="margin-top:4px;">${fotoInfo}</div>
-              ${uraianSnip}
+            </div>
+            <div style="text-align:right;flex-shrink:0;min-width:0;">
+              ${fotoInfo}
             </div>
             <span id="wp-chevron-${u.username}"
-              style="font-size:22px;color:#ddd;transition:transform .25s;flex-shrink:0;line-height:1;">›</span>
+              style="font-size:20px;color:#ddd;transition:transform .25s;flex-shrink:0;line-height:1;margin-left:4px;">›</span>
           </div>
           <div id="wp-detail-${u.username}" style="display:none;border-top:1px solid #f5f5f5;"></div>
         </div>`;
