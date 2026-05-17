@@ -116,6 +116,9 @@ const _store = {}; // In-memory store
 
 function load(key, def) {
   if (key in _store) return _store[key];
+  // null sebagai sentinel = caller mau async-fallback ke Supabase sendiri
+  if (def === null) return null;
+  console.warn(`[STORE] cold-start: "${key}" belum di RAM, pakai default. Routes async sudah handle ini.`);
   return def;
 }
 
@@ -1041,24 +1044,30 @@ app.post("/absen", requireLevel(99), (req, res) => {
   res.send({ status: "OK" });
 });
 
-app.get("/status/:user", requireSelfOrLevel("user", 2), (req, res) => {
-  const data  = load(F.data, []);
-  const today = todayLocal(); // lokal WITA
+app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
+  try {
+    const today = todayLocal();
+    // Fallback ke Supabase saat cold start
+    let data = load(F.data, null);
+    if (!data) data = await dbLoad(F.data, []);
 
-  // Cari record aktif hari ini (belum clock-out)
-  let aktif = data.find(d => d.user === req.params.user && d.date === today && !d.jamKeluar);
-  // Pernah absen hari ini (termasuk sudah clock-out)
-  const adaHariIni   = data.find(d => d.user === req.params.user && d.date === today);
-  const recTerakhir  = data.slice().reverse().find(d => d.user === req.params.user && d.date === today);
+    const username     = req.params.user;
+    let aktif          = data.find(d => d.user === username && d.date === today && !d.jamKeluar);
+    const adaHariIni   = data.find(d => d.user === username && d.date === today);
+    const recTerakhir  = data.slice().reverse().find(d => d.user === username && d.date === today);
 
-  if (!aktif) return res.send({
-    status: "OUT",
-    hadAbsenceToday: !!adaHariIni,
-    aktivitas: recTerakhir?.aktivitas || ""
-  });
-  const lb = aktif.breaks.at(-1);
-  const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
-  return res.send({ status: statusStr, hadAbsenceToday: true, aktivitas: aktif.aktivitas || "" });
+    if (!aktif) return res.send({
+      status: "OUT",
+      hadAbsenceToday: !!adaHariIni,
+      aktivitas: recTerakhir?.aktivitas || ""
+    });
+    const lb = aktif.breaks?.at(-1);
+    const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
+    return res.send({ status: statusStr, hadAbsenceToday: true, aktivitas: aktif.aktivitas || "" });
+  } catch (err) {
+    console.error("[STATUS] Error:", err.message);
+    res.send({ status: "OUT", hadAbsenceToday: false, aktivitas: "" });
+  }
 });
 
 // ========================
@@ -4004,25 +4013,27 @@ app.get("/work-photos/:user/:index", requireLevel(3), (req, res) => {
 });
 
 // POST /work-photos/report — simpan/update laporan
-// Rule baru: bisa edit sepanjang hari yg sama (bukan hanya saat clock-in aktif).
-//            Maks 5 foto PER HARI (semua sesi digabung), bukan per sesi.
-app.post("/work-photos/report", requireLevel(99), (req, res) => {
+// Rule: bisa edit sepanjang hari yg sama. Maks 5 foto PER HARI (semua sesi digabung).
+app.post("/work-photos/report", requireLevel(99), async (req, res) => {
+  try {
   const user    = req._requester;
   const today   = todayLocal();
   const { uraian, photos, action, photoIndex } = req.body;
 
-  // Pastikan user pernah clock-in hari ini (boleh sudah clock-out)
-  const data    = load(F.data, []);
+  // Load data absensi dengan fallback Supabase
+  let data = load(F.data, null);
+  if (!data) data = await dbLoad(F.data, []);
+
   const adaHariIni = data.find(d => d.user === user && d.date === today);
   if (!adaHariIni) return res.status(403).json({ status: "NOT_WORKING", msg: "Belum ada absensi hari ini" });
 
-  // Sesi aktif (belum clock out) — dipakai untuk menyimpan foto/uraian baru
   const recAktif    = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
-  // Jika tidak ada sesi aktif, gunakan sesi terakhir hari ini untuk menyimpan edit
   const recTarget   = recAktif || data.slice().reverse().find(d => d.user === user && d.date === today);
   const currentSesi = recTarget?.sesi || 1;
 
-  const wpStore = load(F.workPhotos, {});
+  // Load work_photos dengan fallback Supabase
+  let wpStore = load(F.workPhotos, null);
+  if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
   if (!wpStore[today]) wpStore[today] = {};
 
   // Normalisasi ke format array-of-sessions (backward-compat)
@@ -4104,38 +4115,53 @@ app.post("/work-photos/report", requireLevel(99), (req, res) => {
   const mergedFinal = wpMergeAllSessions(sessions);
   console.log(`[LAPORAN] ${user} sesi-${currentSesi} @ ${new Date().toLocaleTimeString("id-ID")} — total ${mergedFinal.photos.length} foto/hari, uraian: ${laporan.uraian ? "ada" : "kosong"}`);
   res.json({ status: "OK", totalPhotos: mergedFinal.photos.length, uraian: laporan.uraian, sesi: currentSesi });
+  } catch (err) {
+    console.error("[POST/REPORT] Error:", err.message);
+    res.status(500).json({ status: "ERROR", msg: "Gagal simpan laporan: " + err.message });
+  }
 });
 
 // GET /work-photos/report/me — ambil laporan hari ini milik user (semua sesi digabung)
-app.get("/work-photos/report/me", requireLevel(99), (req, res) => {
-  const user    = req._requester;
-  const today   = todayLocal();
-  const wpStore = load(F.workPhotos, {});
-  const data    = load(F.data, []);
+// Async karena perlu fallback langsung ke Supabase saat _store belum siap (Render cold start)
+app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
+  try {
+    const user  = req._requester;
+    const today = todayLocal();
 
-  // Cek apakah pernah absen hari ini (boleh sudah clock-out)
-  const adaHariIni = data.find(d => d.user === user && d.date === today);
-  if (!adaHariIni) {
-    return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false });
+    // Load data absensi — fallback ke Supabase jika _store kosong
+    let data    = load(F.data, null);
+    if (!data)  data = await dbLoad(F.data, []);
+
+    // Cek apakah pernah absen hari ini
+    const adaHariIni = data.find(d => d.user === user && d.date === today);
+    if (!adaHariIni) {
+      return res.json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: false });
+    }
+
+    // Load work_photos — fallback ke Supabase jika _store kosong
+    let wpStore = load(F.workPhotos, null);
+    if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
+
+    const rawWp  = (wpStore[today] || {})[user];
+    const sessions = wpGetSessions(wpStore, today, user);
+    const merged   = wpMergeAllSessions(sessions);
+
+    console.log(`[REPORT/ME] ${user} ${today} — src:${rawWp?"store":"empty"} type:${Array.isArray(rawWp)?"arr["+sessions.length+"]":typeof rawWp} photos:${merged.photos.length} uraian:"${(merged.uraian||"").slice(0,50)}"`);
+
+    const recTerakhir = data.slice().reverse().find(d => d.user === user && d.date === today);
+    const aktivitas   = recTerakhir?.aktivitas || "";
+
+    res.json({
+      uraian:      merged.uraian || "",
+      totalPhotos: merged.photos.length,
+      updatedAt:   merged.updatedAt || null,
+      aktivitas,
+      isEditable:  true,
+    });
+  } catch (err) {
+    console.error("[REPORT/ME] Error:", err.message);
+    res.status(500).json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "", isEditable: true });
   }
-
-  const rawWp   = (wpStore[today] || {})[user];
-  const sessions = wpGetSessions(wpStore, today, user);
-  const merged   = wpMergeAllSessions(sessions);
-
-  // Debug log — bantu diagnosa format data di Supabase
-  console.log(`[REPORT/ME] ${user} ${today} — rawType:${Array.isArray(rawWp)?"array":typeof rawWp} sessions:${sessions.length} photos:${merged.photos.length} uraian:"${(merged.uraian||"").slice(0,40)}"`);
-
-  const recTerakhir = data.slice().reverse().find(d => d.user === user && d.date === today);
-  const aktivitas   = recTerakhir?.aktivitas || "";
-
-  res.json({
-    uraian:      merged.uraian || "",
-    totalPhotos: merged.photos.length,
-    updatedAt:   merged.updatedAt || null,
-    aktivitas,
-    isEditable:  true,
-  });
 });
 
 // Toggle fitur foto kegiatan — hanya Owner (level 1)
