@@ -12092,16 +12092,53 @@ async function _loadLaporanThumbs(totalPhotos, isEditable) {
 // ── Compress foto ─────────────────────────────────────────────────────────────
 function _compressLaporanPhoto(file) {
   return new Promise(function(resolve) {
-    const reader = new FileReader();
+    // Gunakan createObjectURL agar lebih reliable untuk foto galeri Android.
+    // FileReader.readAsDataURL kadang menghasilkan canvas hitam pada foto galeri
+    // karena timing decode atau permission terbatas di beberapa vendor Android.
+    var objectUrl = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function() {
+      var MAX = 900, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if (!w || !h) { URL.revokeObjectURL(objectUrl); _compressLaporanPhotoFallback(file).then(resolve); return; }
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      var canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      var result = canvas.toDataURL("image/jpeg", 0.82);
+      URL.revokeObjectURL(objectUrl);
+      // Jika hasil terlalu kecil (canvas hitam), fallback ke FileReader
+      if (!result || result.length < 1000) {
+        _compressLaporanPhotoFallback(file).then(resolve);
+      } else {
+        resolve(result);
+      }
+    };
+    img.onerror = function() {
+      URL.revokeObjectURL(objectUrl);
+      _compressLaporanPhotoFallback(file).then(resolve);
+    };
+    img.src = objectUrl;
+  });
+}
+
+// Fallback: FileReader-based (untuk edge case browser tertentu)
+function _compressLaporanPhotoFallback(file) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader();
     reader.onload = function(e) {
-      const img = new Image();
+      var img = new Image();
       img.onload = function() {
         var MAX = 900, w = img.width, h = img.height;
+        if (!w || !h) { resolve(null); return; }
         if (w > MAX || h > MAX) {
           if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
           else       { w = Math.round(w * MAX / h); h = MAX; }
         }
-        const canvas = document.createElement("canvas");
+        var canvas = document.createElement("canvas");
         canvas.width = w; canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL("image/jpeg", 0.82));
