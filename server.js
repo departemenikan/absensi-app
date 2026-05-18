@@ -4550,16 +4550,18 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
         try {
           const buf      = base64ToBuffer(img);
           const filePath = `workphotos/${today}/${user}/${currentSesi}_${photoIdx}_${Date.now()}.jpg`;
+          console.log(`[LAPORAN] Mencoba upload bucket: ${filePath} (${buf.length} bytes)`);
           const uploaded = await bucketUpload(filePath, buf);
           if (uploaded) {
-            entry.path = filePath;  // simpan path, TIDAK simpan base64
+            entry.path = filePath;
+            console.log(`[LAPORAN] ✅ Bucket OK: ${filePath}`);
           } else {
-            entry.image = img;      // fallback base64 jika bucket gagal
-            console.warn(`[LAPORAN] Bucket upload gagal, fallback base64 untuk ${user}`);
+            entry.image = img;
+            console.warn(`[LAPORAN] ⚠️ Bucket upload gagal, fallback base64 untuk ${user}`);
           }
         } catch(e) {
           entry.image = img;
-          console.error("[LAPORAN] Bucket error:", e.message);
+          console.error("[LAPORAN] ❌ Bucket error:", e.message);
         }
       } else {
         entry.image = img;          // tanpa Supabase: simpan base64
