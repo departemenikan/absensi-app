@@ -11805,8 +11805,7 @@ function _setupLaporanTextarea() {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     var start = this.selectionStart, end = this.selectionEnd, val = this.value;
-    var ins = '
-• ';
+    var ins = '\n• ';
     this.value = val.slice(0, start) + ins + val.slice(end);
     this.selectionStart = this.selectionEnd = start + ins.length;
     this.style.height = 'auto';
