@@ -3936,8 +3936,7 @@ app.post("/screenshot", requireLevel(99), async (req, res) => {
     }
   });
 
-  save(F.screenshots, screenshots);           // cache lokal /tmp
-  await dbSave(F.screenshots, screenshots);   // simpan permanen ke Supabase DB
+  save(F.screenshots, screenshots);
   console.log(`[SCREENSHOT] ${user} @ ${new Date().toLocaleTimeString("id-ID")} — total hari ini: ${screenshots[today][user].length} | bucket: ${!!entry.path}`);
   res.json({ status: "OK" });
 });
@@ -4054,12 +4053,10 @@ app.get("/screenshots/:user", requireLevel(3), (req, res) => {
 // GET /screenshots/:user/:index — satu screenshot dengan image, support ?date=YYYY-MM-DD
 app.get("/screenshots/:user/:index", requireLevel(3), async (req, res) => {
   const { user, index } = req.params;
-  const date = req.query.date || todayLocal();
-  let screenshots = load(F.screenshots, null);
-  // Fallback ke Supabase DB jika /tmp kosong (setelah restart)
-  if (!screenshots) screenshots = await dbLoad(F.screenshots, {});
-  const shots = (screenshots[date] || {})[user] || [];
-  const shot  = shots[parseInt(index)];
+  const date        = req.query.date || todayLocal();
+  const screenshots = load(F.screenshots, {});
+  const shots       = (screenshots[date] || {})[user] || [];
+  const shot        = shots[parseInt(index)];
   if (!shot) return res.status(404).json({ status: "NOT_FOUND" });
 
   // Jika tersimpan di bucket → kembalikan signed URL (valid 1 jam)
@@ -4434,9 +4431,7 @@ app.get("/work-photos/:user/:index", requireLevel(99), async (req, res) => {
     }
   }
 
-  let wpStore = load(F.workPhotos, null);
-  // Fallback ke Supabase DB jika /tmp kosong (setelah restart)
-  if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
+  const wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   const sessions  = wpGetSessions(wpStore, date, user);
   const merged    = wpMergeAllSessions(sessions);
   const allPhotos = merged.photos;
@@ -4480,9 +4475,8 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
   const recTarget = data.find(d => d.user === user && d.date === today && d.sesi === currentSesi)
                  || recLast;
 
-  // Load work_photos dengan fallback Supabase
-  let wpStore = load(F.workPhotos, null);
-  if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
+  // Load work_photos — selalu dari Supabase DB (bukan /tmp yang hilang saat restart)
+  let wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   if (!wpStore[today]) wpStore[today] = {};
 
   // Normalisasi ke format array-of-sessions (backward-compat)
@@ -4578,14 +4572,13 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
 
   laporan.updatedAt = new Date().toISOString();
 
-  // Retensi 7 hari
+  // Retensi 3 hari
   const wpCutoff = new Date();
-  wpCutoff.setDate(wpCutoff.getDate() - 7);
+  wpCutoff.setDate(wpCutoff.getDate() - 3);
   const wpCutoffStr = wpCutoff.toLocaleDateString("sv-SE");
   Object.keys(wpStore).forEach(k => { if (k < wpCutoffStr) delete wpStore[k]; });
 
-  save(F.workPhotos, wpStore);           // cache lokal /tmp
-  await dbSave(F.workPhotos, wpStore);   // simpan permanen ke Supabase DB
+  save(F.workPhotos, wpStore);
   const mergedFinal = wpMergeAllSessions(sessions);
   console.log(`[LAPORAN] ${user} sesi-${currentSesi} @ ${new Date().toLocaleTimeString("id-ID")} — total ${mergedFinal.photos.length} foto/hari, uraian: ${laporan.uraian ? "ada" : "kosong"}`);
   res.json({ status: "OK", totalPhotos: mergedFinal.photos.length, uraian: laporan.uraian, sesi: currentSesi });
