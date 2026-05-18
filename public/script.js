@@ -11790,6 +11790,35 @@ async function showLaporanPopup() {
   _laporanRenderBody(existing);
 }
 
+// Setup textarea laporan: auto-bullet Enter, resize otomatis
+// Dipanggil langsung via JS setelah body.innerHTML (bukan inject <script>)
+function _setupLaporanTextarea() {
+  var ta = document.getElementById('laporan-uraian');
+  if (!ta) return;
+  // Jika kosong, isi bullet awal
+  if (!ta.value) ta.value = '• ';
+  // Resize awal
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(72, ta.scrollHeight) + 'px';
+  // Enter = newline + bullet
+  ta.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var start = this.selectionStart, end = this.selectionEnd, val = this.value;
+    var ins = '
+• ';
+    this.value = val.slice(0, start) + ins + val.slice(end);
+    this.selectionStart = this.selectionEnd = start + ins.length;
+    this.style.height = 'auto';
+    this.style.height = Math.max(72, this.scrollHeight) + 'px';
+  });
+  // Resize saat input
+  ta.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.max(72, this.scrollHeight) + 'px';
+  });
+}
+
 // ── Render isi sheet ──────────────────────────────────────────────────────────
 function _laporanRenderBody(existing) {
   const body   = document.getElementById("laporan-body");
@@ -11834,39 +11863,6 @@ function _laporanRenderBody(existing) {
              font-size:13px;resize:vertical;outline:none;box-sizing:border-box;color:#2c3e50;font-family:inherit;line-height:1.5;"
       onfocus="this.style.borderColor='#4f8ef7'" onblur="this.style.borderColor='#e8ecf0'"
     >${uraianWithBullets}</textarea>`;
-    // Inject script auto-bullet setelah textarea dirender
-    html += `<script>
-(function() {
-  // Tunggu textarea ada di DOM
-  var _ta = document.getElementById('laporan-uraian');
-  if (!_ta) return;
-  // Jika kosong, isi dengan bullet awal
-  if (!_ta.value) { _ta.value = '• '; }
-  _ta.addEventListener('keydown', function(e) {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    var start = this.selectionStart;
-    var end   = this.selectionEnd;
-    var val   = this.value;
-    // Sisipkan newline + bullet
-    var ins = '\n• ';
-    this.value = val.slice(0, start) + ins + val.slice(end);
-    // Pindahkan kursor ke setelah bullet baru
-    var pos = start + ins.length;
-    this.selectionStart = this.selectionEnd = pos;
-    // Resize otomatis
-    this.style.height = 'auto';
-    this.style.height = Math.max(72, this.scrollHeight) + 'px';
-  });
-  _ta.addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.max(72, this.scrollHeight) + 'px';
-  });
-  // Resize awal
-  _ta.style.height = 'auto';
-  _ta.style.height = Math.max(72, _ta.scrollHeight) + 'px';
-})();
-<\/script>`;
   } else {
     html += `<div style="padding:10px 12px;background:#f8f9ff;border-radius:10px;font-size:13px;color:#2c3e50;
       border-left:3px solid #4f8ef7;white-space:pre-wrap;line-height:1.5;min-height:40px;">
@@ -11909,6 +11905,7 @@ function _laporanRenderBody(existing) {
 
   body.innerHTML = html;
 
+  if (isEditable) _setupLaporanTextarea();
   if (isEditable) _renderLaporanFotoBtns(saved, 0);
   _loadLaporanThumbs(saved, isEditable);
 }
