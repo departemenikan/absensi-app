@@ -4160,9 +4160,9 @@ function wpMergeAllSessions(sessions) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // GET /work-photos/active-mobile — user mobile/pwa yang sedang aktif hari ini (belum clock out)
-app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
+app.get("/work-photos/active-mobile", requireLevel(3), async (req, res) => {
   const today     = todayLocal();
-  const wpStore   = load(F.workPhotos, {});
+  const wpStore   = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   const users     = load(F.users, {});
   const data      = load(F.data, []);
   const todayData = wpStore[today] || {};
@@ -4236,9 +4236,9 @@ app.get("/work-photos/active-mobile", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/list-users?date=YYYY-MM-DD — daftar user yang punya foto pada tanggal tertentu
-app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
+app.get("/work-photos/list-users", requireLevel(3), async (req, res) => {
   const date      = req.query.date || todayLocal();
-  const wpStore   = load(F.workPhotos, {});
+  const wpStore   = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   const users     = load(F.users, {});
   const data      = load(F.data, []);
   const dateData  = wpStore[date] || {};
@@ -4279,9 +4279,9 @@ app.get("/work-photos/list-users", requireLevel(3), (req, res) => {
 });
 
 // GET /work-photos/today — daftar user yang punya foto kegiatan hari ini
-app.get("/work-photos/today", requireLevel(3), (req, res) => {
+app.get("/work-photos/today", requireLevel(3), async (req, res) => {
   const today     = todayLocal();
-  const wpStore   = load(F.workPhotos, {});
+  const wpStore   = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   const users     = load(F.users, {});
   const data      = load(F.data, []);
   const todayData = wpStore[today] || {};
@@ -4338,9 +4338,8 @@ app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
                         currentSesi: 1, sessions: [], isEditable: false });
     }
 
-    // Load work_photos — fallback Supabase jika _store kosong
-    let wpStore = load(F.workPhotos, null);
-    if (!wpStore) wpStore = await dbLoad(F.workPhotos, {});
+    // Load work_photos — selalu dari Supabase DB
+    let wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
 
     const rawWp   = (wpStore[today] || {})[user];
     const sessions = wpGetSessions(wpStore, today, user);
@@ -4389,10 +4388,10 @@ app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
 
 // GET /work-photos/:user — list metadata foto kegiatan user (tanpa image), support ?date=YYYY-MM-DD
 // Menggabungkan semua sesi pada tanggal tersebut
-app.get("/work-photos/:user", requireLevel(3), (req, res) => {
+app.get("/work-photos/:user", requireLevel(3), async (req, res) => {
   const { user } = req.params;
   const date    = req.query.date || todayLocal();
-  const wpStore = load(F.workPhotos, {});
+  const wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
   const data    = load(F.data, []);
   const sessions  = wpGetSessions(wpStore, date, user);
   const merged    = wpMergeAllSessions(sessions);
