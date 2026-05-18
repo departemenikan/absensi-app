@@ -4145,16 +4145,21 @@ function wpFindSesiData(sessions, sesi) {
 // Merge semua foto dari semua sesi (untuk tampilan monitor — semua sesi tampil)
 function wpMergeAllSessions(sessions) {
   const allPhotos = [];
-  const uraianParts = [];
   let updatedAt = null;
+  let uraianMerged = "";
   sessions.forEach(s => {
-    // Pastikan setiap foto punya field sesi untuk keperluan deletePhoto
     (s.photos || []).forEach(p => allPhotos.push({ ...p, sesi: s.sesi }));
-    if (s.uraian && s.uraian.trim()) uraianParts.push(s.uraian.trim());
     if (s.updatedAt && (!updatedAt || s.updatedAt > updatedAt)) updatedAt = s.updatedAt;
   });
-  // Gabungkan uraian semua sesi, pisah dengan newline jika berbeda
-  const uraianMerged = [...new Set(uraianParts)].join("\n");
+  // Ambil uraian dari sesi yang paling baru diupdate (bukan gabungan semua sesi).
+  // Menggabungkan semua sesi menyebabkan uraian tampil berulang saat user
+  // punya lebih dari 1 sesi dalam sehari (clock in ulang setelah break).
+  const sesiDenganUraian = sessions
+    .filter(s => s.uraian && s.uraian.trim())
+    .sort((a, b) => (b.updatedAt || "") > (a.updatedAt || "") ? 1 : -1);
+  if (sesiDenganUraian.length > 0) {
+    uraianMerged = sesiDenganUraian[0].uraian.trim();
+  }
   return { photos: allPhotos, uraian: uraianMerged, updatedAt };
 }
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -4530,10 +4535,12 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
     return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
   }
 
-  // Update uraian pada sesi target (tidak overwrite sesi lain)
+  // Update uraian: tulis ke sesi aktif, kosongkan sesi lain
+  // agar wpMergeAllSessions tidak hasilkan uraian berulang di multi-sesi
   if (uraian !== undefined) {
     const newUraian = String(uraian).slice(0, 2000);
     laporan.uraian  = newUraian;
+    sessions.forEach(s => { if (s.sesi !== currentSesi) s.uraian = ""; });
   }
 
   // Tambah foto — cek kuota HARIAN (bukan per sesi)
