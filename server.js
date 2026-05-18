@@ -4509,6 +4509,7 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
       sesiPemilik.updatedAt = new Date().toISOString();
     }
     save(F.workPhotos, wpStore);
+    await dbSave(F.workPhotos, wpStore);
     const mergedAfter = wpMergeAllSessions(sessions);
     return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
   }
@@ -4518,6 +4519,7 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
     laporan.photos = [];
     laporan.updatedAt = new Date().toISOString();
     save(F.workPhotos, wpStore);
+    await dbSave(F.workPhotos, wpStore);
     const mergedAfter = wpMergeAllSessions(sessions);
     return res.json({ status: "OK", totalPhotos: mergedAfter.photos.length });
   }
@@ -4573,13 +4575,14 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
 
   laporan.updatedAt = new Date().toISOString();
 
-  // Retensi 3 hari
+  // Retensi 7 hari
   const wpCutoff = new Date();
-  wpCutoff.setDate(wpCutoff.getDate() - 3);
+  wpCutoff.setDate(wpCutoff.getDate() - 7);
   const wpCutoffStr = wpCutoff.toLocaleDateString("sv-SE");
   Object.keys(wpStore).forEach(k => { if (k < wpCutoffStr) delete wpStore[k]; });
 
-  save(F.workPhotos, wpStore);
+  save(F.workPhotos, wpStore);           // cache /tmp
+  await dbSave(F.workPhotos, wpStore);   // simpan permanen ke Supabase DB
   const mergedFinal = wpMergeAllSessions(sessions);
   console.log(`[LAPORAN] ${user} sesi-${currentSesi} @ ${new Date().toLocaleTimeString("id-ID")} — total ${mergedFinal.photos.length} foto/hari, uraian: ${laporan.uraian ? "ada" : "kosong"}`);
   res.json({ status: "OK", totalPhotos: mergedFinal.photos.length, uraian: laporan.uraian, sesi: currentSesi });
