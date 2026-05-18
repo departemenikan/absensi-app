@@ -304,8 +304,14 @@ function bucketSignedUrl(filePath, expiresInSec = 3600) {
       res.on("end", () => {
         try {
           const d = JSON.parse(raw);
-          if (d.signedURL) {
-            resolve(`${SUPABASE_URL}${d.signedURL}`);
+          // Supabase v2 mengembalikan signedUrl (full URL)
+          // Supabase v1 mengembalikan signedURL (relative path)
+          if (d.signedUrl) {
+            resolve(d.signedUrl);
+          } else if (d.signedURL) {
+            // v1 fallback: relative path, perlu prefix SUPABASE_URL
+            const full = d.signedURL.startsWith("http") ? d.signedURL : `${SUPABASE_URL}${d.signedURL}`;
+            resolve(full);
           } else {
             console.error("[BUCKET] SignedURL gagal:", raw);
             resolve(null);
