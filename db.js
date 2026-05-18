@@ -200,7 +200,7 @@ const BUCKET = "media";
 // Upload file ke bucket — body berupa Buffer (binary JPEG)
 async function bucketUpload(filePath, buffer, contentType = "image/jpeg") {
   if (!USE_SUPABASE) return null;
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url     = new URL(SUPABASE_URL);
     const bodyBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
     const opts = {
@@ -220,10 +220,14 @@ async function bucketUpload(filePath, buffer, contentType = "image/jpeg") {
       res.on("data", c => raw += c);
       res.on("end", () => {
         if (res.statusCode >= 400) {
-          console.error(`[BUCKET] Upload gagal ${filePath}: ${res.statusCode} ${raw}`);
+          console.error(`[BUCKET] Upload gagal ${filePath}: HTTP ${res.statusCode} — ${raw.slice(0,200)}`);
+          if (res.statusCode === 404) console.error(`[BUCKET] ❌ Bucket "${BUCKET}" belum ada! Buat di Supabase Dashboard → Storage → New Bucket → name: "${BUCKET}"`);
           resolve(null);
         } else {
-          resolve(filePath);
+          // Kembalikan public URL langsung (bucket harus public) ATAU path untuk signed URL
+          const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${filePath}`;
+          console.log(`[BUCKET] ✅ Upload OK: ${filePath} (${bodyBuf.length} bytes)`);
+          resolve({ path: filePath, publicUrl });
         }
       });
     });
@@ -304,19 +308,21 @@ function bucketSignedUrl(filePath, expiresInSec = 3600) {
       res.on("end", () => {
         try {
           const d = JSON.parse(raw);
-          // Supabase v2 mengembalikan signedUrl (full URL)
-          // Supabase v1 mengembalikan signedURL (relative path)
           if (d.signedUrl) {
             resolve(d.signedUrl);
           } else if (d.signedURL) {
-            // v1 fallback: relative path, perlu prefix SUPABASE_URL
             const full = d.signedURL.startsWith("http") ? d.signedURL : `${SUPABASE_URL}${d.signedURL}`;
             resolve(full);
           } else {
-            console.error("[BUCKET] SignedURL gagal:", raw);
-            resolve(null);
+            // Fallback: coba public URL (kalau bucket dibuat sebagai public)
+            const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${filePath}`;
+            console.warn(`[BUCKET] SignedURL gagal (${res.statusCode}), coba public URL. Response: ${raw.slice(0,150)}`);
+            resolve(publicUrl);
           }
-        } catch { resolve(null); }
+        } catch(e) {
+          console.error("[BUCKET] SignedURL parse error:", e.message, raw.slice(0,100));
+          resolve(null);
+        }
       });
     });
     req.on("error", e => { console.error("[BUCKET] SignedURL error:", e.message); resolve(null); });

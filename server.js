@@ -4437,15 +4437,21 @@ app.get("/work-photos/:user/:index", requireLevel(99), async (req, res) => {
   const photo     = allPhotos[parseInt(index)];
   if (!photo) return res.status(404).json({ status: "NOT_FOUND" });
 
-  // Jika tersimpan di bucket → kembalikan signed URL
+  // Jika tersimpan di bucket
   if (photo.path && USE_SUPABASE) {
+    // Gunakan publicUrl yang sudah disimpan saat upload (paling cepat)
+    if (photo.publicUrl) return res.json({ ts: photo.ts, url: photo.publicUrl, date });
+    // Fallback: generate signed URL (untuk foto lama yang belum punya publicUrl)
     const signedUrl = await bucketSignedUrl(photo.path, 3600);
     if (signedUrl) return res.json({ ts: photo.ts, url: signedUrl, date });
-    return res.status(500).json({ status: "ERROR", msg: "Gagal generate URL" });
+    // Jika signed URL juga gagal — coba public URL langsung
+    const tryPublic = `${process.env.SUPABASE_URL}/storage/v1/object/public/media/${photo.path}`;
+    return res.json({ ts: photo.ts, url: tryPublic, date });
   }
 
   // Fallback: base64 lama
-  res.json({ ts: photo.ts, image: photo.image, date });
+  if (photo.image) return res.json({ ts: photo.ts, image: photo.image, date });
+  res.status(404).json({ status: "NOT_FOUND", msg: "Foto tidak tersedia" });
 });
 
 // POST /work-photos/report — simpan/update laporan
@@ -4551,14 +4557,15 @@ app.post("/work-photos/report", requireLevel(99), async (req, res) => {
         try {
           const buf      = base64ToBuffer(img);
           const filePath = `workphotos/${today}/${user}/${currentSesi}_${photoIdx}_${Date.now()}.jpg`;
-          console.log(`[LAPORAN] Mencoba upload bucket: ${filePath} (${buf.length} bytes)`);
           const uploaded = await bucketUpload(filePath, buf);
           if (uploaded) {
-            entry.path = filePath;
-            console.log(`[LAPORAN] ✅ Bucket OK: ${filePath}`);
+            entry.path      = uploaded.path || filePath;
+            entry.publicUrl = uploaded.publicUrl || null;
+            console.log(`[LAPORAN] ✅ Bucket OK: ${entry.path}`);
           } else {
+            // Bucket gagal → fallback simpan base64 (lebih besar tapi tetap jalan)
             entry.image = img;
-            console.warn(`[LAPORAN] ⚠️ Bucket upload gagal, fallback base64 untuk ${user}`);
+            console.warn(`[LAPORAN] ⚠️ Bucket gagal, fallback base64. Cek bucket "${BUCKET}" di Supabase Dashboard.`);
           }
         } catch(e) {
           entry.image = img;
