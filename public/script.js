@@ -1617,14 +1617,24 @@ function fmtDuration(sec) {
 function fmtBreak(sec) { return fmtDuration(sec); }
 
 // Hitung total detik istirahat dari array breaks (termasuk break yg sedang berjalan)
-function hitungBreakDetik(breaks) {
+const DEFAULT_UNTRIGGERED_BREAK_SECONDS = 3600;
+const DEFAULT_BREAK_APPLIES_AFTER_SECONDS = 7 * 3600;
+
+function hitungBreakDetik(breaks, totalSec = null) {
   const now = Date.now();
-  return (breaks || []).reduce((total, b) => {
+  let hasTriggeredBreak = false;
+  const breakSec = (breaks || []).reduce((total, b) => {
     const start = parseLocalISO(b.start);
     const end   = b.end ? parseLocalISO(b.end) : now;
     if (isNaN(start)) return total;
-    return total + Math.max(0, (end - start) / 1000);
+    const sec = Math.max(0, (end - start) / 1000);
+    if (sec > 0) hasTriggeredBreak = true;
+    return total + sec;
   }, 0);
+  if (!hasTriggeredBreak && totalSec != null && totalSec > DEFAULT_BREAK_APPLIES_AFTER_SECONDS) {
+    return Math.min(DEFAULT_UNTRIGGERED_BREAK_SECONDS, totalSec);
+  }
+  return breakSec;
 }
 
 // Hitung durasi kerja bersih (detik) — realtime jika belum clock out
@@ -1636,7 +1646,7 @@ function hitungKerjaDetik(rec) {
   const keluar   = rec.jamKeluar ? parseLocalISO(rec.jamKeluar) : now;
   if (!isNaN(keluar) && keluar < masuk) return 0; // guard: keluar sebelum masuk
   const totalSec = Math.max(0, ((isNaN(keluar) ? now : keluar) - masuk) / 1000);
-  const breakSec = hitungBreakDetik(rec.breaks);
+  const breakSec = hitungBreakDetik(rec.breaks, totalSec);
   return Math.max(0, totalSec - breakSec);
 }
 
@@ -1776,11 +1786,17 @@ function hitungDurasiDetik(rec, nowMs) {
   const end = rec.jamKeluar ? new Date(rec.jamKeluar).getTime() : nowMs;
   const work = end - new Date(rec.jamMasuk).getTime();
   let bt = 0;
+  let hasTriggeredBreak = false;
   (rec.breaks || []).forEach(b => {
     const bStart = new Date(b.start).getTime();
     const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
-    bt += bEnd - bStart;
+    const dur = Math.max(0, bEnd - bStart);
+    if (dur > 0) hasTriggeredBreak = true;
+    bt += dur;
   });
+  if (!hasTriggeredBreak && work > DEFAULT_BREAK_APPLIES_AFTER_SECONDS * 1000) {
+    bt = Math.min(DEFAULT_UNTRIGGERED_BREAK_SECONDS * 1000, work);
+  }
   return Math.max(0, work - bt) / 1000;
 }
 
@@ -6670,15 +6686,24 @@ function startTsTicker() {
       if (typeof _todayRec !== "undefined" && _todayRec && _todayRec.jamMasuk && !_todayRec.jamKeluar) {
         const now = Date.now();
         const masuk = parseLocalISO(_todayRec.jamMasuk);
-        if (isNaN(masuk)) return 0;
-        let breakSec = 0;
-        (_todayRec.breaks || []).forEach(b => {
-          const bStart = parseLocalISO(b.start);
-          const end = b.end ? parseLocalISO(b.end) : now;
-          if (!isNaN(bStart)) breakSec += Math.max(0, end - bStart) / 1000;
-        });
-        return Math.max(0, (now - masuk) / 1000 - breakSec) / 3600;
-      }
+	        if (isNaN(masuk)) return 0;
+	        let breakSec = 0;
+	        let hasTriggeredBreak = false;
+	        (_todayRec.breaks || []).forEach(b => {
+	          const bStart = parseLocalISO(b.start);
+	          const end = b.end ? parseLocalISO(b.end) : now;
+	          if (!isNaN(bStart)) {
+	            const sec = Math.max(0, end - bStart) / 1000;
+	            if (sec > 0) hasTriggeredBreak = true;
+	            breakSec += sec;
+	          }
+	        });
+	        const totalSec = Math.max(0, (now - masuk) / 1000);
+	        if (!hasTriggeredBreak && totalSec > DEFAULT_BREAK_APPLIES_AFTER_SECONDS) {
+	          breakSec = Math.min(DEFAULT_UNTRIGGERED_BREAK_SECONDS, totalSec);
+	        }
+	        return Math.max(0, totalSec - breakSec) / 3600;
+	      }
     } else {
       // User lain — hitung dari snapshot server (multi-sesi)
       const jamMasuk       = cell.getAttribute("data-jammasuk");

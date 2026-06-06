@@ -640,6 +640,7 @@ function isUserMess(username) {
 
 const IDLE_CONTINUE_MINUTES = 15;
 const IDLE_WORK_TARGET_HOURS = 7;
+const DEFAULT_UNTRIGGERED_BREAK_HOURS = 1;
 
 function clearIdleClockOut(rec) {
   if (!rec) return;
@@ -676,7 +677,7 @@ function markIdleClockOut(rec, reason, label, now) {
   delete rec.idleNextCheckAt;
 }
 
-function getWorkMsUntil(rec, endMs) {
+function getBreakMsForRecord(rec, endMs, includeOpenBreak = true) {
   if (!rec || !rec.jamMasuk) return 0;
   const masukMs = new Date(rec.jamMasuk).getTime();
   if (isNaN(masukMs) || isNaN(endMs) || endMs <= masukMs) return 0;
@@ -684,9 +685,51 @@ function getWorkMsUntil(rec, endMs) {
   (rec.breaks || []).forEach(b => {
     if (!b.start) return;
     const bs = new Date(b.start).getTime();
-    const be = b.end ? new Date(b.end).getTime() : endMs;
-    if (!isNaN(bs) && !isNaN(be) && be > bs) breakMs += Math.max(0, be - bs);
+    const be = b.end ? new Date(b.end).getTime() : (includeOpenBreak ? endMs : NaN);
+    if (!isNaN(bs) && !isNaN(be) && be > bs) {
+      breakMs += Math.max(0, be - bs);
+    }
   });
+  return breakMs;
+}
+
+function getRawWorkMsForRecord(rec, fallbackEndMs = null) {
+  if (!rec?.jamMasuk) return 0;
+  const masukMs = new Date(rec.jamMasuk).getTime();
+  if (isNaN(masukMs)) return 0;
+  const keluarMs = rec.jamKeluar
+    ? new Date(rec.jamKeluar).getTime()
+    : (fallbackEndMs || Date.now());
+  if (isNaN(keluarMs) || keluarMs <= masukMs) return 0;
+  return keluarMs - masukMs;
+}
+
+function getDayWorkStats(recs, nowMs = Date.now()) {
+  let rawMs = 0;
+  let breakMs = 0;
+  let hasBreak = false;
+  (recs || []).forEach(rec => {
+    const endMs = rec?.jamKeluar ? new Date(rec.jamKeluar).getTime() : nowMs;
+    const recRawMs = getRawWorkMsForRecord(rec, rec?.jamKeluar ? null : nowMs);
+    if (recRawMs <= 0 || isNaN(endMs)) return;
+    rawMs += recRawMs;
+    const recBreakMs = getBreakMsForRecord(rec, endMs, !rec.jamKeluar);
+    if (recBreakMs > 0) hasBreak = true;
+    breakMs += recBreakMs;
+  });
+  let autoBreakMs = 0;
+  if (!hasBreak && rawMs > IDLE_WORK_TARGET_HOURS * 3600000) {
+    autoBreakMs = Math.min(DEFAULT_UNTRIGGERED_BREAK_HOURS * 3600000, rawMs);
+  }
+  const netMs = Math.max(0, rawMs - breakMs - autoBreakMs);
+  return { rawMs, breakMs, autoBreakMs, netMs, hasBreak };
+}
+
+function getWorkMsUntil(rec, endMs) {
+  if (!rec || !rec.jamMasuk) return 0;
+  const masukMs = new Date(rec.jamMasuk).getTime();
+  if (isNaN(masukMs) || isNaN(endMs) || endMs <= masukMs) return 0;
+  const breakMs = getBreakMsForRecord(rec, endMs, true);
   return Math.max(0, endMs - masukMs - breakMs);
 }
 
@@ -1003,13 +1046,18 @@ function autoTutupKekuranganOvertime() {
     );
     if (!recsB.length) return;
 
-    // Grup per minggu, hitung total jam per minggu
-    const weekMap = {};
-    recsB.forEach(d => {
-      const wk = weekKey(d.date);
-      if (!weekMap[wk]) weekMap[wk] = 0;
-      weekMap[wk] += hitungJamKerja(d);
-    });
+	    // Grup per minggu, hitung total jam per minggu
+	    const weekMap = {};
+	    const recsByDateB = {};
+	    recsB.forEach(d => {
+	      if (!recsByDateB[d.date]) recsByDateB[d.date] = [];
+	      recsByDateB[d.date].push(d);
+	    });
+	    Object.entries(recsByDateB).forEach(([dateStr, dayRecs]) => {
+	      const wk = weekKey(dateStr);
+	      if (!weekMap[wk]) weekMap[wk] = 0;
+	      weekMap[wk] += getDayWorkStats(dayRecs).netMs / 3600000;
+	    });
 
     // Cari minggu-minggu yang kurang dari 40 jam
     const mingguKurang = [];
@@ -1572,11 +1620,15 @@ app.post("/idle/clock-out", requireLevel(99), async (req, res) => {
 app.get("/report/:user", requireSelfOrLevel("user", 2), (req, res) => {
   const data = load(F.data, []);
   let totalKerja = 0, totalBreak = 0;
+  const byDate = {};
   data.filter(d => d.user === req.params.user && d.jamKeluar).forEach(d => {
-    const work = (new Date(d.jamKeluar) - new Date(d.jamMasuk)) / 3600000;
-    let bt = 0;
-    d.breaks.forEach(b => { if (b.end) bt += (new Date(b.end) - new Date(b.start)) / 3600000; });
-    totalKerja += (work - bt); totalBreak += bt;
+    if (!byDate[d.date]) byDate[d.date] = [];
+    byDate[d.date].push(d);
+  });
+  Object.values(byDate).forEach(recs => {
+    const stats = getDayWorkStats(recs);
+    totalKerja += stats.netMs / 3600000;
+    totalBreak += (stats.breakMs + stats.autoBreakMs) / 3600000;
   });
   res.send({ totalKerja: totalKerja.toFixed(1)+"h", totalBreak: totalBreak.toFixed(1)+"h", overtime: Math.max(0, totalKerja-8).toFixed(1)+"h" });
 });
@@ -2355,40 +2407,10 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
     const days = dates.map(dateStr => {
       // Multi-sesi: ambil SEMUA record tanggal ini
       const recs = data.filter(d => d.user === username && d.date === dateStr);
-      const rec  = recs.find(d => !d.jamKeluar) || recs[recs.length - 1] || null;
-      let jamKerja = 0;
-      let isActive = false;
-      const nowMs  = Date.now();
-
-      recs.forEach(r => {
-        if (r.jamMasuk && r.jamKeluar) {
-          const masukMs  = new Date(r.jamMasuk).getTime();
-          const keluarMs = new Date(r.jamKeluar).getTime();
-          if (isNaN(masukMs) || isNaN(keluarMs)) return;
-          const work = (keluarMs - masukMs) / 3600000;
-          let bt = 0;
-          (r.breaks || []).forEach(b => {
-            if (b.end) {
-              const bs = new Date(b.start).getTime(), be = new Date(b.end).getTime();
-              if (!isNaN(bs) && !isNaN(be)) bt += (be - bs) / 3600000;
-            }
-          });
-          jamKerja += Math.max(0, work - bt);
-        } else if (r.jamMasuk && !r.jamKeluar) {
-          const masukMs2 = new Date(r.jamMasuk).getTime();
-          if (isNaN(masukMs2)) return;
-          const work = (nowMs - masukMs2) / 3600000;
-          let bt = 0;
-          (r.breaks || []).forEach(b => {
-            const bStart = new Date(b.start).getTime();
-            if (isNaN(bStart)) return;
-            const bEnd   = b.end ? new Date(b.end).getTime() : nowMs;
-            if (!isNaN(bEnd)) bt += (bEnd - bStart) / 3600000;
-          });
-          jamKerja += Math.max(0, work - bt);
-          isActive = true;
-        }
-      });
+	      const rec  = recs.find(d => !d.jamKeluar) || recs[recs.length - 1] || null;
+	      const nowMs  = Date.now();
+	      const isActive = recs.some(r => r.jamMasuk && !r.jamKeluar);
+	      let jamKerja = getDayWorkStats(recs, nowMs).netMs / 3600000;
 
       // Cek apakah tanggal ini hari libur nasional/agama untuk user ini
       const infoLiburTs = cekHariLibur(dateStr, username);
@@ -2446,11 +2468,7 @@ app.get("/timesheet/weekly", requireLevel(99), (req, res) => {
                       const bEnd   = b.end ? new Date(b.end).getTime() : Date.now();
                       return s + (bEnd - bStart) / 1000;
                     }, 0) : 0,
-        jamSesiSelesai: parseFloat(recs.filter(r => r.jamMasuk && r.jamKeluar).reduce((s,r) => {
-          const work = (new Date(r.jamKeluar) - new Date(r.jamMasuk)) / 3600000;
-          let bt = 0; (r.breaks||[]).forEach(b => { if (b.end) bt += (new Date(b.end)-new Date(b.start))/3600000; });
-          return s + Math.max(0, work - bt);
-        }, 0).toFixed(2)),
+	        jamSesiSelesai: parseFloat((getDayWorkStats(recs.filter(r => r.jamMasuk && r.jamKeluar), nowMs).netMs / 3600000).toFixed(2)),
         jamCuti:     parseFloat(jamCuti.toFixed(2)),
         keteranganCuti,
         isHariLibur: !!infoLiburTs,
@@ -2551,43 +2569,10 @@ app.get("/rekap/monthly", requireLevel(99), (req, res) => {
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
 
     // Semua hari dalam bulan (flat) — multi-sesi + sesi aktif
-    const days = allDates.map(dateStr => {
-      const recs  = data.filter(d => d.user === username && d.date === dateStr);
-      const nowMs = Date.now();
-      let jamKerja = 0;
-      recs.forEach(rec => {
-        if (!rec.jamMasuk) return;
-        if (rec.jamKeluar) {
-          // Sudah clock out — pakai jamKerja tersimpan jika ada, fallback hitung raw
-          if (rec.jamKerja) {
-            jamKerja += rec.jamKerja;
-          } else {
-            const masukMs  = new Date(rec.jamMasuk).getTime();
-            if (isNaN(masukMs)) return;
-            const keluarMs = new Date(rec.jamKeluar).getTime();
-            const work = (keluarMs - masukMs) / 3600000;
-            let bt = 0;
-            (rec.breaks || []).forEach(b => {
-              const bs = new Date(b.start).getTime();
-              if (isNaN(bs)) return;
-              bt += Math.max(0, (b.end ? new Date(b.end).getTime() : keluarMs) - bs) / 3600000;
-            });
-            jamKerja += Math.max(0, work - bt);
-          }
-        } else {
-          // Masih aktif — hitung sampai sekarang (realtime untuk bulan berjalan)
-          const masukMs  = new Date(rec.jamMasuk).getTime();
-          if (isNaN(masukMs)) return;
-          const work = (nowMs - masukMs) / 3600000;
-          let bt = 0;
-          (rec.breaks || []).forEach(b => {
-            const bs = new Date(b.start).getTime();
-            if (isNaN(bs)) return;
-            bt += Math.max(0, (b.end ? new Date(b.end).getTime() : nowMs) - bs) / 3600000;
-          });
-          jamKerja += Math.max(0, work - bt);
-        }
-      });
+	      const days = allDates.map(dateStr => {
+	        const recs  = data.filter(d => d.user === username && d.date === dateStr);
+	        const nowMs = Date.now();
+	        const jamKerja = getDayWorkStats(recs, nowMs).netMs / 3600000;
       const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
       const jamCuti   = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
       const keteranganCuti = cutiAktif.map(p => p.kebijakanNama || "Cuti").join(", ");
@@ -2642,24 +2627,18 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
     let totalJam = 0, overtime = 0;
     const nowMsTs = Date.now();
 
-    // Kumpulkan jam absensi fisik per hari — multi-sesi + sesi aktif
-    const jamPerHari = {};
-    recs.forEach(d => {
-      const masukMs  = new Date(d.jamMasuk).getTime();
-      if (isNaN(masukMs)) return;
-      const keluarMs = d.jamKeluar ? new Date(d.jamKeluar).getTime() : nowMsTs;
-      const work = (keluarMs - masukMs) / 3600000;
-      let bt = 0;
-      (d.breaks||[]).forEach(b => {
-        const bs = new Date(b.start).getTime();
-        if (isNaN(bs)) return;
-        const be = b.end ? new Date(b.end).getTime() : (d.jamKeluar ? keluarMs : nowMsTs);
-        bt += Math.max(0, (be - bs) / 3600000);
-      });
-      const net = Math.max(0, work - bt);
-      jamPerHari[d.date] = (jamPerHari[d.date] || 0) + net;
-      totalJam += net;
-    });
+	    // Kumpulkan jam absensi fisik per hari — multi-sesi + sesi aktif
+	    const jamPerHari = {};
+	    const recsByDate = {};
+	    recs.forEach(d => {
+	      if (!recsByDate[d.date]) recsByDate[d.date] = [];
+	      recsByDate[d.date].push(d);
+	    });
+	    Object.entries(recsByDate).forEach(([dateStr, dayRecs]) => {
+	      const net = getDayWorkStats(dayRecs, nowMsTs).netMs / 3600000;
+	      jamPerHari[dateStr] = net;
+	      totalJam += net;
+	    });
 
     // Tambahkan jam cuti yang disetujui (hari yang tidak ada absen fisik)
     const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
@@ -2672,24 +2651,13 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
       if (jamCutiHari > 0) totalJam += jamCutiHari;
     }
 
-    // Hitung overtime berdasarkan total efektif per minggu (multi-sesi + aktif)
-    const weekMap = {};
-    recs.forEach(d => {
-      const wk = weekKey(d.date);
-      if (!weekMap[wk]) weekMap[wk] = 0;
-      const masukMs3  = new Date(d.jamMasuk).getTime();
-      if (isNaN(masukMs3)) return;
-      const keluarMs3 = d.jamKeluar ? new Date(d.jamKeluar).getTime() : nowMsTs;
-      const work3 = (keluarMs3 - masukMs3) / 3600000;
-      let bt3 = 0;
-      (d.breaks||[]).forEach(b => {
-        const bs = new Date(b.start).getTime();
-        if (isNaN(bs)) return;
-        const be = b.end ? new Date(b.end).getTime() : (d.jamKeluar ? keluarMs3 : nowMsTs);
-        bt3 += Math.max(0, (be - bs) / 3600000);
-      });
-      weekMap[wk] += Math.max(0, work3 - bt3);
-    });
+	    // Hitung overtime berdasarkan total efektif per minggu (multi-sesi + aktif)
+	    const weekMap = {};
+	    Object.entries(recsByDate).forEach(([dateStr, dayRecs]) => {
+	      const wk = weekKey(dateStr);
+	      if (!weekMap[wk]) weekMap[wk] = 0;
+	      weekMap[wk] += getDayWorkStats(dayRecs, nowMsTs).netMs / 3600000;
+	    });
     // Tambahkan jam cuti per minggu
     userPengajuan.forEach(p => {
       const tMulai = p.tanggalMulai;
@@ -2748,8 +2716,8 @@ function hitungOvertimeBackground(username) {
         dateMap[d.date].push(d);
       });
 
-    Object.entries(dateMap).forEach(([dateStr, sesiList]) => {
-      const jamKerja = sesiList.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
+	    Object.entries(dateMap).forEach(([dateStr, sesiList]) => {
+	      const jamKerja = getDayWorkStats(sesiList, Date.now()).netMs / 3600000;
       const infoLibur    = cekHariLibur(dateStr, username);
       const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
       const wk           = weekKey(dateStr);
@@ -3026,13 +2994,7 @@ function hitungJamKerja(rec, fallbackEndMs = null) {
     : (fallbackEndMs || Date.now());
   if (isNaN(keluarMs)) return 0;
   const work = (keluarMs - masukMs) / 3600000;
-  let bt = 0;
-  (rec.breaks || []).forEach(b => {
-    if (!b.end) return;
-    const bs = new Date(b.start).getTime();
-    const be = new Date(b.end).getTime();
-    if (!isNaN(bs) && !isNaN(be) && be > bs) bt += (be - bs) / 3600000;
-  });
+  const bt = getBreakMsForRecord(rec, keluarMs, !!fallbackEndMs) / 3600000;
   return Math.max(0, work - bt);
 }
 
@@ -3288,7 +3250,7 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
       dateMapOT[d.date].push(d);
     });
   Object.entries(dateMapOT).forEach(([dateStr, sesiList]) => {
-    const jamKerja = sesiList.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
+	    const jamKerja = getDayWorkStats(sesiList, Date.now()).netMs / 3600000;
     const infoLibur    = cekHariLibur(dateStr, username);
     const isHariMinggu = new Date(dateStr + "T12:00:00").getDay() === 0;
     const wk           = weekKey(dateStr);
@@ -3407,8 +3369,8 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
       if (d.jamKeluar) return true;
       return weekKey(d.date) < wkToday3;
     }).forEach(d => { if (!dateMapSS[d.date]) dateMapSS[d.date] = []; dateMapSS[d.date].push(d); });
-    Object.entries(dateMapSS).forEach(([dateStrX, sesiX]) => {
-      const jamKerja = sesiX.reduce((s, d) => s + hitungJamKerja(d, d.jamKeluar ? null : Date.now()), 0);
+	    Object.entries(dateMapSS).forEach(([dateStrX, sesiX]) => {
+	      const jamKerja = getDayWorkStats(sesiX, Date.now()).netMs / 3600000;
       const infoLibur    = cekHariLibur(dateStrX, username);
       const isHariMinggu = new Date(dateStrX + "T12:00:00").getDay() === 0;
       const wk           = weekKey(dateStrX);
