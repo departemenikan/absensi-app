@@ -988,6 +988,26 @@ async function toggleScreenshotFeature() {
 // ============================================================
 // ABSENSI
 // ============================================================
+async function ensureWorkReportBeforeAction(type) {
+  if (type !== "BREAK_START" && type !== "OUT") return true;
+  try {
+    const r = await authFetch("/work-photos/report-required?action=" + encodeURIComponent(type));
+    if (!r.ok) return true;
+    const d = await r.json();
+    if (!d.required) return true;
+    const msg = d.msg || (type === "BREAK_START"
+      ? "Upload minimal 1 foto laporan kegiatan sebelum mulai istirahat."
+      : "Upload minimal 1 foto laporan kegiatan sebelum Clock Out.");
+    showToast("📋 " + msg, "warning", 6500);
+    setTimeout(() => {
+      if (typeof showLaporanPopup === "function") showLaporanPopup();
+    }, 500);
+    return false;
+  } catch(e) {
+    return true;
+  }
+}
+
 async function sendAbsen(type, label) {
   const user = localStorage.getItem("user");
   if (!user) return checkLoginStatus();
@@ -1002,6 +1022,12 @@ async function sendAbsen(type, label) {
 
   let loc;
   try {
+    const reportOk = await ensureWorkReportBeforeAction(type);
+    if (!reportOk) {
+      [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+      return;
+    }
+
     // ─── Cek & minta izin kamera + lokasi via gate (sequential) ───
     const granted = await requirePermissions(true, true);
     if (!granted) {
@@ -1123,6 +1149,11 @@ async function sendAbsen(type, label) {
     } else if (d.status === "LOCATION_REQUIRED") {
       const _actionLabel = { IN:"Clock In", OUT:"Clock Out", BREAK_START:"Mulai Istirahat", BREAK_END:"Selesai Istirahat" }[type] || type;
       showToast(`❌ Aktifkan layanan lokasi di perangkat Anda untuk ${_actionLabel}`, "error", 5000);
+    } else if (d.status === "WORK_REPORT_REQUIRED") {
+      showToast("📋 " + (d.msg || "Upload minimal 1 foto laporan kegiatan terlebih dahulu."), "warning", 6500);
+      setTimeout(() => {
+        if (typeof showLaporanPopup === "function") showLaporanPopup();
+      }, 500);
     } else if (d.status === "ALREADY_IN") {
       showToast("⚠️ Sudah Clock In hari ini", "warning"); loadStatus();
     }

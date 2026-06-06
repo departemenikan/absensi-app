@@ -1351,7 +1351,7 @@ app.get("/face-descriptor/:username", (req, res) => {
 // ========================
 // ABSENSI
 // ========================
-app.post("/absen", requireLevel(99), (req, res) => {
+app.post("/absen", requireLevel(99), async (req, res) => {
   const data = load(F.data, []);
   const areas = load(F.areas, []);
   // Identitas user diambil dari header X-User (sudah diverifikasi middleware), bukan dari body
@@ -1408,6 +1408,20 @@ app.post("/absen", requireLevel(99), (req, res) => {
 
   // Normalisasi timestamp ke UTC ISO agar konsisten di semua perhitungan
   const timeNorm = normalizeTime(time) || time;
+
+  if ((type === "BREAK_START" || type === "OUT") && record) {
+    const wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
+    const reportCheck = wpHasRequiredPhotoForAction(wpStore, today, user, record, type);
+    if (!reportCheck.ok) {
+      return res.status(400).send({
+        status: "WORK_REPORT_REQUIRED",
+        msg: reportCheck.msg,
+        action: type,
+        segmentStart: reportCheck.segmentStart,
+        sesi: record.sesi || 1
+      });
+    }
+  }
 
   if (type === "IN") {
     if (record) return res.send({ status: "ALREADY_IN" });
@@ -4311,6 +4325,39 @@ function wpMergeAllSessions(sessions) {
   }
   return { photos: allPhotos, uraian: uraianMerged, updatedAt };
 }
+
+function wpGetWorkSegmentStart(rec, type) {
+  const breaks = Array.isArray(rec?.breaks) ? rec.breaks : [];
+  const completedBreaks = breaks.filter(b => b.start && b.end);
+  const lastCompletedBreak = completedBreaks.at(-1);
+  const start = lastCompletedBreak?.end || rec?.jamMasuk || null;
+  return start;
+}
+
+function wpHasRequiredPhotoForAction(wpStore, date, user, rec, type) {
+  if (type !== "BREAK_START" && type !== "OUT") return { ok: true };
+  if (!rec) return { ok: true };
+
+  const segmentStart = wpGetWorkSegmentStart(rec, type);
+  const segmentStartMs = segmentStart ? new Date(segmentStart).getTime() : NaN;
+  const sessions = wpGetSessions(wpStore, date, user);
+  const sesi = rec.sesi || 1;
+  const laporan = sessions.find(s => (s.sesi || 1) === sesi);
+  const photos = Array.isArray(laporan?.photos) ? laporan.photos : [];
+  const hasPhoto = photos.some(p => {
+    if (!p) return false;
+    if (!p.ts || isNaN(segmentStartMs)) return true;
+    const tsMs = new Date(p.ts).getTime();
+    return !isNaN(tsMs) && tsMs >= segmentStartMs;
+  });
+
+  if (hasPhoto) return { ok: true, segmentStart };
+
+  const msg = type === "BREAK_START"
+    ? "Upload minimal 1 foto laporan kegiatan sebelum mulai istirahat."
+    : "Upload minimal 1 foto laporan kegiatan sebelum Clock Out.";
+  return { ok: false, msg, segmentStart };
+}
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // GET /work-photos/active-mobile — user mobile/pwa yang sedang aktif hari ini (belum clock out)
@@ -4537,6 +4584,36 @@ app.get("/work-photos/report/me", requireLevel(99), async (req, res) => {
     console.error("[REPORT/ME] Error:", err.message);
     res.status(500).json({ uraian: "", totalPhotos: 0, updatedAt: null, aktivitas: "",
                            currentSesi: 1, sessions: [], isEditable: true });
+  }
+});
+
+app.get("/work-photos/report-required", requireLevel(99), async (req, res) => {
+  try {
+    const user = req._requester;
+    const today = todayLocal();
+    const action = String(req.query.action || "").toUpperCase();
+    if (action !== "BREAK_START" && action !== "OUT") {
+      return res.json({ required: false, ok: true });
+    }
+
+    let data = load(F.data, null);
+    if (!data) data = await dbLoad(F.data, []);
+    const rec = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+    if (!rec) return res.json({ required: false, ok: true });
+
+    const wpStore = USE_SUPABASE ? await dbLoad(F.workPhotos, {}) : (load(F.workPhotos, null) || {});
+    const check = wpHasRequiredPhotoForAction(wpStore, today, user, rec, action);
+    res.json({
+      required: !check.ok,
+      ok: check.ok,
+      msg: check.msg || "",
+      action,
+      segmentStart: check.segmentStart || null,
+      sesi: rec.sesi || 1
+    });
+  } catch (err) {
+    console.error("[REPORT/REQUIRED] Error:", err.message);
+    res.status(500).json({ required: false, ok: true, msg: "" });
   }
 });
 
