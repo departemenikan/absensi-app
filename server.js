@@ -3501,19 +3501,13 @@ function canManageOvertime(requester, targetUsername, users = load(F.users, {}),
   if (!requester || !targetUsername || requester === targetUsername) return false;
   const requesterGroup = getUserGroup(requester);
   const targetGroup = getUserGroup(targetUsername);
-  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+  if (requesterGroup === "owner") return targetGroup === "admin";
+  if (requesterGroup === "admin") return targetGroup === "manager";
   if (requesterGroup === "manager") {
-    if (["owner", "admin", "manager"].includes(targetGroup)) return false;
+    if (!["anggota", "koordinator"].includes(targetGroup)) return false;
     const myDivisi = userDivisiArr(users[requester]);
     const tgtDivisi = userDivisiArr(users[targetUsername]);
     return myDivisi.some(d => tgtDivisi.includes(d));
-  }
-  if (requesterGroup === "koordinator") {
-    if (targetGroup !== "anggota") return false;
-    const myDivisi = userDivisiArr(users[requester]);
-    const divObjs = divisiList.filter(d => myDivisi.includes(d.nama) && d.koordinator === requester);
-    const tgtDivisi = userDivisiArr(users[targetUsername]);
-    return divObjs.some(d => tgtDivisi.includes(d.nama));
   }
   return false;
 }
@@ -3523,18 +3517,13 @@ function canViewOvertimeUser(requester, targetUsername, users = load(F.users, {}
   if (requester === targetUsername) return true;
   const requesterGroup = getUserGroup(requester);
   const targetGroup = getUserGroup(targetUsername);
-  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+  if (requesterGroup === "owner") return targetGroup === "admin";
+  if (requesterGroup === "admin") return targetGroup === "manager";
   if (requesterGroup === "manager") {
-    if (["owner", "admin"].includes(targetGroup)) return false;
+    if (!["anggota", "koordinator"].includes(targetGroup)) return false;
     const myDivisi = userDivisiArr(users[requester]);
     const tgtDivisi = userDivisiArr(users[targetUsername]);
     return myDivisi.some(d => tgtDivisi.includes(d));
-  }
-  if (requesterGroup === "koordinator") {
-    const myDivisi = userDivisiArr(users[requester]);
-    const divObjs = divisiList.filter(d => myDivisi.includes(d.nama) && d.koordinator === requester);
-    const tgtDivisi = userDivisiArr(users[targetUsername]);
-    return divObjs.some(d => tgtDivisi.includes(d.nama));
   }
   return false;
 }
