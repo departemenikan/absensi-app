@@ -110,6 +110,7 @@ app.post("/admin/reset-data-uji-coba", requireLevel(1), (req, res) => {
   save(F.workPhotos,      {});   // foto kerja
   save(F.pengajuanCuti,   []);   // pengajuan cuti
   save(F.kuotaCuti,       {});   // saldo cuti & overtime
+  save(F.overtimeVerifications, {}); // verifikasi overtime mingguan
   save(F.sessions,        {});   // sesi login
 
   // Master data yang TIDAK dihapus:
@@ -120,7 +121,7 @@ app.post("/admin/reset-data-uji-coba", requireLevel(1), (req, res) => {
   res.json({
     status: "OK",
     pesan: "Semua data operasional berhasil dihapus. Master data tetap aman.",
-    dihapus: ["data (absensi)", "tracking (GPS)", "aktivitas", "screenshots", "work_photos", "pengajuan_cuti", "kuota_cuti", "sessions"],
+    dihapus: ["data (absensi)", "tracking (GPS)", "aktivitas", "screenshots", "work_photos", "pengajuan_cuti", "kuota_cuti", "overtime_verifications", "sessions"],
     aman: ["users", "areas", "groups", "divisi", "rules", "app_settings", "libur", "kebijakan_cuti", "aktivitas_kustom", "push_subscriptions", "webauthn"]
   });
 });
@@ -404,6 +405,7 @@ const F = {
   sessions:         "sessions",        // track device login per user
   webauthn:         "webauthn",        // WebAuthn credentials (fingerprint/Face ID)
   workPhotos:      "work_photos",
+  overtimeVerifications: "overtime_verifications",
 };
 
 // Path file /tmp untuk keperluan migrasi data lama
@@ -447,6 +449,7 @@ async function loadAll() {
     app_settings: { timezone: "Asia/Makassar" },
     screenshots: {},
     work_photos: {},
+    overtime_verifications: {},
   };
 
   await Promise.all(
@@ -2686,7 +2689,7 @@ app.get("/timesheet", requireLevel(2), (req, res) => {
 // ── Helper: hitung ulang overtime & tukar libur user di background (non-blocking) ──
 // Dipanggil otomatis setelah edit/hapus/tambah absen agar data selalu sinkron.
 // Tidak mengubah jamTerpakai, hariDiambil, carry-over, atau data cuti — hanya
-// update jamTL_reguler (overtime) dan jamAkumulasi (tukar libur).
+// update antrean verifikasi overtime reguler dan jamAkumulasi (tukar libur).
 function hitungOvertimeBackground(username) {
   try {
     const tahun      = new Date().getFullYear();
@@ -2780,21 +2783,11 @@ function hitungOvertimeBackground(username) {
       }
     });
 
-    // Hitung total overtime (kelebihan 40 jam/minggu)
-    let totalOvertimeJam = 0;
-    Object.values(weekMap).forEach(jam => {
-      if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
-    });
-
     const k        = initKuotaUser(kuota, username, tahun);
     const tglHitung = new Date().toLocaleDateString("sv-SE");
 
-    // Update overtime — hanya timpa jamTL_reguler & riwayat otomatis
-    k.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
-    k.overtime.riwayat = (k.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
-    if (totalOvertimeJam > 0) {
-      k.overtime.riwayat.push({ tanggal: tglHitung, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan (auto)" });
-    }
+    // Overtime reguler tidak langsung masuk saldo: tunggu verifikasi manager/admin.
+    syncOvertimeVerificationWeekMap(username, tahun, weekMap);
 
     // Update tukar libur — hanya timpa jamAkumulasi & riwayat otomatis
     k.tukarLibur = k.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
@@ -3311,20 +3304,11 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
     }
   });
 
-  // Total overtime = kelebihan 40 jam/minggu + TL dari kerja di hari libur
-  let totalOvertimeJam = 0;
-  Object.values(weekMap).forEach(jam => {
-    if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU);
-  });
   const k = initKuotaUser(kuota, username, tahun);
   const tglHitung = new Date().toLocaleDateString("sv-SE");
 
-  // Overtime: hanya kelebihan jam mingguan
-  k.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
-  k.overtime.riwayat = (k.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
-  if (totalOvertimeJam > 0) {
-    k.overtime.riwayat.push({ tanggal: tglHitung, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan" });
-  }
+  // Overtime reguler masuk antrean verifikasi; saldo hanya dari yang disetujui.
+  const verifiedOvertimeJam = syncOvertimeVerificationWeekMap(username, tahun, weekMap);
 
   // Tukar Libur: hanya dari kerja di hari libur nasional/agama
   k.tukarLibur = k.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
@@ -3337,7 +3321,7 @@ app.post("/kuota-cuti/hitung-overtime/:user", requireSelfOrLevel("user", 2), (re
   save(F.kuotaCuti, kuota);
   res.send({
     status: "OK",
-    overtime:   { jam: k.overtime.jamTL_reguler,   saldo: saldoOvertimeHari(k.overtime) },
+    overtime:   { jam: verifiedOvertimeJam,         saldo: saldoOvertimeHari(k.overtime), perluVerifikasi: true },
     tukarLibur: { jam: k.tukarLibur.jamAkumulasi,   saldo: saldoTukarLiburHari(k.tukarLibur) },
   });
 });
@@ -3431,13 +3415,9 @@ app.post("/kuota-cuti/hitung-overtime-semua", requireLevel(2), (req, res) => {
       }
     });
 
-    let totalOvertimeJam = 0;
-    Object.values(weekMap).forEach(jam => { if (jam > JAM_WAJIB_MINGGU) totalOvertimeJam += (jam - JAM_WAJIB_MINGGU); });
     const kS   = initKuotaUser(kuota, username, tahun);
     const tglS = new Date().toLocaleDateString("sv-SE");
-    kS.overtime.jamTL_reguler = parseFloat(totalOvertimeJam.toFixed(2));
-    kS.overtime.riwayat = (kS.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
-    if (totalOvertimeJam > 0) kS.overtime.riwayat.push({ tanggal: tglS, jam: parseFloat(totalOvertimeJam.toFixed(2)), sumber: "overtime", keterangan: "Kelebihan jam kerja mingguan" });
+    syncOvertimeVerificationWeekMap(username, tahun, weekMap);
     kS.tukarLibur = kS.tukarLibur || { jamAkumulasi: 0, jamCarryOver: 0, jamTerpakai: 0, hariDiambil: 0, riwayat: [] };
     kS.tukarLibur.jamAkumulasi = parseFloat(jamTLLibur.toFixed(2));
     kS.tukarLibur.riwayat = (kS.tukarLibur.riwayat || []).filter(r => ["carry-over","migrasi","manual"].includes(r.sumber));
@@ -3511,6 +3491,279 @@ function getUserGroup(username) {
   const u = users[username];
   return u ? (u.group || "anggota") : "anggota";
 }
+
+function userDivisiArr(userObj) {
+  if (!userObj) return [];
+  return Array.isArray(userObj.divisi) ? userObj.divisi : (userObj.divisi ? [userObj.divisi] : []);
+}
+
+function canManageOvertime(requester, targetUsername, users = load(F.users, {}), divisiList = load(F.divisi, [])) {
+  if (!requester || !targetUsername || requester === targetUsername) return false;
+  const requesterGroup = getUserGroup(requester);
+  const targetGroup = getUserGroup(targetUsername);
+  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+  if (requesterGroup === "manager") {
+    if (["owner", "admin", "manager"].includes(targetGroup)) return false;
+    const myDivisi = userDivisiArr(users[requester]);
+    const tgtDivisi = userDivisiArr(users[targetUsername]);
+    return myDivisi.some(d => tgtDivisi.includes(d));
+  }
+  if (requesterGroup === "koordinator") {
+    if (targetGroup !== "anggota") return false;
+    const myDivisi = userDivisiArr(users[requester]);
+    const divObjs = divisiList.filter(d => myDivisi.includes(d.nama) && d.koordinator === requester);
+    const tgtDivisi = userDivisiArr(users[targetUsername]);
+    return divObjs.some(d => tgtDivisi.includes(d.nama));
+  }
+  return false;
+}
+
+function canViewOvertimeUser(requester, targetUsername, users = load(F.users, {}), divisiList = load(F.divisi, [])) {
+  if (!requester || !targetUsername) return false;
+  if (requester === targetUsername) return true;
+  const requesterGroup = getUserGroup(requester);
+  const targetGroup = getUserGroup(targetUsername);
+  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
+  if (requesterGroup === "manager") {
+    if (["owner", "admin"].includes(targetGroup)) return false;
+    const myDivisi = userDivisiArr(users[requester]);
+    const tgtDivisi = userDivisiArr(users[targetUsername]);
+    return myDivisi.some(d => tgtDivisi.includes(d));
+  }
+  if (requesterGroup === "koordinator") {
+    const myDivisi = userDivisiArr(users[requester]);
+    const divObjs = divisiList.filter(d => myDivisi.includes(d.nama) && d.koordinator === requester);
+    const tgtDivisi = userDivisiArr(users[targetUsername]);
+    return divObjs.some(d => tgtDivisi.includes(d.nama));
+  }
+  return false;
+}
+
+function overtimeVerificationId(username, wk) {
+  return `${String(username).replace(/[^a-zA-Z0-9_-]/g, "_")}__${wk}`;
+}
+
+function weekStartFromKey(wk) {
+  const m = String(wk || "").match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return "";
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  const jan4 = new Date(year, 0, 4, 12, 0, 0);
+  const week1 = new Date(jan4);
+  week1.setDate(jan4.getDate() - ((jan4.getDay() || 7) - 1));
+  const d = new Date(week1);
+  d.setDate(week1.getDate() + (week - 1) * 7);
+  return d.toLocaleDateString("sv-SE");
+}
+
+function upsertOvertimeVerification(username, wk, totalJam) {
+  const store = load(F.overtimeVerifications, {});
+  const id = overtimeVerificationId(username, wk);
+  const systemHours = parseFloat(Math.max(0, totalJam - JAM_WAJIB_MINGGU).toFixed(2));
+  if (systemHours <= 0) return null;
+  const prev = store[id] || {};
+  const prevStatus = prev.status || "pending";
+  const approvedLike = ["approved", "partial", "rejected"].includes(prevStatus);
+  const approvedHours = approvedLike ? Math.min(parseFloat(prev.approvedHours || 0), systemHours) : 0;
+  const weekStart = weekStartFromKey(wk);
+  const endDate = weekStart ? new Date(weekStart + "T12:00:00") : null;
+  if (endDate) endDate.setDate(endDate.getDate() + 6);
+  store[id] = {
+    ...prev,
+    id,
+    username,
+    weekKey: wk,
+    year: Number(String(wk).slice(0, 4)) || new Date().getFullYear(),
+    weekStart,
+    weekEnd: endDate ? endDate.toLocaleDateString("sv-SE") : "",
+    totalJam: parseFloat(totalJam.toFixed(2)),
+    systemHours,
+    approvedHours: parseFloat(approvedHours.toFixed(2)),
+    status: prevStatus,
+    createdAt: prev.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  save(F.overtimeVerifications, store);
+  return store[id];
+}
+
+function syncApprovedOvertimeToKuota(username, tahun = new Date().getFullYear()) {
+  const verifs = load(F.overtimeVerifications, {});
+  const kuota = load(F.kuotaCuti, {});
+  const k = initKuotaUser(kuota, username, tahun);
+  const approved = Object.values(verifs).filter(v =>
+    v && v.username === username && Number(v.year) === Number(tahun) &&
+    ["approved", "partial"].includes(v.status)
+  );
+  const totalApproved = approved.reduce((s, v) => s + (parseFloat(v.approvedHours || 0) || 0), 0);
+  k.overtime.jamTL_reguler = parseFloat(totalApproved.toFixed(2));
+  k.overtime.riwayat = (k.overtime.riwayat || []).filter(r => ["carry-over","migrasi","manual","ambil"].includes(r.sumber));
+  if (totalApproved > 0) {
+    k.overtime.riwayat.push({
+      tanggal: new Date().toLocaleDateString("sv-SE"),
+      jam: parseFloat(totalApproved.toFixed(2)),
+      sumber: "overtime",
+      keterangan: "Kelebihan jam kerja mingguan terverifikasi",
+    });
+  }
+  save(F.kuotaCuti, kuota);
+  return k.overtime.jamTL_reguler;
+}
+
+function syncOvertimeVerificationWeekMap(username, tahun, weekMap) {
+  Object.entries(weekMap || {}).forEach(([wk, jam]) => {
+    if (String(wk).startsWith(String(tahun)) && jam > JAM_WAJIB_MINGGU) {
+      upsertOvertimeVerification(username, wk, jam);
+    }
+  });
+  return syncApprovedOvertimeToKuota(username, tahun);
+}
+
+function weekDatesFromStart(weekStart) {
+  const mon = weekStart ? new Date(weekStart + "T12:00:00") : new Date();
+  if (!weekStart) {
+    const day = mon.getDay();
+    mon.setDate(mon.getDate() + (day === 0 ? -6 : 1 - day));
+  }
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    return d.toLocaleDateString("sv-SE");
+  });
+}
+
+function calculateWeeklyEffectiveHours(username, dates) {
+  const data = load(F.data, []);
+  const pengajuan = load(F.pengajuanCuti, []);
+  const userPengajuan = pengajuan.filter(p => p.username === username && p.status === "disetujui");
+  return dates.reduce((sum, dateStr) => {
+    const recs = data.filter(d => d.user === username && d.date === dateStr);
+    const nowMs = Date.now();
+    let jamKerja = getDayWorkStats(recs, nowMs).netMs / 3600000;
+    const infoLibur = cekHariLibur(dateStr, username);
+    const cutiAktif = userPengajuan.filter(p => jamCutiUntukTanggal(p, dateStr) > 0);
+    const jamCuti = cutiAktif.reduce((s, p) => s + jamCutiUntukTanggal(p, dateStr), 0);
+    const recMasukBeneran = recs.find(r => {
+      if (!r.jamMasuk) return false;
+      if (r.autoClockIn && r.autoClockInReason === "midnight-split") return false;
+      return true;
+    });
+    if (infoLibur && !recMasukBeneran && jamKerja === 0 && jamCuti === 0) {
+      jamKerja = infoLibur.jamLibur;
+    } else if (infoLibur && recMasukBeneran && new Date(dateStr + "T12:00:00").getDay() !== 0) {
+      jamKerja = infoLibur.jamLibur;
+    }
+    return sum + jamKerja + jamCuti;
+  }, 0);
+}
+
+app.get("/overtime-verifications", requireLevel(99), (req, res) => {
+  const requester = req._requester;
+  const users = load(F.users, {});
+  const divisiList = load(F.divisi, []);
+  const store = load(F.overtimeVerifications, {});
+  const dates = weekDatesFromStart(req.query.weekStart);
+  const wk = weekKey(dates[0]);
+  const tahun = Number(String(wk).slice(0, 4)) || new Date().getFullYear();
+
+  const visibleUsers = Object.keys(users)
+    .filter(username => canViewOvertimeUser(requester, username, users, divisiList))
+    .sort((a, b) => (users[a]?.namaLengkap || a).localeCompare(users[b]?.namaLengkap || b, "id"));
+
+  visibleUsers.forEach(username => {
+    const totalJam = calculateWeeklyEffectiveHours(username, dates);
+    if (totalJam > JAM_WAJIB_MINGGU) upsertOvertimeVerification(username, wk, totalJam);
+  });
+
+  const makeItem = username => {
+    const u = users[username] || {};
+    const id = overtimeVerificationId(username, wk);
+    const v = store[id] || {};
+    const totalJam = v.totalJam != null ? parseFloat(v.totalJam || 0) : calculateWeeklyEffectiveHours(username, dates);
+    const systemHours = v.systemHours != null ? parseFloat(v.systemHours || 0) : Math.max(0, totalJam - JAM_WAJIB_MINGGU);
+    return {
+      id,
+      username,
+      nama: u.namaLengkap || username,
+      jabatan: u.jabatan || "-",
+      divisi: userDivisiArr(u),
+      totalJam: parseFloat(totalJam.toFixed(2)),
+      systemHours: parseFloat(systemHours.toFixed(2)),
+      approvedHours: parseFloat((Number(v.approvedHours || 0) || 0).toFixed(2)),
+      status: v.status || (systemHours > 0 ? "pending" : "none"),
+      note: v.note || "",
+      verifiedBy: v.verifiedBy || "",
+      verifiedAt: v.verifiedAt || "",
+      canVerify: canManageOvertime(requester, username, users, divisiList) && systemHours > 0,
+    };
+  };
+
+  const items = visibleUsers.map(makeItem);
+  const groups = [];
+  const addGroup = (nama, members) => groups.push({
+    nama,
+    items: members.map(makeItem).filter(it => it.divisi.includes(nama) || nama === "Tanpa Divisi"),
+  });
+
+  divisiList.forEach(d => {
+    const members = visibleUsers.filter(username => userDivisiArr(users[username]).includes(d.nama));
+    if (members.length) addGroup(d.nama, members);
+  });
+  const noDivisi = visibleUsers.filter(username => userDivisiArr(users[username]).length === 0);
+  if (noDivisi.length) addGroup("Tanpa Divisi", noDivisi);
+
+  res.send({
+    status: "OK",
+    weekStart: dates[0],
+    weekEnd: dates[6],
+    weekKey: wk,
+    threshold: JAM_WAJIB_MINGGU,
+    totalPending: items.filter(it => it.status === "pending" && it.systemHours > 0).length,
+    divisi: groups,
+  });
+});
+
+app.post("/overtime-verifications/:id/approve", requireLevel(99), (req, res) => {
+  const store = load(F.overtimeVerifications, {});
+  const v = store[req.params.id];
+  const users = load(F.users, {});
+  const divisiList = load(F.divisi, []);
+  if (!v) return res.status(404).send({ status: "NOT_FOUND", msg: "Data overtime tidak ditemukan" });
+  if (!canManageOvertime(req._requester, v.username, users, divisiList)) {
+    return res.status(403).send({ status: "FORBIDDEN", msg: "Akses ditolak" });
+  }
+  const rawHours = req.body && req.body.approvedHours != null ? Number(req.body.approvedHours) : Number(v.systemHours || 0);
+  const approvedHours = Math.max(0, Math.min(Number(v.systemHours || 0), isNaN(rawHours) ? Number(v.systemHours || 0) : rawHours));
+  v.approvedHours = parseFloat(approvedHours.toFixed(2));
+  v.status = approvedHours >= Number(v.systemHours || 0) ? "approved" : "partial";
+  v.note = (req.body && req.body.note) || "";
+  v.verifiedBy = req._requester;
+  v.verifiedAt = new Date().toISOString();
+  v.updatedAt = v.verifiedAt;
+  save(F.overtimeVerifications, store);
+  syncApprovedOvertimeToKuota(v.username, v.year);
+  res.send({ status: "OK", data: v });
+});
+
+app.post("/overtime-verifications/:id/reject", requireLevel(99), (req, res) => {
+  const store = load(F.overtimeVerifications, {});
+  const v = store[req.params.id];
+  const users = load(F.users, {});
+  const divisiList = load(F.divisi, []);
+  if (!v) return res.status(404).send({ status: "NOT_FOUND", msg: "Data overtime tidak ditemukan" });
+  if (!canManageOvertime(req._requester, v.username, users, divisiList)) {
+    return res.status(403).send({ status: "FORBIDDEN", msg: "Akses ditolak" });
+  }
+  v.approvedHours = 0;
+  v.status = "rejected";
+  v.note = (req.body && req.body.note) || "";
+  v.verifiedBy = req._requester;
+  v.verifiedAt = new Date().toISOString();
+  v.updatedAt = v.verifiedAt;
+  save(F.overtimeVerifications, store);
+  syncApprovedOvertimeToKuota(v.username, v.year);
+  res.send({ status: "OK", data: v });
+});
 
 // GET semua pengajuan cuti (admin/owner/manager bisa lihat semua, lainnya hanya miliknya)
 app.get("/pengajuan-cuti", requireLevel(99), (req, res) => {

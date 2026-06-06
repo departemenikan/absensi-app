@@ -6657,6 +6657,8 @@ async function loadMonitorKehadiran() {
 let _tsWeekStart  = null;  // "YYYY-MM-DD" (Senin minggu ini)
 let _tsData       = null;  // response dari /timesheet/weekly
 let _tsCurrent    = null;  // {username, date} untuk modal edit
+let _tsMode       = "timesheet"; // "timesheet" | "overtime"
+let _tsOtData     = null;
 
 const DOW_LABEL = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
 const DOW_COLOR = { 0:"#e53935", 6:"#9c27b0" }; // Minggu merah, Sabtu ungu
@@ -6875,11 +6877,16 @@ async function loadTimesheet() {
   const fmt = d => `${d.getDate()} ${["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"][d.getMonth()]} ${d.getFullYear()}`;
   const lbl = document.getElementById("ts-week-label");
   if (lbl) lbl.textContent = `${fmt(mon)} – ${fmt(sun)}`;
+  ensureTimesheetModeTabs();
 
   const el = document.getElementById("ts-content");
   if (el) el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat...</p>`;
 
   try {
+    if (_tsMode === "overtime") {
+      await loadOvertimeVerification();
+      return;
+    }
     const r = await authFetch(`/timesheet/weekly?weekStart=${_tsWeekStart}`);
     _tsData = await r.json();
     tsRender();
@@ -6888,7 +6895,194 @@ async function loadTimesheet() {
   }
 }
 
+function tsEsc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[c]));
+}
+
+function ensureTimesheetModeTabs() {
+  const content = document.getElementById("ts-content");
+  if (!content || document.getElementById("ts-mode-tabs")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "ts-mode-tabs";
+  wrap.style.cssText = "display:flex;gap:8px;align-items:center;margin:8px 0 12px;overflow-x:auto;";
+  wrap.innerHTML = `
+    <button id="ts-tab-table" onclick="switchTimesheetMode('timesheet')"
+      style="border:1px solid #dfe5ee;background:#fff;color:var(--text);padding:8px 12px;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap;">Timesheet</button>
+    <button id="ts-tab-ot" onclick="switchTimesheetMode('overtime')"
+      style="border:1px solid #dfe5ee;background:#fff;color:var(--text);padding:8px 12px;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap;">Verifikasi OT</button>`;
+  content.parentNode.insertBefore(wrap, content);
+  updateTimesheetModeTabs();
+}
+
+function updateTimesheetModeTabs() {
+  const on = "linear-gradient(135deg,#1a237e,#4f8ef7)";
+  const off = "#fff";
+  const t1 = document.getElementById("ts-tab-table");
+  const t2 = document.getElementById("ts-tab-ot");
+  if (t1) {
+    t1.style.background = _tsMode === "timesheet" ? on : off;
+    t1.style.color = _tsMode === "timesheet" ? "#fff" : "var(--text)";
+  }
+  if (t2) {
+    t2.style.background = _tsMode === "overtime" ? on : off;
+    t2.style.color = _tsMode === "overtime" ? "#fff" : "var(--text)";
+  }
+}
+
+function switchTimesheetMode(mode) {
+  _tsMode = mode === "overtime" ? "overtime" : "timesheet";
+  updateTimesheetModeTabs();
+  loadTimesheet();
+}
+
+function otStatusBadge(status) {
+  const map = {
+    pending:  ["Menunggu", "#fff8e1", "#f57f17"],
+    approved: ["Disetujui", "#e8f5e9", "#2e7d32"],
+    partial:  ["Sebagian", "#e3f2fd", "#1565c0"],
+    rejected: ["Ditolak", "#ffebee", "#c62828"],
+    none:     ["Normal", "#f5f7fb", "var(--muted)"],
+  };
+  const [label, bg, color] = map[status] || map.none;
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:70px;padding:3px 7px;border-radius:999px;background:${bg};color:${color};font-weight:800;font-size:10px;">${label}</span>`;
+}
+
+async function loadOvertimeVerification() {
+  const el = document.getElementById("ts-content");
+  if (el) el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Memuat verifikasi overtime...</p>`;
+  try {
+    const r = await authFetch(`/overtime-verifications?weekStart=${_tsWeekStart}`);
+    _tsOtData = await r.json();
+    renderOvertimeVerification();
+  } catch(e) {
+    if (el) el.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px;">❌ Gagal memuat verifikasi OT</p>`;
+  }
+}
+
+function renderOvertimeVerification() {
+  const el = document.getElementById("ts-content");
+  if (!el || !_tsOtData) return;
+  const groups = _tsOtData.divisi || [];
+  if (!groups.length) {
+    el.innerHTML = `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada anggota dalam cakupan divisi.</p>`;
+    return;
+  }
+
+  const q = (document.getElementById("ts-search")?.value || "").toLowerCase();
+  const html = groups.map((g, idx) => {
+    const items = (g.items || []).filter(it =>
+      !q || (it.nama || it.username).toLowerCase().includes(q) || it.username.toLowerCase().includes(q)
+    );
+    if (!items.length) return "";
+    const pending = items.filter(it => it.status === "pending" && it.systemHours > 0).length;
+    const rows = items.map(it => {
+      const canAct = it.canVerify && it.systemHours > 0;
+      return `<tr style="border-bottom:1px solid #eef1f5;">
+        <td style="padding:9px 10px;">
+          <div style="font-weight:800;font-size:12px;color:var(--text);">${tsEsc(it.nama)}</div>
+          <div style="font-size:10px;color:var(--muted);">@${tsEsc(it.username)} · ${tsEsc(it.jabatan || "-")}</div>
+        </td>
+        <td style="padding:9px 8px;text-align:center;font-weight:800;">${fmtJamOT(it.totalJam || 0)}</td>
+        <td style="padding:9px 8px;text-align:center;color:${it.systemHours > 0 ? "#f57f17" : "var(--muted)"};font-weight:900;">${fmtJamOT(it.systemHours || 0)}</td>
+        <td style="padding:9px 8px;text-align:center;color:#2e7d32;font-weight:900;">${fmtJamOT(it.approvedHours || 0)}</td>
+        <td style="padding:9px 8px;text-align:center;">${otStatusBadge(it.status)}</td>
+        <td style="padding:9px 10px;text-align:right;white-space:nowrap;">
+          <button onclick="otGoEdit('${tsEsc(it.username)}')" style="border:1px solid #dfe5ee;background:#fff;color:var(--primary);border-radius:7px;padding:6px 8px;font-size:11px;font-weight:800;cursor:pointer;">Edit</button>
+          <button ${canAct ? "" : "disabled"} onclick="approveOvertime('${tsEsc(it.id)}', ${Number(it.systemHours || 0)})" style="border:none;background:${canAct ? "#2e7d32" : "#ccd3dc"};color:white;border-radius:7px;padding:6px 8px;font-size:11px;font-weight:800;cursor:${canAct ? "pointer" : "not-allowed"};">Verifikasi</button>
+          <button ${canAct ? "" : "disabled"} onclick="rejectOvertime('${tsEsc(it.id)}')" style="border:none;background:${canAct ? "#c62828" : "#ccd3dc"};color:white;border-radius:7px;padding:6px 8px;font-size:11px;font-weight:800;cursor:${canAct ? "pointer" : "not-allowed"};">Tolak</button>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<details ${idx === 0 ? "open" : ""} style="border:1px solid #e8ecf0;border-radius:10px;background:white;margin-bottom:10px;overflow:hidden;">
+      <summary style="list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;background:#f8f9ff;font-weight:900;color:var(--text);">
+        <span>${tsEsc(g.nama)}</span>
+        <span style="font-size:11px;color:${pending ? "#f57f17" : "var(--muted)"};">${items.length} anggota${pending ? " · " + pending + " pending" : ""}</span>
+      </summary>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px;">
+          <thead>
+            <tr style="background:#fff;border-bottom:1px solid #e8ecf0;color:var(--muted);font-size:10px;text-transform:uppercase;">
+              <th style="padding:9px 10px;text-align:left;">Nama</th>
+              <th style="padding:9px 8px;text-align:center;">Total Minggu</th>
+              <th style="padding:9px 8px;text-align:center;">OT Sistem</th>
+              <th style="padding:9px 8px;text-align:center;">Disetujui</th>
+              <th style="padding:9px 8px;text-align:center;">Status</th>
+              <th style="padding:9px 10px;text-align:right;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>`;
+  }).join("");
+
+  el.innerHTML = html || `<p style="color:var(--muted);text-align:center;padding:28px;">Tidak ada hasil sesuai pencarian.</p>`;
+}
+
+function otGoEdit(username) {
+  _tsMode = "timesheet";
+  updateTimesheetModeTabs();
+  const s = document.getElementById("ts-search");
+  if (s) s.value = username;
+  loadTimesheet();
+  showToast("Buka baris anggota di Timesheet untuk koreksi jam kerja.", "info", 4500);
+}
+
+async function approveOvertime(id, systemHours) {
+  const raw = prompt("Jam OT yang disetujui:", String(systemHours || 0));
+  if (raw === null) return;
+  const approvedHours = Number(String(raw).replace(",", "."));
+  if (isNaN(approvedHours) || approvedHours < 0) {
+    showToast("⚠️ Jumlah jam tidak valid", "warning");
+    return;
+  }
+  const note = prompt("Catatan verifikasi (opsional):", "") || "";
+  try {
+    const r = await authFetch(`/overtime-verifications/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvedHours, note }),
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Overtime terverifikasi");
+      loadOvertimeVerification();
+    } else {
+      showToast("❌ " + (d.msg || "Gagal verifikasi"), "error");
+    }
+  } catch(e) {
+    showToast("❌ Gagal verifikasi overtime", "error");
+  }
+}
+
+async function rejectOvertime(id) {
+  const note = prompt("Alasan penolakan:", "");
+  if (note === null) return;
+  try {
+    const r = await authFetch(`/overtime-verifications/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Overtime ditolak");
+      loadOvertimeVerification();
+    } else {
+      showToast("❌ " + (d.msg || "Gagal menolak"), "error");
+    }
+  } catch(e) {
+    showToast("❌ Gagal menolak overtime", "error");
+  }
+}
+
 function tsRender() {
+  if (_tsMode === "overtime") {
+    renderOvertimeVerification();
+    return;
+  }
   const el = document.getElementById("ts-content");
   if (!el || !_tsData) return;
 
