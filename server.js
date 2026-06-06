@@ -638,6 +638,31 @@ function isUserMess(username) {
   return (rules.messList || []).includes(username);
 }
 
+const IDLE_CONTINUE_MINUTES = 15;
+
+function clearIdleClockOut(rec) {
+  if (!rec) return;
+  delete rec.idleClockOut;
+  delete rec.idleReason;
+  delete rec.idleSince;
+  delete rec.idleLabel;
+}
+
+function shouldSkipIdleCheck(rec, now) {
+  if (!rec) return true;
+  if (rec.idleClockOut) return true;
+  if (!rec.idleSnoozeUntil) return false;
+  return new Date(rec.idleSnoozeUntil).getTime() > now.getTime();
+}
+
+function markIdleClockOut(rec, reason, label, now) {
+  rec.idleClockOut = true;
+  rec.idleReason = reason;
+  rec.idleLabel = label;
+  rec.idleSince = now.toISOString();
+  rec.autoClockOutPending = true;
+}
+
 // ========================
 // AUTO CLOCK-OUT SCHEDULER + PENGINGAT CLOCK IN
 // ========================
@@ -739,28 +764,28 @@ setInterval(() => {
     // Skip jika Tugas Luar — hanya jika toggle 5 ON
     if (toggleTugasLuar && (user.statusKerja || "").toLowerCase().includes("tugas luar")) return;
 
+    if (shouldSkipIdleCheck(rec, now)) return;
+
     const isMess = messList.includes(username);
-    const clockOutTime = new Date().toISOString();
+    const clockOutTime = now.toISOString();
     const jamFmt = new Date(clockOutTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 
     if (isMess) {
       // Rule 1: Karyawan mess — clock out tepat jam 17:00
       if (!toggleMess) return; // toggle 1 OFF → skip
       if (hour === 17 && min === 0) {
-        rec.jamKeluar = clockOutTime;
-        rec.autoClockOut = true;
-        rec.autoClockOutReason = "mess-17:00";
-        logAktivitas(username, "AUTO_OUT_MESS", clockOutTime);
+        markIdleClockOut(rec, "mess-17:00", "Karyawan mess pukul 17:00", now);
+        logAktivitas(username, "IDLE_OUT_MESS", clockOutTime);
         changed = true;
 
-        // Notif ke user — auto clock-out berhasil
+        // Notif ke user — perlu konfirmasi
         sendPushToUser(username,
-          "Clock Out Otomatis 🔴",
-          `Kamu otomatis di-Clock Out pukul ${jamFmt} (karyawan mess)`
+          "Konfirmasi Status Kerja",
+          `Pukul ${jamFmt}. Pilih Lanjut Kerja atau Clock Out di aplikasi.`
         ).catch(() => {});
         // WA Fonnte — khusus karyawan mess
         if (user.noHp) sendFonnte(user.noHp,
-          `🔴 *Clock Out Otomatis*\nHai *${user.namaLengkap || user.nama || username}*, kamu otomatis di-Clock Out pukul *${jamFmt}* (karyawan mess).`
+          `🔴 *Konfirmasi Status Kerja*\nHai *${user.namaLengkap || user.nama || username}*, pukul *${jamFmt}* kamu masuk status idle (karyawan mess). Pilih *Lanjut Kerja* atau *Clock Out* di aplikasi.`
         );
       }
     } else {
@@ -770,15 +795,13 @@ setInterval(() => {
       if (!todayPoints.length) {
         // Rule 3: Tidak ada data GPS → clock out otomatis
         if (!toggleTidakAdaGPS) return; // toggle 3 OFF → skip
-        rec.jamKeluar = clockOutTime;
-        rec.autoClockOut = true;
-        rec.autoClockOutReason = "no-gps-after-17:00";
-        logAktivitas(username, "AUTO_OUT_NO_GPS", clockOutTime);
+        markIdleClockOut(rec, "no-gps-after-17:00", "Data lokasi tidak tersedia setelah 17:00", now);
+        logAktivitas(username, "IDLE_OUT_NO_GPS", clockOutTime);
         changed = true;
 
         sendPushToUser(username,
-          "Clock Out Otomatis 🔴",
-          `Kamu otomatis di-Clock Out pukul ${jamFmt} karena data lokasi tidak tersedia setelah jam 17:00`
+          "Konfirmasi Status Kerja",
+          `Data lokasi tidak tersedia setelah 17:00. Pilih Lanjut Kerja atau Clock Out di aplikasi.`
         ).catch(() => {});
         return;
       }
@@ -794,16 +817,14 @@ setInterval(() => {
       if (!inRadius) {
         // Rule 2: Di luar radius setelah 17:00
         if (!toggleLuarRadius) return; // toggle 2 OFF → skip
-        rec.jamKeluar = clockOutTime;
-        rec.autoClockOut = true;
-        rec.autoClockOutReason = "luar-radius-after-17:00";
-        logAktivitas(username, "AUTO_OUT_LUAR", clockOutTime);
+        markIdleClockOut(rec, "luar-radius-after-17:00", "Di luar radius area kantor setelah 17:00", now);
+        logAktivitas(username, "IDLE_OUT_LUAR", clockOutTime);
         changed = true;
 
-        // Notif ke user — auto clock-out karena di luar radius
+        // Notif ke user — perlu konfirmasi karena di luar radius
         sendPushToUser(username,
-          "Clock Out Otomatis 🔴",
-          `Kamu otomatis di-Clock Out pukul ${jamFmt} karena berada di luar radius area kantor`
+          "Konfirmasi Status Kerja",
+          `Kamu terdeteksi di luar radius area kantor. Pilih Lanjut Kerja atau Clock Out di aplikasi.`
         ).catch(() => {});
       }
     }
@@ -1350,13 +1371,16 @@ app.post("/absen", requireLevel(99), (req, res) => {
     console.log(`[CLOCK-IN] ${user} | platform: "${platform}" | UA: ${(req.headers["user-agent"]||"").slice(0,80)} | w:${req.body.screenWidth||"?"}`);
     data.push({ user, date: today, jamMasuk: timeNorm, jamKeluar: null, lokasi: { lat, lng, accuracy }, foto: photo, breaks: [], aktivitas, platform, sesi: (data.filter(d => d.user === user && d.date === today).length + 1) });
   } else if (type === "OUT" && record) {
+    clearIdleClockOut(record);
     record.jamKeluar = timeNorm;
     const lb = record.breaks.at(-1);
     if (lb && !lb.end) lb.end = timeNorm;
     // Foto kegiatan kini dikelola via POST /work-photos/report (terpisah dari clock out)
   } else if (type === "BREAK_START" && record) {
+    clearIdleClockOut(record);
     record.breaks.push({ start: timeNorm, end: null });
   } else if (type === "BREAK_END" && record) {
+    clearIdleClockOut(record);
     const lb = record.breaks.at(-1);
     if (lb && !lb.end) lb.end = timeNorm;
   }
@@ -1389,17 +1413,85 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
     const adaHariIni   = data.find(d => d.user === username && d.date === today);
     const recTerakhir  = data.slice().reverse().find(d => d.user === username && d.date === today);
 
-    if (!aktif) return res.send({
-      status: "OUT",
-      hadAbsenceToday: !!adaHariIni,
-      aktivitas: recTerakhir?.aktivitas || ""
-    });
-    const lb = aktif.breaks?.at(-1);
-    const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
-    return res.send({ status: statusStr, hadAbsenceToday: true, aktivitas: aktif.aktivitas || "" });
+	    if (!aktif) return res.send({
+	      status: "OUT",
+	      hadAbsenceToday: !!adaHariIni,
+	      aktivitas: recTerakhir?.aktivitas || "",
+	      idleClockOut: false
+	    });
+	    const lb = aktif.breaks?.at(-1);
+	    const statusStr = (lb && !lb.end) ? "BREAK" : "IN";
+	    const isIdle = !!aktif.idleClockOut;
+	    return res.send({
+	      status: isIdle ? "IDLE" : statusStr,
+	      workStatus: statusStr,
+	      hadAbsenceToday: true,
+	      aktivitas: aktif.aktivitas || "",
+	      idleClockOut: isIdle,
+	      idleReason: aktif.idleReason || "",
+	      idleLabel: aktif.idleLabel || "",
+	      idleSince: aktif.idleSince || null,
+	      idleSnoozeUntil: aktif.idleSnoozeUntil || null
+	    });
+	  } catch (err) {
+	    console.error("[STATUS] Error:", err.message);
+	    res.send({ status: "OUT", hadAbsenceToday: false, aktivitas: "", idleClockOut: false });
+	  }
+	});
+
+app.post("/idle/continue", requireLevel(99), async (req, res) => {
+  try {
+    const user = req._requester;
+    const today = todayLocal();
+    let data = load(F.data, null);
+    if (!data) data = await dbLoad(F.data, []);
+
+    const rec = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+    if (!rec) return res.status(404).json({ status: "NO_ACTIVE_SESSION" });
+    if (!rec.idleClockOut) return res.json({ status: "OK", idleClockOut: false });
+
+    const now = new Date();
+    const reason = rec.idleReason || "idle";
+    clearIdleClockOut(rec);
+    rec.idleSnoozeUntil = new Date(now.getTime() + IDLE_CONTINUE_MINUTES * 60000).toISOString();
+    rec.lastIdleContinueAt = now.toISOString();
+    save(F.data, data);
+    logAktivitas(user, "IDLE_CONTINUE_" + reason, now.toISOString());
+    res.json({ status: "OK", idleClockOut: false, snoozeUntil: rec.idleSnoozeUntil });
   } catch (err) {
-    console.error("[STATUS] Error:", err.message);
-    res.send({ status: "OUT", hadAbsenceToday: false, aktivitas: "" });
+    console.error("[IDLE/CONTINUE] Error:", err.message);
+    res.status(500).json({ status: "ERROR", msg: "Gagal lanjut kerja" });
+  }
+});
+
+app.post("/idle/clock-out", requireLevel(99), async (req, res) => {
+  try {
+    const user = req._requester;
+    const today = todayLocal();
+    let data = load(F.data, null);
+    if (!data) data = await dbLoad(F.data, []);
+
+    const rec = data.find(d => d.user === user && d.date === today && !d.jamKeluar);
+    if (!rec) return res.status(404).json({ status: "NO_ACTIVE_SESSION" });
+
+    const nowIso = new Date().toISOString();
+    const reason = rec.idleReason || "manual-from-idle";
+    const lb = rec.breaks?.at(-1);
+    if (lb && !lb.end) lb.end = nowIso;
+    clearIdleClockOut(rec);
+    rec.jamKeluar = nowIso;
+    rec.autoClockOut = false;
+    rec.manualClockOutFromIdle = true;
+    rec.manualClockOutReason = reason;
+    save(F.data, data);
+    logAktivitas(user, "IDLE_CLOCK_OUT_" + reason, nowIso);
+
+    const jamFmt = new Date(nowIso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    sendPushToUser(user, "Clock Out berhasil ✅", `Kamu Clock Out pukul ${jamFmt}`).catch(() => {});
+    res.json({ status: "OK", jamKeluar: nowIso });
+  } catch (err) {
+    console.error("[IDLE/CLOCK-OUT] Error:", err.message);
+    res.status(500).json({ status: "ERROR", msg: "Gagal Clock Out" });
   }
 });
 
@@ -5142,4 +5234,3 @@ app.get("/wa/logout", requireLevel(2), async (req, res) => {
   await logoutWA();
   res.send({ status: "OK", msg: "Logout berhasil. Buka /wa/qr untuk scan ulang." });
 });
-

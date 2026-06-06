@@ -480,6 +480,7 @@ async function checkLoginStatus() {
 }
 
 function showAuthPage() {
+  stopStatusPoller();
   // Sembunyikan splash screen sebelum tampil form login
   const splash = document.getElementById("splash-screen");
   if (splash) splash.classList.add("hide");
@@ -527,8 +528,9 @@ function enterApp(menus, group, level) {
   // Jika sudah clock in, mulai tracking ping
   authFetch("/status/" + (localStorage.getItem("user")||""))
     .then(r => r.json())
-    .then(d => { if (d.status === "IN") startTrackingPing(); })
+    .then(d => { if (d.status === "IN" || d.status === "BREAK" || d.status === "IDLE") startTrackingPing(); })
     .catch(() => {});
+  startStatusPoller();
 
   // Set tanggal default admin
   const ad = document.getElementById("adm-date");
@@ -1141,10 +1143,79 @@ function clockOut() {
 function breakStart() { sendAbsen("BREAK_START", "Istirahat"); }
 function breakEnd()   { sendAbsen("BREAK_END",   "Lanjut Kerja"); }
 
+async function continueWorkFromIdle() {
+  const btn = document.getElementById("idle-continue-btn");
+  const btnOut = document.getElementById("idle-clockout-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Memproses..."; }
+  if (btnOut) btnOut.disabled = true;
+  try {
+    const r = await authFetch("/idle/continue", { method: "POST" });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("✅ Status kerja dilanjutkan");
+      await loadStatus();
+      startTrackingPing();
+    } else {
+      showToast("⚠️ Gagal lanjut kerja: " + (d.msg || d.status || ""), "warning");
+    }
+  } catch(e) {
+    showToast("❌ Gagal lanjut kerja", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "💪 Lanjut Kerja"; }
+    if (btnOut) btnOut.disabled = false;
+  }
+}
+
+async function clockOutFromIdle() {
+  if (!confirm("Clock Out sekarang?")) return;
+  const btn = document.getElementById("idle-clockout-btn");
+  const btnContinue = document.getElementById("idle-continue-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Clock Out..."; }
+  if (btnContinue) btnContinue.disabled = true;
+  try {
+    const r = await authFetch("/idle/clock-out", { method: "POST" });
+    const d = await r.json();
+    if (d.status === "OK") {
+      showToast("👋 Clock Out berhasil!");
+      stopTrackingPing();
+      if (window.__ELECTRON_APP__) window.electronAPI.clockOut();
+      else ssStop();
+      await loadStatus();
+      loadWeeklyInfo();
+      const laporanWrap = document.getElementById("btn-laporan-wrap");
+      if (laporanWrap) laporanWrap.style.display = "none";
+    } else {
+      showToast("⚠️ Gagal Clock Out: " + (d.msg || d.status || ""), "warning");
+    }
+  } catch(e) {
+    showToast("❌ Gagal Clock Out", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🔴 Clock Out"; }
+    if (btnContinue) btnContinue.disabled = false;
+  }
+}
+
 // ============================================================
 // POPUP FOTO KEGIATAN — muncul sebelum kamera Clock Out
 // ============================================================
 let _workPhotoData = null; // base64 foto kegiatan, bisa null jika dilewati
+let _lastStatusData = null;
+let _statusPollInterval = null;
+
+function startStatusPoller() {
+  if (_statusPollInterval) return;
+  _statusPollInterval = setInterval(() => {
+    if (!localStorage.getItem("user")) return;
+    loadStatus();
+  }, 30000);
+}
+
+function stopStatusPoller() {
+  if (_statusPollInterval) {
+    clearInterval(_statusPollInterval);
+    _statusPollInterval = null;
+  }
+}
 
 function showWorkPhotoPopup() {
   _workPhotoData = null;
@@ -1373,18 +1444,79 @@ async function loadStatus() {
   try {
     const r = await authFetch("/status/" + user);
     const d = await r.json();
-    updateBtns(d.status);
-  } catch { updateBtns("OUT"); }
+    _lastStatusData = d;
+    updateBtns(d.status, d);
+  } catch {
+    _lastStatusData = null;
+    updateBtns("OUT");
+  }
 }
 
-function updateBtns(status) {
+function _idleReasonText(reason, label) {
+  if (label) return label;
+  const map = {
+    "mess-17:00": "Karyawan mess pukul 17:00",
+    "no-gps-after-17:00": "Data lokasi tidak tersedia setelah 17:00",
+    "luar-radius-after-17:00": "Di luar radius area kantor setelah 17:00"
+  };
+  return map[reason] || "Perlu konfirmasi status kerja";
+}
+
+function _ensureIdlePanel() {
+  let panel = document.getElementById("idle-action-panel");
+  if (panel) return panel;
+  const grid = document.querySelector("#view-home .btn-grid");
+  if (!grid || !grid.parentNode) return null;
+  panel = document.createElement("div");
+  panel.id = "idle-action-panel";
+  panel.style.cssText = "display:none;margin-top:12px;padding:12px;border-radius:12px;background:#fff8e1;border:1.5px solid #ffe0a3;color:#7a4b00;";
+  panel.innerHTML = `
+    <div id="idle-action-text" style="font-size:12px;font-weight:700;line-height:1.45;margin-bottom:10px;"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button id="idle-continue-btn" onclick="continueWorkFromIdle()"
+        style="padding:12px 8px;border:none;border-radius:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);color:white;font-weight:800;cursor:pointer;font-size:13px;">
+        💪 Lanjut Kerja
+      </button>
+      <button id="idle-clockout-btn" onclick="clockOutFromIdle()"
+        style="padding:12px 8px;border:none;border-radius:10px;background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;font-weight:800;cursor:pointer;font-size:13px;">
+        🔴 Clock Out
+      </button>
+    </div>`;
+  grid.parentNode.insertBefore(panel, grid.nextSibling);
+  return panel;
+}
+
+function _renderIdlePanel(show, data) {
+  const panel = _ensureIdlePanel();
+  if (!panel) return;
+  if (!show) {
+    panel.style.display = "none";
+    return;
+  }
+  const reason = _idleReasonText(data?.idleReason, data?.idleLabel);
+  const since = data?.idleSince
+    ? new Date(data.idleSince).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : "";
+  const text = document.getElementById("idle-action-text");
+  if (text) {
+    text.innerHTML = `Status kerja perlu dikonfirmasi${since ? " sejak " + since : ""}.<br><span style="font-weight:600;color:#9a6500;">${reason}</span>`;
+  }
+  panel.style.display = "block";
+}
+
+function updateBtns(status, data = null) {
   const el   = document.getElementById("statusText");
   const bIn  = document.getElementById("btn-in");
   const bOut = document.getElementById("btn-out");
   const bBS  = document.getElementById("btn-bs");
   const bBE  = document.getElementById("btn-be");
   [bIn,bOut,bBS,bBE].forEach(b => b.classList.add("hidden"));
-  if (status === "IN") {
+  _renderIdlePanel(false);
+  if (status === "IDLE") {
+    el.innerHTML = '<span class="status-dot" style="background:#f39c12"></span> Idle - Perlu Konfirmasi';
+    el.style.background="#fff8e1"; el.style.color="#e67e22";
+    _renderIdlePanel(true, data || _lastStatusData || {});
+  } else if (status === "IN") {
     el.innerHTML = '<span class="status-dot" style="background:#27ae60"></span> Sedang Bekerja';
     el.style.background="#e8f5e9"; el.style.color="#27ae60";
     bBS.classList.remove("hidden"); bOut.classList.remove("hidden");
@@ -11693,7 +11825,7 @@ async function checkAndShowLaporanBtn() {
     const user = localStorage.getItem("user") || "";
     const r = await authFetch("/status/" + user);
     const d = await r.json();
-    const isActive = (d.status === "IN" || d.status === "BREAK");
+    const isActive = (d.status === "IN" || d.status === "BREAK" || d.status === "IDLE");
     wrap.style.display = isActive ? "block" : "none";
     if (!isActive) return;
     // Tampilkan info laporan di tombol jika sudah ada
@@ -11781,7 +11913,7 @@ async function showLaporanPopup() {
       if (ds.aktivitas && !existing.aktivitas) existing.aktivitas = ds.aktivitas;
       // isEditable = true jika sedang clock-in aktif ATAU pernah absen hari ini
       // isEditable = true jika clock-in aktif (IN/BREAK) atau pernah absen hari ini (sudah clock-out)
-      if (ds.status === "IN" || ds.status === "BREAK" || ds.hadAbsenceToday) {
+      if (ds.status === "IN" || ds.status === "BREAK" || ds.status === "IDLE" || ds.hadAbsenceToday) {
         existing.isEditable = true;
       }
     }
@@ -12233,5 +12365,3 @@ window._handleLaporanPhoto        = _handleLaporanPhoto;
 window._handleLaporanCameraPhoto  = _handleLaporanCameraPhoto;
 window._handleLaporanGalleryPhoto = _handleLaporanGalleryPhoto;
 window._saveLaporan               = _saveLaporan;
-
-
