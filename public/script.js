@@ -3480,6 +3480,46 @@ async function deleteAnggota(username) {
 let _divisiList  = [];
 let _anggotaAll  = [];
 
+function canToggleTugasLuarFor(a, d) {
+  if (!a || !d) return false;
+  const me = localStorage.getItem("user") || "";
+  const group = localStorage.getItem("group") || userGroup || "";
+  if (!me || a.username === me) return false;
+  const targetGroup = a.group || "anggota";
+  const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
+  if (group === "owner") return targetGroup === "admin";
+  if (group === "admin") return targetGroup === "manager";
+  if (group === "manager") return targetGroup === "koordinator" && d.manager === me && d.koordinator === a.username;
+  if (group === "koordinator") return targetGroup === "anggota" && d.koordinator === me && arr.includes(d.nama);
+  return false;
+}
+
+async function toggleTugasLuarDivisi(username, checked, el) {
+  try {
+    if (el) el.disabled = true;
+    const r = await authFetch(`/anggota/${username}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ statusKerja: checked ? "Tugas Luar" : "" })
+    });
+    const d = await r.json();
+    if (d.status === "OK") {
+      const u = _anggotaAll.find(x => x.username === username);
+      if (u) u.statusKerja = checked ? "Tugas Luar" : "";
+      showToast(checked ? "✅ Tugas Luar diaktifkan" : "✅ Tugas Luar dinonaktifkan");
+      if (_detailDivisiId) openDetailDivisi(_detailDivisiId);
+    } else {
+      if (el) el.checked = !checked;
+      showToast("❌ " + (d.msg || "Gagal mengubah status"), "error");
+    }
+  } catch {
+    if (el) el.checked = !checked;
+    showToast("❌ Gagal mengubah status", "error");
+  } finally {
+    if (el) el.disabled = false;
+  }
+}
+
 async function loadDivisi() {
   try {
     const [divisiRes, usersRes] = await Promise.all([authFetch("/divisi"), authFetch("/anggota")]);
@@ -3795,17 +3835,30 @@ async function openDetailDivisi(id) {
   const viewEl = document.getElementById("dd-anggota-view");
   if (uniqAnggota.length) {
     viewEl.innerHTML = `<div style="margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">ANGGOTA (${uniqAnggota.length})</div>` +
-      uniqAnggota.map(a => `
+      uniqAnggota.map(a => {
+        const canToggleTL = canToggleTugasLuarFor(a, d);
+        const isTL = a.statusKerja === "Tugas Luar";
+        const tlControl = canToggleTL ? `
+          <label style="display:flex;align-items:center;gap:6px;margin-left:auto;font-size:11px;font-weight:800;color:${isTL ? "#e65100" : "var(--muted)"};cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" ${isTL ? "checked" : ""}
+              onchange="toggleTugasLuarDivisi('${a.username}', this.checked, this)"
+              style="width:16px;height:16px;accent-color:#e65100;">
+            Tugas Luar
+          </label>` : (isTL ? `
+          <span style="margin-left:auto;font-size:10px;font-weight:800;color:#e65100;background:#fff3e0;border-radius:999px;padding:3px 7px;white-space:nowrap;">Tugas Luar</span>` : "");
+        return `
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
           <div style="width:30px;height:30px;border-radius:50%;background:var(--primary);color:white;
                       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">
             ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
           </div>
-          <div>
+          <div style="min-width:0;">
             <div style="font-size:13px;font-weight:600;">${a.namaLengkap || a.username}</div>
             <div style="font-size:11px;color:var(--muted);">${a.jabatan || a.groupName}</div>
           </div>
-        </div>`).join('');
+          ${tlControl}
+        </div>`;
+      }).join('');
   } else {
     viewEl.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:8px 0;">Belum ada anggota</p>';
   }
@@ -3981,17 +4034,30 @@ async function openDetailDivisi(id) {
   const viewEl = document.getElementById("dd-anggota-view");
   if (uniqAnggota.length) {
     viewEl.innerHTML = `<div style="margin-bottom:4px;font-size:12px;font-weight:700;color:var(--muted);">ANGGOTA (${uniqAnggota.length})</div>` +
-      uniqAnggota.map(a => `
+      uniqAnggota.map(a => {
+        const canToggleTL = canToggleTugasLuarFor(a, d);
+        const isTL = a.statusKerja === "Tugas Luar";
+        const tlControl = canToggleTL ? `
+          <label style="display:flex;align-items:center;gap:6px;margin-left:auto;font-size:11px;font-weight:800;color:${isTL ? "#e65100" : "var(--muted)"};cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" ${isTL ? "checked" : ""}
+              onchange="toggleTugasLuarDivisi('${a.username}', this.checked, this)"
+              style="width:16px;height:16px;accent-color:#e65100;">
+            Tugas Luar
+          </label>` : (isTL ? `
+          <span style="margin-left:auto;font-size:10px;font-weight:800;color:#e65100;background:#fff3e0;border-radius:999px;padding:3px 7px;white-space:nowrap;">Tugas Luar</span>` : "");
+        return `
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8f8f8;">
           <div style="width:30px;height:30px;border-radius:50%;background:var(--primary);color:white;
                       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">
             ${(a.namaLengkap||a.username).charAt(0).toUpperCase()}
           </div>
-          <div>
+          <div style="min-width:0;">
             <div style="font-size:13px;font-weight:600;">${a.namaLengkap || a.username}</div>
             <div style="font-size:11px;color:var(--muted);">${a.jabatan || a.groupName}</div>
           </div>
-        </div>`).join('');
+          ${tlControl}
+        </div>`;
+      }).join('');
   } else {
     viewEl.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:8px 0;">Belum ada anggota</p>';
   }

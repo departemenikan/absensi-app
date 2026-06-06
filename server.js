@@ -1814,11 +1814,39 @@ app.put("/anggota/:username/group", requireLevel(2), (req, res) => {
   res.send({ status: "OK" });
 });
 
+function canUpdateTugasLuarStatus(requester, targetUsername, users, divisiList) {
+  if (!requester || !targetUsername || requester === targetUsername) return false;
+  const requesterGroup = users[requester]?.group || "anggota";
+  const targetGroup = users[targetUsername]?.group || "anggota";
+  const targetDivisi = Array.isArray(users[targetUsername]?.divisi)
+    ? users[targetUsername].divisi
+    : (users[targetUsername]?.divisi ? [users[targetUsername].divisi] : []);
+
+  if (requesterGroup === "owner") return targetGroup === "admin";
+  if (requesterGroup === "admin") return targetGroup === "manager";
+  if (requesterGroup === "manager") {
+    return targetGroup === "koordinator" && divisiList.some(d =>
+      d.manager === requester && d.koordinator === targetUsername
+    );
+  }
+  if (requesterGroup === "koordinator") {
+    return targetGroup === "anggota" && divisiList.some(d =>
+      d.koordinator === requester && targetDivisi.includes(d.nama)
+    );
+  }
+  return false;
+}
+
 // Update statusKerja (Tugas Luar / kosong)
-app.put("/anggota/:username/status", requireLevel(2), (req, res) => {
+app.put("/anggota/:username/status", requireLevel(99), (req, res) => {
   const users = load(F.users, {});
+  const divisiList = load(F.divisi, []);
   if (!users[req.params.username]) return res.send({ status: "NOT_FOUND" });
-  users[req.params.username].statusKerja = req.body.statusKerja || "";
+  if (!canUpdateTugasLuarStatus(req._requester, req.params.username, users, divisiList)) {
+    return res.status(403).send({ status: "FORBIDDEN", msg: "Tidak berwenang mengubah status Tugas Luar user ini" });
+  }
+  const nextStatus = req.body.statusKerja === "Tugas Luar" ? "Tugas Luar" : "";
+  users[req.params.username].statusKerja = nextStatus;
   save(F.users, users);
   res.send({ status: "OK" });
 });
