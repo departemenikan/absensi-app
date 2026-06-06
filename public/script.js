@@ -1457,7 +1457,8 @@ function _idleReasonText(reason, label) {
   const map = {
     "mess-17:00": "Karyawan mess pukul 17:00",
     "no-gps-after-17:00": "Data lokasi tidak tersedia setelah 17:00",
-    "luar-radius-after-17:00": "Di luar radius area kantor setelah 17:00"
+    "luar-radius-after-17:00": "Di luar radius area kantor setelah 17:00",
+    "work-duration-7h-after-continue": "Akumulasi kerja mencapai 7 jam"
   };
   return map[reason] || "Perlu konfirmasi status kerja";
 }

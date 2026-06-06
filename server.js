@@ -639,6 +639,7 @@ function isUserMess(username) {
 }
 
 const IDLE_CONTINUE_MINUTES = 15;
+const IDLE_WORK_TARGET_HOURS = 7;
 
 function clearIdleClockOut(rec) {
   if (!rec) return;
@@ -646,13 +647,24 @@ function clearIdleClockOut(rec) {
   delete rec.idleReason;
   delete rec.idleSince;
   delete rec.idleLabel;
+  delete rec.idleNextCheckAt;
 }
 
 function shouldSkipIdleCheck(rec, now) {
   if (!rec) return true;
   if (rec.idleClockOut) return true;
+  if (rec.idleNextCheckAt) {
+    const nextMs = new Date(rec.idleNextCheckAt).getTime();
+    if (!isNaN(nextMs) && nextMs > now.getTime()) return true;
+  }
   if (!rec.idleSnoozeUntil) return false;
   return new Date(rec.idleSnoozeUntil).getTime() > now.getTime();
+}
+
+function isNextIdleDue(rec, now) {
+  if (!rec?.idleNextCheckAt) return false;
+  const nextMs = new Date(rec.idleNextCheckAt).getTime();
+  return !isNaN(nextMs) && nextMs <= now.getTime();
 }
 
 function markIdleClockOut(rec, reason, label, now) {
@@ -661,6 +673,34 @@ function markIdleClockOut(rec, reason, label, now) {
   rec.idleLabel = label;
   rec.idleSince = now.toISOString();
   rec.autoClockOutPending = true;
+  delete rec.idleNextCheckAt;
+}
+
+function getWorkMsUntil(rec, endMs) {
+  if (!rec || !rec.jamMasuk) return 0;
+  const masukMs = new Date(rec.jamMasuk).getTime();
+  if (isNaN(masukMs) || isNaN(endMs) || endMs <= masukMs) return 0;
+  let breakMs = 0;
+  (rec.breaks || []).forEach(b => {
+    if (!b.start) return;
+    const bs = new Date(b.start).getTime();
+    const be = b.end ? new Date(b.end).getTime() : endMs;
+    if (!isNaN(bs) && !isNaN(be) && be > bs) breakMs += Math.max(0, be - bs);
+  });
+  return Math.max(0, endMs - masukMs - breakMs);
+}
+
+function setNextIdleAfterContinue(rec, now) {
+  const targetMs = IDLE_WORK_TARGET_HOURS * 3600000;
+  const workedMs = getWorkMsUntil(rec, now.getTime());
+  const remainingMs = targetMs - workedMs;
+  const minDelayMs = IDLE_CONTINUE_MINUTES * 60000;
+  const delayMs = remainingMs > 0 ? Math.max(remainingMs, minDelayMs) : minDelayMs;
+  rec.idleNextCheckAt = new Date(now.getTime() + delayMs).toISOString();
+  return {
+    workedHours: parseFloat((workedMs / 3600000).toFixed(2)),
+    nextCheckAt: rec.idleNextCheckAt
+  };
 }
 
 // ========================
@@ -769,6 +809,17 @@ setInterval(() => {
     const isMess = messList.includes(username);
     const clockOutTime = now.toISOString();
     const jamFmt = new Date(clockOutTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+    if (isNextIdleDue(rec, now)) {
+      markIdleClockOut(rec, "work-duration-7h-after-continue", "Akumulasi kerja mencapai 7 jam", now);
+      logAktivitas(username, "IDLE_OUT_7H", clockOutTime);
+      changed = true;
+      sendPushToUser(username,
+        "Konfirmasi Status Kerja",
+        `Akumulasi kerja sudah mencapai 7 jam. Pilih Lanjut Kerja atau Clock Out di aplikasi.`
+      ).catch(() => {});
+      return;
+    }
 
     if (isMess) {
       // Rule 1: Karyawan mess — clock out tepat jam 17:00
@@ -1431,6 +1482,7 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
 	      idleReason: aktif.idleReason || "",
 	      idleLabel: aktif.idleLabel || "",
 	      idleSince: aktif.idleSince || null,
+	      idleNextCheckAt: aktif.idleNextCheckAt || null,
 	      idleSnoozeUntil: aktif.idleSnoozeUntil || null
 	    });
 	  } catch (err) {
@@ -1453,11 +1505,16 @@ app.post("/idle/continue", requireLevel(99), async (req, res) => {
     const now = new Date();
     const reason = rec.idleReason || "idle";
     clearIdleClockOut(rec);
-    rec.idleSnoozeUntil = new Date(now.getTime() + IDLE_CONTINUE_MINUTES * 60000).toISOString();
+    const nextIdle = setNextIdleAfterContinue(rec, now);
     rec.lastIdleContinueAt = now.toISOString();
     save(F.data, data);
     logAktivitas(user, "IDLE_CONTINUE_" + reason, now.toISOString());
-    res.json({ status: "OK", idleClockOut: false, snoozeUntil: rec.idleSnoozeUntil });
+    res.json({
+      status: "OK",
+      idleClockOut: false,
+      nextCheckAt: nextIdle.nextCheckAt,
+      workedHours: nextIdle.workedHours
+    });
   } catch (err) {
     console.error("[IDLE/CONTINUE] Error:", err.message);
     res.status(500).json({ status: "ERROR", msg: "Gagal lanjut kerja" });
