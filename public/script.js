@@ -4625,6 +4625,70 @@ function onTugasLuarToggle(username, checked) {
   showToast("Status Tugas Luar sekarang diatur dari Personil > Divisi sesuai hierarki.", "warning", 5000);
 }
 
+const _autoClockOutRuleMeta = {
+  toggleMess:          { switchId: "act-mess-switch",      knobId: "act-mess-knob" },
+  toggleLuarRadius:    { switchId: "act-radius-switch",    knobId: "act-radius-knob" },
+  toggleTidakAdaGPS:   { switchId: "act-nogps-switch",     knobId: "act-nogps-knob" },
+  toggleMidnightSplit: { switchId: "act-midnight-switch",  knobId: "act-midnight-knob" },
+  toggleTugasLuar:     { switchId: "act-tugasluar-switch", knobId: "act-tugasluar-knob" },
+};
+let _autoClockOutRules = {};
+let _autoClockOutSaving = false;
+
+function renderAutoClockOutRuleSwitch(key, enabled) {
+  const meta = _autoClockOutRuleMeta[key];
+  if (!meta) return;
+  const sw = document.getElementById(meta.switchId);
+  const knob = document.getElementById(meta.knobId);
+  if (sw) sw.style.background = enabled ? "linear-gradient(135deg,#1a237e,#4f8ef7)" : "#ccc";
+  if (knob) knob.style.left = enabled ? "27px" : "3px";
+}
+
+function renderAutoClockOutRules() {
+  Object.keys(_autoClockOutRuleMeta).forEach(key => {
+    renderAutoClockOutRuleSwitch(key, _autoClockOutRules[key] !== false);
+  });
+}
+
+async function loadAutoClockOutRules() {
+  try {
+    const r = await authFetch("/rules/toggles");
+    if (!r.ok) throw new Error("FORBIDDEN");
+    _autoClockOutRules = await r.json();
+    renderAutoClockOutRules();
+  } catch (e) {
+    showToast("⚠️ Gagal memuat Auto Clock-Out Rules. Pastikan akses Owner/Admin.", "warning", 5000);
+  }
+}
+
+async function toggleAutoClockOutRule(key) {
+  if (!_autoClockOutRuleMeta[key] || _autoClockOutSaving) return;
+  const prev = _autoClockOutRules[key] !== false;
+  const next = !prev;
+  _autoClockOutRules[key] = next;
+  renderAutoClockOutRuleSwitch(key, next);
+  _autoClockOutSaving = true;
+  try {
+    const r = await authFetch("/rules/toggles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: next }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.status !== "OK") throw new Error(d.msg || d.status || "ERROR");
+    _autoClockOutRules = d;
+    renderAutoClockOutRules();
+    showToast(next ? "✅ Rule diaktifkan" : "✅ Rule dinonaktifkan");
+  } catch (e) {
+    _autoClockOutRules[key] = prev;
+    renderAutoClockOutRuleSwitch(key, prev);
+    showToast("❌ Gagal menyimpan rule. Hanya Owner/Admin yang bisa mengubah.", "error", 5000);
+  } finally {
+    _autoClockOutSaving = false;
+  }
+}
+window.toggleAutoClockOutRule = toggleAutoClockOutRule;
+
 // Checkbox Owner/Admin — hanya satu yang aktif per anggota, yang lain otomatis uncheck
 function onPeranToggle(username, peran, checked) {
   if (checked) {
@@ -5218,7 +5282,10 @@ function openGroupOverlay(id) {
 
   // Untuk Pengaturan Karyawan: reload setelah overlay terbuka agar lebar container akurat
   if (id === "gbody-rules-absensi" && typeof loadRules === "function") {
-    requestAnimationFrame(() => loadRules());
+    requestAnimationFrame(() => {
+      loadRules();
+      if (typeof loadAutoClockOutRules === "function") loadAutoClockOutRules();
+    });
   }
 }
 
