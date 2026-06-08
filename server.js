@@ -1546,6 +1546,8 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
     if (!data) data = await dbLoad(F.data, []);
 
     const username     = req.params.user;
+    const users        = load(F.users, {});
+    const statusKerja  = users[username]?.statusKerja || "";
     let aktif          = data.find(d => d.user === username && d.date === today && !d.jamKeluar);
     const adaHariIni   = data.find(d => d.user === username && d.date === today);
     const recTerakhir  = data.slice().reverse().find(d => d.user === username && d.date === today);
@@ -1554,6 +1556,7 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
 	      status: "OUT",
 	      hadAbsenceToday: !!adaHariIni,
 	      aktivitas: recTerakhir?.aktivitas || "",
+	      statusKerja,
 	      idleClockOut: false
 	    });
 	    const lb = aktif.breaks?.at(-1);
@@ -1564,6 +1567,7 @@ app.get("/status/:user", requireSelfOrLevel("user", 2), async (req, res) => {
 	      workStatus: statusStr,
 	      hadAbsenceToday: true,
 	      aktivitas: aktif.aktivitas || "",
+	      statusKerja,
 	      idleClockOut: isIdle,
 	      idleReason: aktif.idleReason || "",
 	      idleLabel: aktif.idleLabel || "",

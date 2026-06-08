@@ -1476,11 +1476,31 @@ async function loadStatus() {
     const r = await authFetch("/status/" + user);
     const d = await r.json();
     _lastStatusData = d;
+    renderHomeWorkMode(d.statusKerja);
     updateBtns(d.status, d);
   } catch {
     _lastStatusData = null;
+    renderHomeWorkMode("");
     updateBtns("OUT");
   }
+}
+
+function renderHomeWorkMode(statusKerja) {
+  const el = document.getElementById("home-work-mode-badge");
+  if (!el) return;
+  const isTL = statusKerja === "Tugas Luar";
+  el.innerHTML = `
+    <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;
+      background:${isTL ? "#fff3e0" : "#e8f5e9"};
+      color:${isTL ? "#e65100" : "#2e7d32"};
+      border:1px solid ${isTL ? "#ffcc80" : "#c8e6c9"};
+      font-size:11px;font-weight:800;">
+      <span>${isTL ? "🧳" : "📍"}</span>
+      <span>${isTL ? "Mode Tugas Luar" : "Mode Geofencing"}</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;">
+      ${isTL ? "Validasi radius kantor tidak diberlakukan." : "Absensi mengikuti radius area kantor."}
+    </div>`;
 }
 
 function _idleReasonText(reason, label) {
