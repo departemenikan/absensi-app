@@ -481,6 +481,7 @@ async function loadAll() {
 async function initDB() {
   await migrateFromTmp(F_TMP); // pindahkan data /tmp ke Supabase jika ada
   await loadAll();              // muat semua data ke RAM
+  ensureHierarchyMenuAccess();
   // Terapkan timezone yang tersimpan admin (override default)
   const savedTz = (_store["app_settings"] || {}).timezone;
   if (savedTz) { process.env.TZ = savedTz; console.log("[TZ] Timezone aktif:", savedTz); }
@@ -1223,14 +1224,14 @@ function initGroups() {
       {
         id: "manager", name: "Manager", level: 3, color: "#27ae60",
         menus: [
-          "home","rekap","admin","aktivitas","timesheet","tracking",
+          "home","rekap","admin","anggota","anggota.divisi","aktivitas","timesheet","tracking",
           "cuti","cuti.daftar","cuti.saldo"
         ]
       },
       {
         id: "koordinator", name: "Koordinator", level: 4, color: "#e67e22",
         menus: [
-          "home","rekap","aktivitas",
+          "home","rekap","anggota","anggota.divisi","aktivitas",
           "cuti","cuti.daftar","cuti.saldo"
         ]
       },
@@ -1246,6 +1247,26 @@ function initGroups() {
   }
 }
 initGroups();
+
+function ensureHierarchyMenuAccess() {
+  const groups = load(F.groups, []);
+  if (!Array.isArray(groups)) return;
+  let changed = false;
+  const ensureMenus = (groupId, menus) => {
+    const g = groups.find(x => x.id === groupId);
+    if (!g) return;
+    if (!Array.isArray(g.menus)) g.menus = [];
+    menus.forEach(m => {
+      if (!g.menus.includes(m)) {
+        g.menus.push(m);
+        changed = true;
+      }
+    });
+  };
+  ensureMenus("manager", ["anggota", "anggota.divisi"]);
+  ensureMenus("koordinator", ["anggota", "anggota.divisi"]);
+  if (changed) save(F.groups, groups);
+}
 
 // Inisialisasi kebijakan cuti default jika belum ada
 function initKebijakanCutiDefault() {
@@ -1710,7 +1731,7 @@ app.put("/profile/:username", requireSelfOrLevel("username", 2), (req, res) => {
   // Field yang boleh diedit oleh siapa saja (termasuk user sendiri)
   const allowedSelf  = ["namaLengkap", "agama", "noHp"];
   // Field yang hanya boleh diedit oleh Owner/Admin (level <= 2)
-  const allowedAdmin = ["jabatan", "divisi", "statusKerja", "nominalGaji"];
+  const allowedAdmin = ["jabatan", "divisi", "nominalGaji"];
   allowedSelf.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });
   if (req._requesterLevel <= 2) {
     allowedAdmin.forEach(k => { if (req.body[k] !== undefined) users[req.params.username][k] = req.body[k]; });

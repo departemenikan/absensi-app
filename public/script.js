@@ -3800,7 +3800,7 @@ async function saveBuatGrup() {
 // ---- MODAL: DETAIL DIVISI ----
 let _detailDivisiId = null;
 
-async function openDetailDivisi(id) {
+async function openDetailDivisiLegacy(id) {
   // Refresh data terbaru
   try {
     const [divisiRes, usersRes] = await Promise.all([authFetch("/divisi"), authFetch("/anggota")]);
@@ -4620,13 +4620,9 @@ function onMessToggle(username, checked) {
 }
 
 function onTugasLuarToggle(username, checked) {
-  if (checked) {
-    if (!_rulesTugasLuarList.includes(username)) _rulesTugasLuarList.push(username);
-  } else {
-    _rulesTugasLuarList = _rulesTugasLuarList.filter(u => u !== username);
-  }
-  // Update status label di bawah nama
-  _rebuildStatusLabel(username);
+  const cb = document.getElementById(`tl-cb-${username}`);
+  if (cb) cb.checked = !checked;
+  showToast("Status Tugas Luar sekarang diatur dari Personil > Divisi sesuai hierarki.", "warning", 5000);
 }
 
 // Checkbox Owner/Admin — hanya satu yang aktif per anggota, yang lain otomatis uncheck
@@ -4743,17 +4739,8 @@ async function saveRulesMess() {
     const nonPriv = allGroups.find(g => g.id !== "owner" && g.id !== "admin");
     if (nonPriv) defaultGroup = nonPriv.id;
 
-    // 3. Simpan status Tugas Luar yang berubah
-    const tlPromises = anggota.map(u => {
-      const shouldBeTL  = _rulesTugasLuarList.includes(u.username);
-      const currentlyTL = u.statusKerja === "Tugas Luar";
-      if (shouldBeTL === currentlyTL) return Promise.resolve();
-      return authFetch(`/anggota/${u.username}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statusKerja: shouldBeTL ? "Tugas Luar" : "" })
-      });
-    });
+    // 3. Tugas Luar sekarang diatur dari Personil > Divisi sesuai hierarki.
+    const tlPromises = [];
 
     // 4. Simpan perubahan Peran (Owner/Admin) yang berubah
     const peranPromises = anggota.map(u => {
