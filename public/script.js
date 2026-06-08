@@ -4158,11 +4158,11 @@ const ALL_MENUS = [
   // ── NAVBAR ──────────────────────────────────
   {
     key: "home", label: "Beranda", icon: "🏠", section: "Navigasi",
-    alwaysOn: true  // tidak bisa di-toggle, selalu aktif
+    alwaysOn: true, accessHidden: true  // selalu aktif, tidak perlu tampil di kontrol akses
   },
   {
     key: "timesheet", label: "Timesheet", icon: "🕐", section: "Navigasi",
-    alwaysOn: true  // selalu tampil di navbar
+    alwaysOn: true, accessHidden: true  // selalu tampil di navbar
   },
   {
     key: "cuti", label: "Cuti", icon: "🌴", section: "Navigasi",
@@ -4174,6 +4174,7 @@ const ALL_MENUS = [
   },
   {
     key: "setting", label: "Pengaturan", icon: "⚙️", section: "Navigasi",
+    alwaysOn: true, accessHidden: true  // navbar setting selalu tampil untuk semua user
   },
 
   // ── MENU PENGATURAN ─────────────────────────
@@ -4217,23 +4218,44 @@ const ALL_MENUS = [
   },
   {
     key: "profil",       label: "Profil",           icon: "👤", section: "Pengaturan",
+    alwaysOn: true, accessHidden: true  // profil selalu tersedia dari menu setting/header
   },
 ];
 
-// Helper: flatten semua key (parent + child) dari ALL_MENUS
+function accessControlMenus() {
+  return ALL_MENUS
+    .filter(m => !m.accessHidden)
+    .map(m => ({
+      ...m,
+      children: (m.children || []).filter(c => !c.accessHidden)
+    }));
+}
+
+function forceRequiredMenus(state) {
+  if (!state) return state;
+  ["home", "timesheet", "cuti", "setting", "profil"].forEach(k => state.add(k));
+  return state;
+}
+
+// Helper: flatten semua key (parent + child) dari menu yang masih bisa dikontrol
 function allMenuKeys() {
   const keys = [];
-  ALL_MENUS.forEach(m => {
+  accessControlMenus().forEach(m => {
     keys.push(m.key);
     (m.children || []).forEach(c => keys.push(c.key));
   });
   return keys;
 }
 
+function countVisibleAccessMenus(state) {
+  if (!state) return 0;
+  return allMenuKeys().filter(k => state.has(k)).length;
+}
+
 // Group menus by section
 function menusBySection() {
   const sections = {};
-  ALL_MENUS.forEach(m => {
+  accessControlMenus().forEach(m => {
     const s = m.section || "Lainnya";
     if (!sections[s]) sections[s] = [];
     sections[s].push(m);
@@ -4928,7 +4950,7 @@ function _renderGroupList() {
     const isOwner = g.id === "owner";
     const meta    = _gMeta(g.id);
     const total   = allMenuKeys().length;
-    const cnt     = isOwner ? total : (_aksesTemp[g.id] ? _aksesTemp[g.id].size : 0);
+    const cnt     = isOwner ? total : countVisibleAccessMenus(_aksesTemp[g.id]);
     return `
     <div class="group-card-new" style="background:${meta.card};" onclick="openAksesDetail('${g.id}')">
       <div class="gc-row">
@@ -4971,7 +4993,7 @@ function openAksesDetail(gid) {
   document.getElementById("akd-title").textContent       = g.name + " " + meta.emoji;
 
   const total = allMenuKeys().length;
-  const cnt   = isOwner ? total : (_aksesTemp[gid] ? _aksesTemp[gid].size : 0);
+  const cnt   = isOwner ? total : countVisibleAccessMenus(_aksesTemp[gid]);
   document.getElementById("akd-meta-text").textContent =
     `Level ${g.level} · ${isOwner ? "Akses penuh" : cnt+" akses aktif"}`;
 
@@ -5026,8 +5048,9 @@ function _renderAksesDetail(gid, isOwner) {
         </div>`;
 
       const childRows = (m.children||[]).map(c => {
-        const cChecked  = isOwner || (cur && cur.has(c.key)) || isAlways;
-        const cDisabled = isOwner || isAlways;
+        const cAlways   = c.alwaysOn === true;
+        const cChecked  = isOwner || (cur && cur.has(c.key)) || cAlways;
+        const cDisabled = isOwner || cAlways;
         const cChanged  = !cDisabled && orig && (cur.has(c.key) !== orig.has(c.key));
         return `
         <div class="akd-row child${cChanged?' changed':''}">
@@ -5086,12 +5109,14 @@ function toggleAksesSection(gid, secName, currentlyAllOn) {
   const cur      = _aksesTemp[gid];
   if (!cur) return;
   menus.forEach(m => {
-    const isAlways = m.alwaysOn === true;
-    if (isAlways) return;
-    const keys = [m.key, ...(m.children||[]).map(c=>c.key)];
+    const keys = [];
+    if (m.alwaysOn !== true) keys.push(m.key);
+    (m.children || []).forEach(c => {
+      if (c.alwaysOn !== true) keys.push(c.key);
+    });
     keys.forEach(k => currentlyAllOn ? cur.delete(k) : cur.add(k));
   });
-  cur.add("home");
+  forceRequiredMenus(cur);
   _renderAksesDetail(gid, false);
   _updateAkdSaveBtn(gid);
 }
@@ -5108,6 +5133,7 @@ async function saveAksesDetail() {
   btn.textContent = "⏳ Menyimpan...";
 
   try {
+    forceRequiredMenus(state);
     const menus = Array.from(state);
     const r = await authFetch(`/groups/${gid}/menus`, {
       method: "PUT",
@@ -5125,7 +5151,7 @@ async function saveAksesDetail() {
       _updateAkdSaveBtn(gid);
       // Update meta text
       const total = allMenuKeys().length;
-      const cnt   = state.size;
+      const cnt   = countVisibleAccessMenus(state);
       document.getElementById("akd-meta-text").textContent =
         `Level ${g ? g.level : ''} · ${cnt} akses aktif`;
     } else if (d.status === "PROTECTED") {
@@ -5156,6 +5182,7 @@ function onAksesToggle(groupId, menuKey, enabled) {
   const parentMenu = ALL_MENUS.find(m => m.key === menuKey);
   if (parentMenu?.children) {
     parentMenu.children.forEach(c => {
+      if (c.accessHidden || c.alwaysOn) return;
       enabled ? state.add(c.key) : state.delete(c.key);
     });
   }
@@ -5169,8 +5196,8 @@ function onAksesToggle(groupId, menuKey, enabled) {
     state.delete(menuKey);
   }
 
-  // home selalu ada
-  state.add("home");
+  // Menu wajib selalu ada, walau tidak tampil lagi di kontrol akses.
+  forceRequiredMenus(state);
 
   // Re-render detail view dan update save button
   if (_aksesActiveGid === groupId) {
@@ -5188,6 +5215,7 @@ async function saveGroupMenus(groupId) {
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Menyimpan..."; }
 
   try {
+    forceRequiredMenus(state);
     const menus = Array.from(state);
     const r = await authFetch(`/groups/${groupId}/menus`, {
       method: "PUT",

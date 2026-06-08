@@ -1263,9 +1263,20 @@ function ensureHierarchyMenuAccess() {
       }
     });
   };
+  groups.forEach(g => ensureMenus(g.id, ["home", "timesheet", "cuti", "setting", "profil"]));
   ensureMenus("manager", ["anggota", "anggota.divisi"]);
   ensureMenus("koordinator", ["anggota", "anggota.divisi"]);
   if (changed) save(F.groups, groups);
+}
+
+function normalizeGroupMenus(groupId, menus) {
+  const set = new Set(Array.isArray(menus) ? menus : []);
+  ["home", "timesheet", "cuti", "setting", "profil"].forEach(k => set.add(k));
+  if (groupId === "manager" || groupId === "koordinator") {
+    set.add("anggota");
+    set.add("anggota.divisi");
+  }
+  return Array.from(set);
 }
 
 // Inisialisasi kebijakan cuti default jika belum ada
@@ -1893,7 +1904,7 @@ app.put("/groups/:id/menus", requireLevel(2), (req, res) => {
   const group  = groups.find(g => g.id === req.params.id);
   if (!group) return res.send({ status: "NOT_FOUND" });
   if (group.id === "owner") return res.send({ status: "PROTECTED" }); // owner tidak bisa diubah
-  group.menus = req.body.menus;
+  group.menus = normalizeGroupMenus(group.id, req.body.menus);
   save(F.groups, groups);
   res.send({ status: "OK" });
 });
