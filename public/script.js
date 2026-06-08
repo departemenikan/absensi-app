@@ -571,7 +571,7 @@ function applyMenuAccess() {
   // timesheet & cuti = alwaysOn, tetap tampil
   if (navTimesheet) navTimesheet.classList.remove("hidden");
   if (navCuti)      navCuti.classList.remove("hidden");
-  if (navSetting)   navSetting.classList.toggle("hidden", !userMenus.includes("setting"));
+  if (navSetting)   navSetting.classList.remove("hidden");
 
   // ── Menu Setting (menu-item di halaman setting) ──
   const settingMap = {
