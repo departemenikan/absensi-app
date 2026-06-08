@@ -3487,8 +3487,7 @@ function canToggleTugasLuarFor(a, d) {
   if (!me || a.username === me) return false;
   const targetGroup = a.group || "anggota";
   const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
-  if (group === "owner") return targetGroup === "admin";
-  if (group === "admin") return targetGroup === "manager";
+  if (group === "owner" || group === "admin") return true;
   if (group === "manager") return targetGroup === "koordinator" && d.manager === me && d.koordinator === a.username;
   if (group === "koordinator") return targetGroup === "anggota" && d.koordinator === me && arr.includes(d.nama);
   return false;

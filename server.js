@@ -1843,8 +1843,7 @@ function canUpdateTugasLuarStatus(requester, targetUsername, users, divisiList) 
     ? users[targetUsername].divisi
     : (users[targetUsername]?.divisi ? [users[targetUsername].divisi] : []);
 
-  if (requesterGroup === "owner") return targetGroup === "admin";
-  if (requesterGroup === "admin") return targetGroup === "manager";
+  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
   if (requesterGroup === "manager") {
     return targetGroup === "koordinator" && divisiList.some(d =>
       d.manager === requester && d.koordinator === targetUsername
@@ -3550,8 +3549,7 @@ function canManageOvertime(requester, targetUsername, users = load(F.users, {}),
   if (!requester || !targetUsername || requester === targetUsername) return false;
   const requesterGroup = getUserGroup(requester);
   const targetGroup = getUserGroup(targetUsername);
-  if (requesterGroup === "owner") return targetGroup === "admin";
-  if (requesterGroup === "admin") return targetGroup === "manager";
+  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
   if (requesterGroup === "manager") {
     if (!["anggota", "koordinator"].includes(targetGroup)) return false;
     const myDivisi = userDivisiArr(users[requester]);
@@ -3566,8 +3564,7 @@ function canViewOvertimeUser(requester, targetUsername, users = load(F.users, {}
   if (requester === targetUsername) return true;
   const requesterGroup = getUserGroup(requester);
   const targetGroup = getUserGroup(targetUsername);
-  if (requesterGroup === "owner") return targetGroup === "admin";
-  if (requesterGroup === "admin") return targetGroup === "manager";
+  if (requesterGroup === "owner" || requesterGroup === "admin") return true;
   if (requesterGroup === "manager") {
     if (!["anggota", "koordinator"].includes(targetGroup)) return false;
     const myDivisi = userDivisiArr(users[requester]);
