@@ -869,9 +869,11 @@ setInterval(() => {
     }
 
     if (isMess) {
-      // Rule 1: Karyawan mess — clock out tepat jam 17:00
+      // Rule 1: Karyawan mess — masuk idle mulai jam 17:00.
+      // Dibuat >= 17:00 agar tetap kena jika status Mess baru tersimpan setelah menit 17:00
+      // atau scheduler Render baru berjalan beberapa menit kemudian.
       if (!toggleMess) return; // toggle 1 OFF → skip
-      if (hour === 17 && min === 0) {
+      if (hour >= 17) {
         markIdleClockOut(rec, "mess-17:00", "Karyawan mess pukul 17:00", now);
         logAktivitas(username, "IDLE_OUT_MESS", clockOutTime);
         changed = true;
