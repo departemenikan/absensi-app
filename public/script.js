@@ -3504,7 +3504,8 @@ function canToggleTugasLuarFor(a, d) {
   if (!a || !d) return false;
   const me = localStorage.getItem("user") || "";
   const group = localStorage.getItem("group") || userGroup || "";
-  if (!me || a.username === me) return false;
+  if (!me) return false;
+  if (a.username === me) return group === "owner";
   const targetGroup = a.group || "anggota";
   const arr = Array.isArray(a.divisi) ? a.divisi : (a.divisi ? [a.divisi] : []);
   if (group === "owner" || group === "admin") return true;
@@ -9657,7 +9658,7 @@ function renderDaftarCuti(list, currentUser) {
 
     // Dapat approve/reject?
     let canApproveReject = false;
-    if ((isOwner || isAdmin) && p.username !== currentUser) canApproveReject = true;
+    if (isOwner || (isAdmin && p.username !== currentUser)) canApproveReject = true;
     if (isManager && (targetGroup === "anggota" || targetGroup === "koordinator")) canApproveReject = true;
 
     if (p.status === "menunggu") {

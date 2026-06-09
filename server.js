@@ -1851,8 +1851,9 @@ app.put("/anggota/:username/group", requireLevel(2), (req, res) => {
 });
 
 function canUpdateTugasLuarStatus(requester, targetUsername, users, divisiList) {
-  if (!requester || !targetUsername || requester === targetUsername) return false;
   const requesterGroup = users[requester]?.group || "anggota";
+  if (!requester || !targetUsername) return false;
+  if (requester === targetUsername) return requesterGroup === "owner";
   const targetGroup = users[targetUsername]?.group || "anggota";
   const targetDivisi = Array.isArray(users[targetUsername]?.divisi)
     ? users[targetUsername].divisi
@@ -3561,8 +3562,9 @@ function userDivisiArr(userObj) {
 }
 
 function canManageOvertime(requester, targetUsername, users = load(F.users, {}), divisiList = load(F.divisi, [])) {
-  if (!requester || !targetUsername || requester === targetUsername) return false;
+  if (!requester || !targetUsername) return false;
   const requesterGroup = getUserGroup(requester);
+  if (requester === targetUsername) return requesterGroup === "owner";
   const targetGroup = getUserGroup(targetUsername);
   if (requesterGroup === "owner" || requesterGroup === "admin") return true;
   if (requesterGroup === "manager") {
@@ -3993,12 +3995,14 @@ app.post("/pengajuan-cuti/:id/approve", requireLevel(99), (req, res) => {
   if (idx === -1) return res.send({ status: "NOT_FOUND" });
   const p = pengajuan[idx];
 
-  // User tidak boleh approve cuti miliknya sendiri
-  if (approver === p.username) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menyetujui cuti sendiri" });
-
   // Cek hak approve
   const approverGroup = getUserGroup(approver);
   const targetGroup   = getUserGroup(p.username);
+
+  // Selain owner tidak boleh approve cuti miliknya sendiri.
+  if (approver === p.username && approverGroup !== "owner") {
+    return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menyetujui cuti sendiri" });
+  }
 
   let canApprove = false;
   if (approverGroup === "owner" || approverGroup === "admin") {
@@ -4047,11 +4051,13 @@ app.post("/pengajuan-cuti/:id/reject", requireLevel(99), (req, res) => {
   const p = pengajuan[idx];
   if (p.status !== "menunggu") return res.send({ status: "ERROR", msg: "Hanya cuti berstatus menunggu yang bisa di-reject" });
 
-  // User tidak boleh reject cuti miliknya sendiri
-  if (approver === p.username) return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menolak cuti sendiri" });
-
   const approverGroup = getUserGroup(approver);
   const targetGroup   = getUserGroup(p.username);
+
+  // Selain owner tidak boleh reject cuti miliknya sendiri.
+  if (approver === p.username && approverGroup !== "owner") {
+    return res.send({ status: "FORBIDDEN", msg: "Tidak bisa menolak cuti sendiri" });
+  }
 
   let canReject = false;
   if (approverGroup === "owner" || approverGroup === "admin") {
