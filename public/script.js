@@ -4399,8 +4399,11 @@ async function loadRules() {
           <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
             <div style="font-size:8px;font-weight:800;color:#e65100;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🚗<br>Tgs.Luar</div>
           </div>
+          <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;border-right:1px solid #eef0f8;">
+            <div style="font-size:8px;font-weight:800;color:#e67e22;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🏠<br>Mess</div>
+          </div>
           <div style="width:${COL_W}px;min-width:${COL_W}px;padding:6px 4px;text-align:center;">
-            <div style="font-size:8px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🏠<br>Mess</div>
+            <div style="font-size:8px;font-weight:800;color:#7f8c8d;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;">🏠<br>Luar</div>
           </div>
         </div>
       </div>`;
@@ -4467,11 +4470,19 @@ async function loadRules() {
           </div>
           <!-- Mess -->
           <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
-                      padding:10px 4px;background:${isMess?"#fffbf0":"transparent"};">
+                      padding:10px 4px;border-right:1px solid #eef0f8;background:${isMess?"#fffbf0":"transparent"};">
             <input type="checkbox" id="mess-cb-${u.username}"
               ${isMess ? "checked" : ""}
-              onchange="onMessToggle('${u.username}', this.checked)"
+              onchange="onTempatTinggalToggle('${u.username}', 'mess', this.checked)"
               style="width:15px;height:15px;accent-color:#e67e22;cursor:pointer;">
+          </div>
+          <!-- Luar Mess -->
+          <div style="width:${COL_W}px;min-width:${COL_W}px;display:flex;justify-content:center;align-items:center;
+                      padding:10px 4px;background:${!isMess?"#f4f7fb":"transparent"};">
+            <input type="checkbox" id="luar-mess-cb-${u.username}"
+              ${!isMess ? "checked" : ""}
+              onchange="onTempatTinggalToggle('${u.username}', 'luar', this.checked)"
+              style="width:15px;height:15px;accent-color:#7f8c8d;cursor:pointer;">
           </div>
         </div>
       </div>`;
@@ -4522,7 +4533,8 @@ async function loadRules() {
       owner: "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
       admin: "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
       tl:    "width:140px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
-      mess:  "width:140px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      mess:  "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
+      luar:  "width:80px;flex-shrink:0;display:flex;justify-content:center;align-items:center;",
     };
 
     const colHeaderHTML = `
@@ -4553,11 +4565,12 @@ async function loadRules() {
 
       <div style="display:flex;flex-direction:column;align-items:center;
                   background:#fff8e1;border-radius:12px;border:1px solid #f0e0a0;
-                  padding:8px 0 7px;width:140px;flex-shrink:0;">
+                  padding:8px 0 7px;width:160px;flex-shrink:0;">
         <span style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;
                      letter-spacing:.7px;margin-bottom:8px;white-space:nowrap;">🏠 Tempat Tinggal</span>
         <div style="display:flex;width:100%;">
           <div style="${COL.mess}"><span style="font-size:11px;font-weight:700;color:#e67e22;">Mess</span></div>
+          <div style="${COL.luar}"><span style="font-size:11px;font-weight:700;color:#7f8c8d;">Luar Mess</span></div>
         </div>
       </div>
     </div>`;
@@ -4607,11 +4620,16 @@ async function loadRules() {
               style="width:18px;height:18px;accent-color:#e65100;cursor:pointer;">
           </div>
         </div>
-        <div style="display:flex;width:140px;flex-shrink:0;">
+        <div style="display:flex;width:160px;flex-shrink:0;">
           <div style="${COL.mess}">
             <input type="checkbox" id="mess-cb-${u.username}" ${isMess?"checked":""}
-              onchange="onMessToggle('${u.username}',this.checked)"
+              onchange="onTempatTinggalToggle('${u.username}','mess',this.checked)"
               style="width:18px;height:18px;accent-color:#e67e22;cursor:pointer;">
+          </div>
+          <div style="${COL.luar}">
+            <input type="checkbox" id="luar-mess-cb-${u.username}" ${!isMess?"checked":""}
+              onchange="onTempatTinggalToggle('${u.username}','luar',this.checked)"
+              style="width:18px;height:18px;accent-color:#7f8c8d;cursor:pointer;">
           </div>
         </div>
       </div>`;
@@ -4646,19 +4664,34 @@ function _rebuildStatusLabel(username) {
     `<span style="color:${isMess ? "#e67e22" : "var(--muted)"};">${isMess ? "🏠 Mess" : "🏠 Luar Mess"}</span>`;
 }
 
-function onMessToggle(username, checked) {
-  if (checked) {
+function setMessResidence(username, isMess) {
+  if (isMess) {
     if (!_rulesMessList.includes(username)) _rulesMessList.push(username);
   } else {
     _rulesMessList = _rulesMessList.filter(u => u !== username);
   }
   // Update label teks (desktop / card layout)
   _rebuildStatusLabel(username);
-  // Update warna sel di spreadsheet layout (mobile)
-  const cb = document.getElementById(`mess-cb-${username}`);
-  if (cb && cb.parentElement) {
-    cb.parentElement.style.background = checked ? "#fffbf0" : "transparent";
+
+  const messCb = document.getElementById(`mess-cb-${username}`);
+  const luarCb = document.getElementById(`luar-mess-cb-${username}`);
+  if (messCb) {
+    messCb.checked = isMess;
+    if (messCb.parentElement) messCb.parentElement.style.background = isMess ? "#fffbf0" : "transparent";
   }
+  if (luarCb) {
+    luarCb.checked = !isMess;
+    if (luarCb.parentElement) luarCb.parentElement.style.background = !isMess ? "#f4f7fb" : "transparent";
+  }
+}
+
+function onTempatTinggalToggle(username, pilihan, checked) {
+  if (pilihan === "mess") return setMessResidence(username, checked);
+  setMessResidence(username, !checked);
+}
+
+function onMessToggle(username, checked) {
+  setMessResidence(username, checked);
 }
 
 function onTugasLuarToggle(username, checked) {
