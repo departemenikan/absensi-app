@@ -1185,6 +1185,7 @@ async function continueWorkFromIdle() {
     if (d.status === "OK") {
       showToast("✅ Status kerja dilanjutkan");
       await loadStatus();
+      await loadTodayDetail();
       startTrackingPing();
     } else {
       showToast("⚠️ Gagal lanjut kerja: " + (d.msg || d.status || ""), "warning");
@@ -1212,6 +1213,7 @@ async function clockOutFromIdle() {
       if (window.__ELECTRON_APP__) window.electronAPI.clockOut();
       else ssStop();
       await loadStatus();
+      await loadTodayDetail();
       loadWeeklyInfo();
       const laporanWrap = document.getElementById("btn-laporan-wrap");
       if (laporanWrap) laporanWrap.style.display = "none";
@@ -1476,6 +1478,7 @@ async function loadStatus() {
     const r = await authFetch("/status/" + user);
     const d = await r.json();
     _lastStatusData = d;
+    syncTodayRecordIdleState(d);
     renderHomeWorkMode(d.statusKerja);
     updateBtns(d.status, d);
   } catch {
@@ -1483,6 +1486,22 @@ async function loadStatus() {
     renderHomeWorkMode("");
     updateBtns("OUT");
   }
+}
+
+function syncTodayRecordIdleState(statusData) {
+  if (!_todayRec || !statusData) return;
+  if (statusData.status === "IDLE" || statusData.idleClockOut) {
+    _todayRec.idleClockOut = true;
+    _todayRec.idleSince = statusData.idleSince || _todayRec.idleSince || new Date().toISOString();
+    _todayRec.idleReason = statusData.idleReason || _todayRec.idleReason || "";
+    _todayRec.idleLabel = statusData.idleLabel || _todayRec.idleLabel || "";
+  } else {
+    delete _todayRec.idleClockOut;
+    delete _todayRec.idleSince;
+    delete _todayRec.idleReason;
+    delete _todayRec.idleLabel;
+  }
+  updateTodayUI(_todayRec);
 }
 
 function renderHomeWorkMode(statusKerja) {
@@ -1640,8 +1659,8 @@ function fmtBreak(sec) { return fmtDuration(sec); }
 const DEFAULT_UNTRIGGERED_BREAK_SECONDS = 3600;
 const DEFAULT_BREAK_APPLIES_AFTER_SECONDS = 7 * 3600;
 
-function hitungBreakDetik(breaks, totalSec = null) {
-  const now = Date.now();
+function hitungBreakDetik(breaks, totalSec = null, endMs = Date.now()) {
+  const now = endMs;
   let hasTriggeredBreak = false;
   const breakSec = (breaks || []).reduce((total, b) => {
     const start = parseLocalISO(b.start);
@@ -1663,10 +1682,11 @@ function hitungKerjaDetik(rec) {
   const now      = Date.now();
   const masuk    = parseLocalISO(rec.jamMasuk);
   if (isNaN(masuk)) return 0;
-  const keluar   = rec.jamKeluar ? parseLocalISO(rec.jamKeluar) : now;
+  const idleMs   = rec.idleClockOut && rec.idleSince ? parseLocalISO(rec.idleSince) : NaN;
+  const keluar   = rec.jamKeluar ? parseLocalISO(rec.jamKeluar) : (!isNaN(idleMs) ? idleMs : now);
   if (!isNaN(keluar) && keluar < masuk) return 0; // guard: keluar sebelum masuk
   const totalSec = Math.max(0, ((isNaN(keluar) ? now : keluar) - masuk) / 1000);
-  const breakSec = hitungBreakDetik(rec.breaks, totalSec);
+  const breakSec = hitungBreakDetik(rec.breaks, totalSec, isNaN(keluar) ? now : keluar);
   return Math.max(0, totalSec - breakSec);
 }
 
@@ -1718,7 +1738,10 @@ function updateTodayUI(rec) {
   if (elIn)  elIn.innerText  = fmt(rec.jamMasuk);
   if (elOut) elOut.innerText = rec.jamKeluar ? fmt(rec.jamKeluar) : "--:--";
 
-  const breakSec = hitungBreakDetik(rec.breaks);
+  const stopMs = rec.jamKeluar
+    ? parseLocalISO(rec.jamKeluar)
+    : (rec.idleClockOut && rec.idleSince ? parseLocalISO(rec.idleSince) : Date.now());
+  const breakSec = hitungBreakDetik(rec.breaks, null, isNaN(stopMs) ? Date.now() : stopMs);
   const kerjaSec = hitungKerjaDetik(rec);
 
   if (elIstirahat) elIstirahat.innerText = fmtBreak(breakSec);
