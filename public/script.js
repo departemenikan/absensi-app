@@ -1008,6 +1008,72 @@ async function ensureWorkReportBeforeAction(type) {
   }
 }
 
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function loadClockInActivities() {
+  try {
+    const r = await authFetch("/aktivitas-kustom");
+    if (r.ok) {
+      const list = await r.json();
+      if (Array.isArray(list) && list.length) return list;
+    }
+  } catch {}
+  const sel = document.getElementById("home-aktivitas-select");
+  return sel ? Array.from(sel.options).map(o => o.value).filter(Boolean) : [];
+}
+
+function chooseClockInActivity() {
+  return new Promise(async resolve => {
+    const activities = await loadClockInActivities();
+    document.getElementById("clockin-activity-overlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "clockin-activity-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9800;display:flex;align-items:flex-end;justify-content:center;";
+
+    const buttons = activities.length
+      ? activities.map(a => `
+          <button type="button" data-activity="${escapeHTML(a)}"
+            style="width:100%;padding:13px 14px;border:1px solid #e8ecf0;border-radius:12px;background:white;color:var(--text);font-size:14px;font-weight:800;text-align:left;cursor:pointer;">
+            🏃 ${escapeHTML(a)}
+          </button>`).join("")
+      : `<div style="padding:14px;border-radius:12px;background:#fff8e1;color:#9a6500;font-size:13px;font-weight:700;line-height:1.5;">
+          Belum ada daftar aktivitas. Tambahkan dulu dari Seting > Aktivitas.
+        </div>`;
+
+    overlay.innerHTML = `
+      <div style="width:100%;max-width:460px;background:#f8f9fb;border-radius:22px 22px 0 0;padding:14px 16px 22px;box-shadow:0 -8px 32px rgba(0,0,0,.22);">
+        <div style="width:40px;height:4px;background:#d8dde8;border-radius:999px;margin:0 auto 14px;"></div>
+        <div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px;">Pilih Aktivitas</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Pilih aktivitas, lalu aplikasi akan lanjut membuka kamera dan lokasi.</div>
+        <div style="display:grid;gap:8px;max-height:50vh;overflow-y:auto;padding-right:2px;">${buttons}</div>
+        <button type="button" id="clockin-activity-cancel"
+          style="width:100%;margin-top:12px;padding:12px;border:none;border-radius:12px;background:#eef1f6;color:#607080;font-size:13px;font-weight:800;cursor:pointer;">
+          Batal
+        </button>
+      </div>`;
+
+    const close = value => {
+      overlay.remove();
+      resolve(value);
+    };
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) close("");
+      const btn = e.target.closest("[data-activity]");
+      if (btn) close(btn.getAttribute("data-activity") || "");
+    });
+    overlay.querySelector("#clockin-activity-cancel")?.addEventListener("click", () => close(""));
+    document.body.appendChild(overlay);
+  });
+}
+
 async function sendAbsen(type, label) {
   const user = localStorage.getItem("user");
   if (!user) return checkLoginStatus();
@@ -1021,11 +1087,22 @@ async function sendAbsen(type, label) {
   [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = true; });
 
   let loc;
+  let aktivitas = "";
   try {
     const reportOk = await ensureWorkReportBeforeAction(type);
     if (!reportOk) {
       [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
       return;
+    }
+
+    if (type === "IN") {
+      aktivitas = await chooseClockInActivity();
+      if (!aktivitas) {
+        [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
+        return;
+      }
+      const selAkt = document.getElementById("home-aktivitas-select");
+      if (selAkt) selAkt.value = aktivitas;
     }
 
     // ─── Cek & minta izin kamera + lokasi via gate (sequential) ───
@@ -1049,23 +1126,6 @@ async function sendAbsen(type, label) {
       showToast("❌ Gagal mendapatkan lokasi. Pastikan GPS aktif, lalu coba lagi.", "error", 5000);
       [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
       return;
-    }
-
-    // Validasi aktivitas — required saat Clock In
-    if (type === "IN") {
-      const selAkt = document.getElementById("home-aktivitas-select");
-      const aktivitasVal = selAkt ? selAkt.value.trim() : "";
-      if (!aktivitasVal) {
-        showToast("⚠️ Pilih aktivitas terlebih dahulu sebelum Clock In", "warning", 4000);
-        // Highlight dropdown
-        if (selAkt) {
-          selAkt.style.borderColor = "#e74c3c";
-          selAkt.focus();
-          setTimeout(() => { selAkt.style.borderColor = "#e8ecf0"; }, 3000);
-        }
-        [btnIn, btnOut, btnBS, btnBE].forEach(b => { if (b) b.disabled = false; });
-        return;
-      }
     }
 
     // Verifikasi wajah (buka kamera modal)
@@ -1098,9 +1158,10 @@ async function sendAbsen(type, label) {
       }
     }
 
-    // Ambil nilai aktivitas
-    const selAktFinal = document.getElementById("home-aktivitas-select");
-    const aktivitas = selAktFinal ? selAktFinal.value.trim() : "";
+    if (type !== "IN") {
+      const selAktFinal = document.getElementById("home-aktivitas-select");
+      aktivitas = selAktFinal ? selAktFinal.value.trim() : "";
+    }
 
     // Kirim waktu dalam ISO string dengan offset lokal agar konsisten dengan edit manual timesheet
     const now = localISOStr(new Date()); // format: 2026-05-04T08:46:00+08:00
