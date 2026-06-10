@@ -2440,7 +2440,11 @@ async function subscribePushNotification() {
     await authFetch("/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
+      body: JSON.stringify({
+        subscription: sub.toJSON(),
+        sourceHost: window.location.host,
+        sourceOrigin: window.location.origin
+      }),
     });
 
     console.log("[PUSH] ✅ Push subscription berhasil");

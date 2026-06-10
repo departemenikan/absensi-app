@@ -500,7 +500,7 @@ initDB().then(() => {
 // WEB PUSH (VAPID)
 // ========================
 // VAPID keys — generate sekali dengan: node -e "const wp=require('web-push');const k=wp.generateVAPIDKeys();console.log(JSON.stringify(k))"
-// Lalu set sebagai environment variable di Railway:
+// Lalu set sebagai environment variable di Render:
 //   VAPID_PUBLIC_KEY  = key yang dihasilkan
 //   VAPID_PRIVATE_KEY = key yang dihasilkan
 //   VAPID_EMAIL       = mailto:emailkamu@domain.com
@@ -513,6 +513,15 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
   console.log("✅ Web Push VAPID aktif");
 } else {
   console.warn("⚠️  VAPID keys belum diset — push notification tidak aktif");
+}
+
+function pushSourceHost(sub) {
+  return String(sub?._sourceHost || sub?.sourceHost || sub?._sourceOrigin || sub?.sourceOrigin || "").toLowerCase();
+}
+
+function isLegacyOrRailwayPushSub(sub) {
+  const host = pushSourceHost(sub);
+  return !host || host.includes("railway.app") || host.includes("railway");
 }
 
 // Kirim push ke satu user (berdasarkan username)
@@ -535,6 +544,11 @@ async function sendPushToUser(username, title, body, data = {}) {
   const deadSubs = [];
 
   for (const sub of userSubs) {
+    if (isLegacyOrRailwayPushSub(sub)) {
+      deadSubs.push(sub.endpoint);
+      console.log(`[PUSH] Skip subscription legacy/Railway untuk ${username}`);
+      continue;
+    }
     try {
       await webpush.sendNotification(sub, payload, pushOptions);
       console.log(`[PUSH] Berhasil kirim ke ${username}`);
@@ -5309,19 +5323,31 @@ app.get("/push/vapid-public-key", (req, res) => {
 // POST: simpan subscription baru
 app.post("/push/subscribe", requireLevel(99), (req, res) => {
   const username = req._requester;
-  const { subscription } = req.body;
+  const { subscription, sourceHost, sourceOrigin } = req.body;
   if (!subscription || !subscription.endpoint) return res.status(400).json({ status: "ERROR" });
 
   const subs = load(F.pushSubs, {});
   if (!subs[username]) subs[username] = [];
 
-  // Hindari duplikat endpoint
-  const exists = subs[username].some(s => s.endpoint === subscription.endpoint);
-  if (!exists) {
-    subs[username].push(subscription);
-    save(F.pushSubs, subs);
-  }
-  res.json({ status: "OK" });
+  const reqOrigin = String(req.headers.origin || "");
+  const reqHost = String(req.headers.host || "");
+  const host = String(sourceHost || reqHost || "").toLowerCase();
+  const origin = String(sourceOrigin || reqOrigin || "").toLowerCase();
+  const cleanSubscription = {
+    ...subscription,
+    _sourceHost: host,
+    _sourceOrigin: origin,
+    _updatedAt: new Date().toISOString()
+  };
+
+  // Putus subscription lama dari Railway / legacy tanpa host, lalu simpan subscription host saat ini.
+  const before = subs[username].length;
+  subs[username] = subs[username].filter(s =>
+    s.endpoint !== subscription.endpoint && !isLegacyOrRailwayPushSub(s)
+  );
+  subs[username].push(cleanSubscription);
+  save(F.pushSubs, subs);
+  res.json({ status: "OK", removedLegacy: before - subs[username].length + 1, sourceHost: host });
 });
 
 // DELETE: hapus subscription (saat user logout)
