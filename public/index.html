@@ -1603,8 +1603,12 @@
             💡 <b>Format kolom:</b> <code style="background:white;padding:2px 6px;border-radius:4px;font-size:11px;">Tanggal, Nama Libur, Nasional, Islam, Kristen, Katolik, Hindu</code>
             <br><span style="color:var(--muted);">Isi angka 1 pada Nasional atau kolom agama yang berlaku.</span>
             <br>
-            <button onclick="downloadImportTemplate()" style="margin-top:8px;padding:5px 12px;border:none;border-radius:7px;
-              background:#1a237e;color:white;font-size:12px;font-weight:700;cursor:pointer;">⬇️ Unduh Template CSV</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <button onclick="downloadImportTemplate()" style="padding:5px 12px;border:none;border-radius:7px;
+                background:#1a237e;color:white;font-size:12px;font-weight:700;cursor:pointer;">⬇️ CSV</button>
+              <button onclick="downloadImportTemplateXLSX()" style="padding:5px 12px;border:none;border-radius:7px;
+                background:var(--success);color:white;font-size:12px;font-weight:700;cursor:pointer;">📊 Excel</button>
+            </div>
           </div>
 
           <!-- Preview tabel -->

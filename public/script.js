@@ -6483,11 +6483,23 @@ function _parseXLSX(file) {
       reader.readAsArrayBuffer(file);
     };
 
-    if (typeof XLSX !== "undefined") { doRead(); return; }
-    // Lazy-load SheetJS
+    _loadSheetJS().then(doRead).catch(reject);
+  });
+}
+
+function _loadSheetJS() {
+  return new Promise((resolve, reject) => {
+    if (typeof XLSX !== "undefined") { resolve(); return; }
+    const existing = document.querySelector('script[data-sheetjs-loader="1"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Gagal memuat library XLSX")), { once: true });
+      return;
+    }
     const s = document.createElement("script");
+    s.dataset.sheetjsLoader = "1";
     s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    s.onload  = doRead;
+    s.onload  = () => resolve();
     s.onerror = () => reject(new Error("Gagal memuat library XLSX"));
     document.head.appendChild(s);
   });
@@ -6698,6 +6710,51 @@ function downloadImportTemplate() {
   a.download = "template_import_libur.csv";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+async function downloadImportTemplateXLSX() {
+  try {
+    await _loadSheetJS();
+    const rows = [
+      ["Tanggal", "Nama Libur", "Nasional", "Islam", "Kristen", "Katolik", "Hindu", "Buddha", "Konghucu"],
+      ["01-Jan-26", "Tahun Baru 2026 Masehi", 1, "", "", "", "", "", ""],
+      ["20-Mar-26", "Cuti Bersama Idul Fitri 1447 H", "", 1, "", "", "", "", ""],
+      ["23-Mar-26", "Jeda kontrak Umat Hindu", "", "", "", "", 1, "", ""],
+      ["25-Dec-26", "Hari Raya Natal", "", "", 1, 1, "", "", ""],
+      ["", "", "", "", "", "", "", "", ""],
+      ["", "", "", "", "", "", "", "", ""],
+      ["Catatan", "Isi angka 1 pada Nasional jika berlaku untuk semua, atau pada kolom agama yang berlaku.", "", "", "", "", "", "", ""],
+      ["", "Cuti bersama cukup ditulis di Nama Libur. Tidak perlu kolom khusus.", "", "", "", "", "", "", ""]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 14 }, { wch: 36 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+    ];
+    ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+    ws["!autofilter"] = { ref: "A1:I7" };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Import Libur");
+
+    const guideRows = [
+      ["Petunjuk Import Hari Libur"],
+      [""],
+      ["Kolom", "Cara isi"],
+      ["Tanggal", "Contoh: 01-Jan-26, 01/01/26, atau 2026-01-01"],
+      ["Nama Libur", "Nama libur yang akan tampil di aplikasi"],
+      ["Nasional", "Isi 1 jika berlaku untuk semua user"],
+      ["Kolom agama", "Isi 1 pada agama yang berlaku"],
+      ["Cuti bersama", "Tulis di Nama Libur, targetnya tetap Nasional atau agama"]
+    ];
+    const guide = XLSX.utils.aoa_to_sheet(guideRows);
+    guide["!cols"] = [{ wch: 24 }, { wch: 72 }];
+    XLSX.utils.book_append_sheet(wb, guide, "Petunjuk");
+
+    XLSX.writeFile(wb, "template_import_libur.xlsx");
+  } catch (e) {
+    showToast("❌ Gagal membuat template Excel: " + (e.message || e), "error");
+  }
 }
 
 // ================================================================
