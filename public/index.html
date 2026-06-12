@@ -1596,12 +1596,12 @@
             <div style="font-weight:700;font-size:14px;color:var(--text);">Klik atau seret file ke sini</div>
             <div style="font-size:12px;color:var(--muted);margin-top:4px;">Format: <b>.csv</b> atau <b>.xlsx</b></div>
           </div>
-          <input type="file" id="import-file-input" accept=".csv,.xlsx" style="display:none" onchange="handleImportFileSelect(this)">
+          <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleImportFileSelect(this)">
 
           <!-- Template download -->
           <div style="background:#f0f6ff;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:#1a237e;">
-            💡 <b>Format kolom:</b> <code style="background:white;padding:2px 6px;border-radius:4px;font-size:11px;">name, dateStart, dateEnd</code>
-            <br><span style="color:var(--muted);">Tanggal: YYYY-MM-DD &nbsp;|&nbsp; dateEnd opsional</span>
+            💡 <b>Format kolom:</b> <code style="background:white;padding:2px 6px;border-radius:4px;font-size:11px;">Tanggal, Nama Libur, Nasional, Islam, Kristen, Katolik, Hindu</code>
+            <br><span style="color:var(--muted);">Isi angka 1 pada Nasional atau kolom agama yang berlaku.</span>
             <br>
             <button onclick="downloadImportTemplate()" style="margin-top:8px;padding:5px 12px;border:none;border-radius:7px;
               background:#1a237e;color:white;font-size:12px;font-weight:700;cursor:pointer;">⬇️ Unduh Template CSV</button>
@@ -1618,8 +1618,8 @@
                 <thead>
                   <tr style="background:#f8f9ff;">
                     <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Nama Libur</th>
-                    <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Tgl Mulai</th>
-                    <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Tgl Akhir</th>
+                    <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Tanggal</th>
+                    <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Berlaku Untuk</th>
                     <th style="padding:8px 10px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid #eee;">Status</th>
                   </tr>
                 </thead>

@@ -2020,6 +2020,12 @@ async function loadHomeLibur() {
 
   try {
     var user  = localStorage.getItem('user') || '';
+    var userAgama = '';
+    try {
+      var rp = await authFetch('/profile/' + encodeURIComponent(user) + '?requester=' + encodeURIComponent(user));
+      var pd = await rp.json();
+      userAgama = pd.agama || '';
+    } catch {}
     var r     = await authFetch('/libur');
     var semua = await r.json();
 
@@ -2030,6 +2036,10 @@ async function loadHomeLibur() {
              (ds <= prefix + '-31' && de >= prefix + '-01');
     }).filter(function(h) {
       if (h.type === 'nasional') return true;
+      if (h.type === 'agama') {
+        var agamaList = Array.isArray(h.agama) ? h.agama : [h.agama];
+        return agamaList.includes(userAgama);
+      }
       if (Array.isArray(h.anggota) && h.anggota.includes(user)) return true;
       return false;
     });
@@ -6325,17 +6335,11 @@ function saveLibur() { openLiburModal(_activeKalenderKey); }
 let _importParsedRows = []; // hasil parse file, disimpan sementara
 
 function openImportModal(kalenderKey) {
-  const cfg = _KALENDER_CONFIG.find(k => k.key === kalenderKey) || {};
-  const isNasional = kalenderKey === "nasional";
-
-  document.getElementById("import-modal-title").textContent =
-    `📥 Import Libur ${isNasional ? "Nasional" : cfg.label || kalenderKey}`;
+  document.getElementById("import-modal-title").textContent = "📥 Import Kalender Libur";
   document.getElementById("import-modal-sub").innerHTML =
-    isNasional
-      ? "Akan berlaku untuk <b>semua anggota</b> otomatis."
-      : `Akan berlaku untuk anggota beragama <b>${kalenderKey}</b> otomatis.`;
-  document.getElementById("import-modal-type").value  = isNasional ? "nasional" : "agama";
-  document.getElementById("import-modal-agama").value = isNasional ? "" : kalenderKey;
+    "Satu file untuk <b>Nasional</b> dan libur sesuai <b>agama</b> anggota.";
+  document.getElementById("import-modal-type").value  = "";
+  document.getElementById("import-modal-agama").value = "";
 
   // Reset state
   _importParsedRows = [];
@@ -6367,7 +6371,7 @@ function _setImportDropzoneDefault() {
   dz.innerHTML = `
     <div style="font-size:36px;margin-bottom:8px;">📂</div>
     <div style="font-weight:700;font-size:14px;color:var(--text);">Klik atau seret file ke sini</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Format: <b>.csv</b> atau <b>.xlsx</b></div>`;
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Kolom: Tanggal, Nama Libur, Nasional, Islam, Kristen, Katolik, Hindu</div>`;
 }
 
 function handleImportDrop(event) {
@@ -6463,9 +6467,9 @@ function _parseXLSX(file) {
       reader.onload = e => {
         try {
           const data = new Uint8Array(e.target.result);
-          const wb   = XLSX.read(data, { type: "array" });
+          const wb   = XLSX.read(data, { type: "array", cellDates: true });
           const ws   = wb.Sheets[wb.SheetNames[0]];
-          const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
           // Normalize keys to lowercase
           const rows = json.map(row => {
             const obj = {};
@@ -6493,11 +6497,20 @@ function _parseXLSX(file) {
 function _renderImportPreview(rows, fileName) {
   const validRows  = [];
   const errorLines = [];
+  const knownAgama = _getImportAgamaColumns();
+  const previewBody = document.getElementById("import-preview-body");
+  if (previewBody) previewBody.innerHTML = "";
 
   rows.forEach((row, i) => {
-    const name      = (row.name || row.nama || row["nama libur"] || row["nama_libur"] || "").toString().trim();
-    const dateStart = _normalizeDate(row.datestart || row.date_start || row.tanggal_mulai || row.tanggal || row.date || "");
-    const dateEnd   = _normalizeDate(row.dateend   || row.date_end   || row.tanggal_akhir || "");
+    const name      = _getImportValue(row, ["name", "nama", "nama_libur", "hari_libur", "libur"]).toString().trim();
+    const dateStart = _normalizeDate(_getImportValue(row, ["datestart", "date_start", "tanggal_mulai", "tanggal", "date"]));
+    const dateEnd   = _normalizeDate(_getImportValue(row, ["dateend", "date_end", "tanggal_akhir"]));
+    const isTotalRow = /^total$/i.test(name) || /^total$/i.test(_getImportValue(row, ["tanggal", "date"]).toString().trim());
+    if (isTotalRow) return;
+
+    const isNasional = _isImportMarked(_getImportValue(row, ["nasional", "libur_nasional"]));
+    const agamaList  = knownAgama.filter(a => _isImportMarked(_getImportValue(row, [_normalizeImportKey(a)])));
+    const targetText = isNasional ? "Semua anggota" : (agamaList.length ? agamaList.join(", ") : "");
 
     let status = "✅ OK";
     let ok = true;
@@ -6505,9 +6518,17 @@ function _renderImportPreview(rows, fileName) {
     if (!name) { status = "❌ Nama kosong"; ok = false; }
     else if (!dateStart) { status = "❌ Tanggal kosong/salah"; ok = false; }
     else if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStart)) { status = "❌ Format tgl salah"; ok = false; }
+    else if (!isNasional && !agamaList.length) { status = "❌ Target kosong"; ok = false; }
 
     if (!ok) errorLines.push(`Baris ${i+2}: ${status}`);
-    else validRows.push({ name, dateStart, dateEnd: dateEnd || dateStart });
+    else validRows.push({
+      name,
+      dateStart,
+      dateEnd: dateEnd || dateStart,
+      type: isNasional ? "nasional" : "agama",
+      nasional: isNasional,
+      agama: isNasional ? [] : agamaList
+    });
 
     // Tambah ke preview (max 100 baris)
     if (i < 100) {
@@ -6516,9 +6537,9 @@ function _renderImportPreview(rows, fileName) {
       tr.innerHTML = `
         <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--text);">${name || "<i style='color:#ccc'>—</i>"}</td>
         <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--muted);font-size:11px;">${dateStart || "—"}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--muted);font-size:11px;">${dateEnd || "—"}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;color:var(--muted);font-size:11px;">${targetText || "—"}</td>
         <td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;font-size:11px;">${status}</td>`;
-      document.getElementById("import-preview-body").appendChild(tr);
+      if (previewBody) previewBody.appendChild(tr);
     }
   });
 
@@ -6547,15 +6568,64 @@ function _renderImportPreview(rows, fileName) {
   _setImportBtnState(validRows.length > 0);
 }
 
+function _normalizeImportKey(key) {
+  return (key || "").toString().trim().toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w]/g, "");
+}
+
+function _getImportValue(row, keys) {
+  if (!row) return "";
+  const normalized = {};
+  Object.keys(row).forEach(k => { normalized[_normalizeImportKey(k)] = row[k]; });
+  for (const key of keys) {
+    const nk = _normalizeImportKey(key);
+    if (Object.prototype.hasOwnProperty.call(normalized, nk)) return normalized[nk];
+  }
+  return "";
+}
+
+function _getImportAgamaColumns() {
+  const base = _KALENDER_CONFIG.filter(k => k.agama).map(k => k.agama);
+  const extra = Array.isArray(_agamaAnggota) ? _agamaAnggota : [];
+  return [...new Set([...base, ...extra].filter(Boolean))];
+}
+
+function _isImportMarked(val) {
+  if (val === true || val === 1) return true;
+  const s = (val || "").toString().trim().toLowerCase();
+  return ["1", "true", "yes", "ya", "y", "x", "v", "check", "checked"].includes(s);
+}
+
 // Normalisasi berbagai format tanggal ke YYYY-MM-DD
 function _normalizeDate(val) {
   if (!val) return "";
+  if (val instanceof Date && !isNaN(val)) return val.toISOString().slice(0,10);
   const s = val.toString().trim();
   // Sudah YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD/MM/YYYY atau DD-MM-YYYY
-  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m1) return `${m1[3]}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`;
+  // DD-MMM-YY / DD-MMM-YYYY, contoh: 01-Jan-26
+  const m0 = s.match(/^(\d{1,2})[\-\/\s]([A-Za-z]{3,9})[\-\/\s](\d{2,4})$/);
+  if (m0) {
+    const months = {
+      jan:1,january:1,januari:1,feb:2,february:2,februari:2,mar:3,march:3,maret:3,apr:4,april:4,
+      may:5,mei:5,jun:6,june:6,juni:6,jul:7,july:7,juli:7,aug:8,agt:8,agus:8,agustus:8,august:8,
+      sep:9,september:9,oct:10,okt:10,october:10,oktober:10,nov:11,november:11,dec:12,des:12,december:12,desember:12
+    };
+    const mm = months[m0[2].toLowerCase()];
+    if (mm) {
+      let yy = parseInt(m0[3], 10);
+      if (yy < 100) yy += 2000;
+      return `${yy}-${String(mm).padStart(2,"0")}-${m0[1].padStart(2,"0")}`;
+    }
+  }
+  // DD/MM/YYYY, DD-MM-YYYY, atau DD/MM/YY
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m1) {
+    let yy = parseInt(m1[3], 10);
+    if (yy < 100) yy += 2000;
+    return `${yy}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`;
+  }
   // YYYY/MM/DD
   const m2 = s.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
   if (m2) return `${m2[1]}-${m2[2].padStart(2,"0")}-${m2[3].padStart(2,"0")}`;
@@ -6570,9 +6640,6 @@ function _normalizeDate(val) {
 async function doImport() {
   if (!_importParsedRows.length) return;
 
-  const type  = document.getElementById("import-modal-type").value;
-  const agama = document.getElementById("import-modal-agama").value;
-
   // Show progress
   document.getElementById("import-progress-wrap").style.display = "block";
   document.getElementById("import-progress-label").textContent = "Mengimpor...";
@@ -6583,7 +6650,7 @@ async function doImport() {
     const r = await authFetch("/libur/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: _importParsedRows, type, agama: agama || null })
+      body: JSON.stringify({ rows: _importParsedRows })
     });
     const result = await r.json();
 
@@ -6617,7 +6684,13 @@ async function doImport() {
 }
 
 function downloadImportTemplate() {
-  const csv = `name,dateStart,dateEnd\nHari Raya Idul Fitri,2025-03-31,2025-04-01\nHari Raya Idul Adha,2025-06-07,\nTahun Baru Islam,2025-06-27,`;
+  const csv = [
+    "Tanggal,Nama Libur,Nasional,Islam,Kristen,Katolik,Hindu,Buddha,Konghucu",
+    "01-Jan-26,Tahun Baru 2026 Masehi,1,,,,,,",
+    "20-Mar-26,Cuti Bersama Idul Fitri 1447 H,,1,,,,,",
+    "23-Mar-26,Jeda kontrak Umat Hindu,,,,,1,,",
+    "25-Dec-26,Hari Raya Natal,,,1,1,,,"
+  ].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");

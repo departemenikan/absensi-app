@@ -2249,6 +2249,17 @@ app.post("/libur/import", requireLevel(2), (req, res) => {
   let imported  = 0;
   const errors  = [];
 
+  const toArray = v => {
+    if (Array.isArray(v)) return v.map(x => (x || "").toString().trim()).filter(Boolean);
+    if (!v) return [];
+    return v.toString().split(/[;,]/).map(x => x.trim()).filter(Boolean);
+  };
+  const isMarked = v => {
+    if (v === true || v === 1) return true;
+    const s = (v || "").toString().trim().toLowerCase();
+    return ["1", "true", "yes", "ya", "y", "x", "v", "check", "checked"].includes(s);
+  };
+
   rows.forEach((row, i) => {
     const name      = (row.name || row.nama || row.Nama || row.Name || "").toString().trim();
     const dateStart = (row.dateStart || row.date_start || row.tanggal_mulai || row.tanggal || row.Tanggal || row.Date || "").toString().trim();
@@ -2261,11 +2272,14 @@ app.post("/libur/import", requireLevel(2), (req, res) => {
 
     const end = (dateEnd && /^\d{4}-\d{2}-\d{2}$/.test(dateEnd)) ? dateEnd : dateStart;
 
-    const agamaArr = agama ? [agama] : [];
+    const rowAgama = toArray(row.agama || row.agamaList || row.agama_list);
+    const agamaArr = rowAgama.length ? rowAgama : (agama ? [agama] : []);
+    const rowIsNasional = isMarked(row.nasional || row.liburNasional || row.libur_nasional) || row.type === "nasional";
+    const rowType = row.type || (rowIsNasional ? "nasional" : (agamaArr.length ? "agama" : type || "nasional"));
     let anggota = [];
-    if (type === "agama" && agamaArr.length > 0) {
+    if (rowType === "agama" && agamaArr.length > 0) {
       anggota = Object.keys(users).filter(u => agamaArr.includes(users[u].agama || ""));
-    } else if (type === "nasional") {
+    } else if (rowType === "nasional") {
       anggota = Object.keys(users);
     }
 
@@ -2275,8 +2289,9 @@ app.post("/libur/import", requireLevel(2), (req, res) => {
       date:      dateStart,
       dateStart,
       dateEnd:   end,
-      type:      type || "nasional",
+      type:      rowType,
       agama:     agamaArr,
+      nasional:  rowType === "nasional",
       anggota,
       createdAt: new Date().toISOString()
     });
